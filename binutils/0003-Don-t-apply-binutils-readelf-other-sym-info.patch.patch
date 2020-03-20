@@ -1,0 +1,25 @@
+From 737c6283f68a2ef586b1fb2da1582f4bb514cf8d Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Thu, 19 Mar 2020 10:26:36 -0700
+Subject: [PATCH 3/4] Don't apply binutils-readelf-other-sym-info.patch
+
+---
+ binutils.spec | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/binutils.spec b/binutils.spec
+index 42fce1c..1a7d7d5 100644
+--- a/binutils.spec
++++ b/binutils.spec
+@@ -356,7 +356,7 @@ Conflicts: gcc-c++ < 4.0.0
+ %patch04 -p1
+ #%patch05 -p1
+ %patch06 -p1
+-%patch07 -p1
++#%patch07 -p1
+ %patch08 -p1
+ %patch09 -p1
+ #%patch10 -p1
+-- 
+2.25.1
+
