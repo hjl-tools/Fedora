@@ -1,0 +1,25 @@
+From d9413f0e4cb6d118176f7fa7348ff3b8782c6cda Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Sat, 11 Jan 2020 07:36:49 -0800
+Subject: [PATCH 3/3] Add .0 to Release string
+
+---
+ pcre2.spec | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/pcre2.spec b/pcre2.spec
+index 3155d9b..bfb6139 100644
+--- a/pcre2.spec
++++ b/pcre2.spec
+@@ -11,7 +11,7 @@ Patch100000: 0001-X86-Enable-Intel-Control-flow-Enforcement-Technology.patch
+ #%%global rcversion RC1
+ Name:       pcre2
+ Version:    10.34
+-Release:    %{?rcversion:0.}9%{?rcversion:.%rcversion}%{?dist}
++Release:    %{?rcversion:0.}9.0%{?rcversion:.%rcversion}%{?dist}
+ %global     myversion %{version}%{?rcversion:-%rcversion}
+ Summary:    Perl-compatible regular expression library
+ # the library:                          BSD with exceptions
+-- 
+2.25.1
+

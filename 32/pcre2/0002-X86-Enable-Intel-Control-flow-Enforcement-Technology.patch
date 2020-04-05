@@ -1,0 +1,520 @@
+From 36a1e9bc9b560d552c49e330c602a1fbadb12b08 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Sat, 11 Jan 2020 07:35:49 -0800
+Subject: [PATCH 2/3] X86: Enable Intel Control-flow Enforcement Technology
+ (CET)
+
+---
+ ...-Control-flow-Enforcement-Technology.patch | 480 ++++++++++++++++++
+ pcre2.spec                                    |   4 +
+ 2 files changed, 484 insertions(+)
+ create mode 100644 0001-X86-Enable-Intel-Control-flow-Enforcement-Technology.patch
+
+diff --git a/0001-X86-Enable-Intel-Control-flow-Enforcement-Technology.patch b/0001-X86-Enable-Intel-Control-flow-Enforcement-Technology.patch
+new file mode 100644
+index 0000000..792dcf5
+--- /dev/null
++++ b/0001-X86-Enable-Intel-Control-flow-Enforcement-Technology.patch
+@@ -0,0 +1,480 @@
++From 414fcc41332dd11331c5ae597972e3353001fcc3 Mon Sep 17 00:00:00 2001
++From: "H.J. Lu" <hongjiu.lu@intel.com>
++Date: Sat, 11 Jan 2020 06:47:09 -0800
++Subject: [PATCH] X86: Enable Intel Control-flow Enforcement Technology (CET)
++
++Intel Control-flow Enforcement Technology (CET):
++
++https://software.intel.com/en-us/articles/intel-sdm
++
++contains shadow stack (SHSTK) and indirect branch tracking (IBT).  When
++SHSTK is enabled, return address on normal stack must match the one on
++shadow stack.  When IBT is enabled, the indirect branch target must
++start with ENDBR instruction.  When CET is enabled at the compile time
++with "gcc -fcf-protection -mshstk", this patch updates Stack-less
++Just-In-Time compiler with:
++
++1. Emit ENDBR32/ENDBR64 at function entry.  ENDBR32/ENDBR64 are NOPs on
++non-CET machines.
++2. Add SLJIT_ENDBR to sljit_emit_op0 and call sljit_emit_op0 after
++sljit_set_put_label(...) in pcre2_jit_compile to add ENDBR32/ENDBR64
++at indirect jump targets.
++3. Before JIT return, if shadow stack is enabled, adjust shadow stack
++so that the top of show stack matches the top of normal stack.  NB: It
++is safe since shadow stack is read-only, you can only skip stack frame,
++not jump to anywhere else.
++4. Define ECX_REG to use ECX as scratch register to unwind show stack
++when returning from JIT.
++
++Tested on i686/x86-64 CET/non-CET Linux machines with
++
++$ CC="gcc -Wl,-z,cet-report=error -fcf-protection -mshstk" ./configure --enable-jit
++---
++ src/pcre2_jit_compile.c             |   8 ++
++ src/sljit/sljitConfigInternal.h     |  18 ++++
++ src/sljit/sljitLir.h                |   4 +
++ src/sljit/sljitNativeARM_32.c       |   2 +
++ src/sljit/sljitNativeARM_64.c       |   2 +
++ src/sljit/sljitNativeARM_T2_32.c    |   2 +
++ src/sljit/sljitNativeMIPS_common.c  |   2 +
++ src/sljit/sljitNativePPC_common.c   |   2 +
++ src/sljit/sljitNativeSPARC_common.c |   2 +
++ src/sljit/sljitNativeTILEGX_64.c    |   2 +
++ src/sljit/sljitNativeX86_32.c       |  29 ++++--
++ src/sljit/sljitNativeX86_64.c       |   6 ++
++ src/sljit/sljitNativeX86_common.c   | 142 ++++++++++++++++++++++++++++
++ 13 files changed, 213 insertions(+), 8 deletions(-)
++
++diff --git a/src/pcre2_jit_compile.c b/src/pcre2_jit_compile.c
++index f564127..1a0cf5b 100644
++--- a/src/pcre2_jit_compile.c
+++++ b/src/pcre2_jit_compile.c
++@@ -12232,6 +12232,7 @@ else if (has_alternatives)
++ 
++     SLJIT_ASSERT(CURRENT_AS(bracket_backtrack)->u.matching_put_label);
++     sljit_set_put_label(CURRENT_AS(bracket_backtrack)->u.matching_put_label, LABEL());
+++    sljit_emit_op0(compiler, SLJIT_ENDBR);
++     }
++   else
++     next_alt = CMP(SLJIT_NOT_EQUAL, TMP1, 0, SLJIT_IMM, 0);
++@@ -12379,7 +12380,10 @@ if (has_alternatives)
++           }
++         }
++       else
+++        {
++         sljit_set_put_label(put_label, LABEL());
+++        sljit_emit_op0(compiler, SLJIT_ENDBR);
+++        }
++       }
++ 
++     COMPILE_BACKTRACKINGPATH(current->top);
++@@ -12969,6 +12973,7 @@ while (1)
++         {
++         sljit_emit_ijump(compiler, SLJIT_JUMP, TMP1, 0);
++         sljit_set_put_label(put_label, LABEL());
+++        sljit_emit_op0(compiler, SLJIT_ENDBR);
++         }
++       else
++         next_alt = CMP(SLJIT_NOT_EQUAL, TMP1, 0, SLJIT_IMM, 0);
++@@ -12977,7 +12982,10 @@ while (1)
++       free_stack(common, has_accept ? 2 : 1);
++     }
++   else if (alt_max > 3)
+++    {
++     sljit_set_put_label(put_label, LABEL());
+++    sljit_emit_op0(compiler, SLJIT_ENDBR);
+++    }
++   else
++     {
++     JUMPHERE(next_alt);
++diff --git a/src/sljit/sljitConfigInternal.h b/src/sljit/sljitConfigInternal.h
++index acba9da..372b0c1 100644
++--- a/src/sljit/sljitConfigInternal.h
+++++ b/src/sljit/sljitConfigInternal.h
++@@ -191,6 +191,24 @@
++ #define SLJIT_CONFIG_SPARC 1
++ #endif
++ 
+++/***********************************************************/
+++/* Intel Control-flow Enforcement Technology (CET) spport. */
+++/***********************************************************/
+++
+++#ifdef SLJIT_CONFIG_X86
+++#if defined(__CET__)
+++#define SLJIT_CONFIG_X86_CET 1
+++#endif
+++#if (defined SLJIT_CONFIG_X86_CET && SLJIT_CONFIG_X86_CET)
+++#if defined(__GNUC__)
+++#if !defined (__SHSTK__)
+++#error "-mshstk is needed to compile with -fcf-protection"
+++#endif
+++#include <x86intrin.h>
+++#endif
+++#endif
+++#endif
+++
++ /**********************************/
++ /* External function definitions. */
++ /**********************************/
++diff --git a/src/sljit/sljitLir.h b/src/sljit/sljitLir.h
++index 836d25c..60746ec 100644
++--- a/src/sljit/sljitLir.h
+++++ b/src/sljit/sljitLir.h
++@@ -887,6 +887,10 @@ SLJIT_API_FUNC_ATTRIBUTE sljit_s32 sljit_emit_fast_return(struct sljit_compiler
++          the behaviour is undefined. */
++ #define SLJIT_DIV_SW			(SLJIT_OP0_BASE + 7)
++ #define SLJIT_DIV_S32			(SLJIT_DIV_SW | SLJIT_I32_OP)
+++/* Flags: - (does not modify flags)
+++   ENDBR32 instruction for x86-32 and ENDBR64 instruction for x86-64.
+++   No instruction for other architectures.  */
+++#define SLJIT_ENDBR			(SLJIT_OP0_BASE + 8)
++ 
++ SLJIT_API_FUNC_ATTRIBUTE sljit_s32 sljit_emit_op0(struct sljit_compiler *compiler, sljit_s32 op);
++ 
++diff --git a/src/sljit/sljitNativeARM_32.c b/src/sljit/sljitNativeARM_32.c
++index 71f7bcd..b616a8e 100644
++--- a/src/sljit/sljitNativeARM_32.c
+++++ b/src/sljit/sljitNativeARM_32.c
++@@ -1676,6 +1676,8 @@ SLJIT_API_FUNC_ATTRIBUTE sljit_s32 sljit_emit_op0(struct sljit_compiler *compile
++ 						| (saved_reg_list[0] << 12) /* ldr rX, [sp], #8/16 */);
++ 		}
++ 		return SLJIT_SUCCESS;
+++	case SLJIT_ENDBR:
+++		return SLJIT_SUCCESS;
++ 	}
++ 
++ 	return SLJIT_SUCCESS;
++diff --git a/src/sljit/sljitNativeARM_64.c b/src/sljit/sljitNativeARM_64.c
++index e15b345..86c879c 100644
++--- a/src/sljit/sljitNativeARM_64.c
+++++ b/src/sljit/sljitNativeARM_64.c
++@@ -1154,6 +1154,8 @@ SLJIT_API_FUNC_ATTRIBUTE sljit_s32 sljit_emit_op0(struct sljit_compiler *compile
++ 	case SLJIT_DIV_UW:
++ 	case SLJIT_DIV_SW:
++ 		return push_inst(compiler, ((op == SLJIT_DIV_UW ? UDIV : SDIV) ^ inv_bits) | RD(SLJIT_R0) | RN(SLJIT_R0) | RM(SLJIT_R1));
+++	case SLJIT_ENDBR:
+++		return SLJIT_SUCCESS;
++ 	}
++ 
++ 	return SLJIT_SUCCESS;
++diff --git a/src/sljit/sljitNativeARM_T2_32.c b/src/sljit/sljitNativeARM_T2_32.c
++index cdfe4a4..f27d31b 100644
++--- a/src/sljit/sljitNativeARM_T2_32.c
+++++ b/src/sljit/sljitNativeARM_T2_32.c
++@@ -1328,6 +1328,8 @@ SLJIT_API_FUNC_ATTRIBUTE sljit_s32 sljit_emit_op0(struct sljit_compiler *compile
++ 		}
++ 		return SLJIT_SUCCESS;
++ #endif /* __ARM_FEATURE_IDIV || __ARM_ARCH_EXT_IDIV__ */
+++	case SLJIT_ENDBR:
+++		return SLJIT_SUCCESS;
++ 	}
++ 
++ 	return SLJIT_SUCCESS;
++diff --git a/src/sljit/sljitNativeMIPS_common.c b/src/sljit/sljitNativeMIPS_common.c
++index 7d1d087..2db7906 100644
++--- a/src/sljit/sljitNativeMIPS_common.c
+++++ b/src/sljit/sljitNativeMIPS_common.c
++@@ -1286,6 +1286,8 @@ SLJIT_API_FUNC_ATTRIBUTE sljit_s32 sljit_emit_op0(struct sljit_compiler *compile
++ 		FAIL_IF(push_inst(compiler, MFLO | D(SLJIT_R0), DR(SLJIT_R0)));
++ 		return (op >= SLJIT_DIV_UW) ? SLJIT_SUCCESS : push_inst(compiler, MFHI | D(SLJIT_R1), DR(SLJIT_R1));
++ #endif /* SLJIT_MIPS_R6 */
+++	case SLJIT_ENDBR:
+++		return SLJIT_SUCCESS;
++ 	}
++ 
++ 	return SLJIT_SUCCESS;
++diff --git a/src/sljit/sljitNativePPC_common.c b/src/sljit/sljitNativePPC_common.c
++index e827514..aa37908 100644
++--- a/src/sljit/sljitNativePPC_common.c
+++++ b/src/sljit/sljitNativePPC_common.c
++@@ -1158,6 +1158,8 @@ SLJIT_API_FUNC_ATTRIBUTE sljit_s32 sljit_emit_op0(struct sljit_compiler *compile
++ #else
++ 		return push_inst(compiler, (op == SLJIT_DIV_UW ? DIVWU : DIVW) | D(SLJIT_R0) | A(SLJIT_R0) | B(SLJIT_R1));
++ #endif
+++	case SLJIT_ENDBR:
+++		return SLJIT_SUCCESS;
++ 	}
++ 
++ 	return SLJIT_SUCCESS;
++diff --git a/src/sljit/sljitNativeSPARC_common.c b/src/sljit/sljitNativeSPARC_common.c
++index bfa4ece..84548c6 100644
++--- a/src/sljit/sljitNativeSPARC_common.c
+++++ b/src/sljit/sljitNativeSPARC_common.c
++@@ -872,6 +872,8 @@ SLJIT_API_FUNC_ATTRIBUTE sljit_s32 sljit_emit_op0(struct sljit_compiler *compile
++ #else
++ #error "Implementation required"
++ #endif
+++	case SLJIT_ENDBR:
+++		return SLJIT_SUCCESS;
++ 	}
++ 
++ 	return SLJIT_SUCCESS;
++diff --git a/src/sljit/sljitNativeTILEGX_64.c b/src/sljit/sljitNativeTILEGX_64.c
++index 003f43a..87bf351 100644
++--- a/src/sljit/sljitNativeTILEGX_64.c
+++++ b/src/sljit/sljitNativeTILEGX_64.c
++@@ -2184,6 +2184,8 @@ SLJIT_API_FUNC_ATTRIBUTE sljit_s32 sljit_emit_op0(struct sljit_compiler *compile
++ 	case SLJIT_DIV_UW:
++ 	case SLJIT_DIV_SW:
++ 		SLJIT_UNREACHABLE();
+++	case SLJIT_ENDBR:
+++		return SLJIT_SUCCESS;
++ 	}
++ 
++ 	return SLJIT_SUCCESS;
++diff --git a/src/sljit/sljitNativeX86_32.c b/src/sljit/sljitNativeX86_32.c
++index 34a3a3d..9827b85 100644
++--- a/src/sljit/sljitNativeX86_32.c
+++++ b/src/sljit/sljitNativeX86_32.c
++@@ -76,6 +76,9 @@ SLJIT_API_FUNC_ATTRIBUTE sljit_s32 sljit_emit_enter(struct sljit_compiler *compi
++ 	CHECK(check_sljit_emit_enter(compiler, options, arg_types, scratches, saveds, fscratches, fsaveds, local_size));
++ 	set_emit_enter(compiler, options, arg_types, scratches, saveds, fscratches, fsaveds, local_size);
++ 
+++	/* Emit ENDBR32 at function entry if needed.  */
+++	FAIL_IF(emit_endbranch(compiler));
+++
++ 	args = get_arg_count(arg_types);
++ 	compiler->args = args;
++ 
++@@ -307,15 +310,8 @@ SLJIT_API_FUNC_ATTRIBUTE sljit_s32 sljit_emit_return(struct sljit_compiler *comp
++ 		SLJIT_SP, 0, SLJIT_SP, 0, SLJIT_IMM, compiler->local_size));
++ #endif
++ 
++-	size = 2 + (compiler->scratches > 7 ? (compiler->scratches - 7) : 0) +
+++	size = 1 + (compiler->scratches > 7 ? (compiler->scratches - 7) : 0) +
++ 		(compiler->saveds <= 3 ? compiler->saveds : 3);
++-#if (defined SLJIT_X86_32_FASTCALL && SLJIT_X86_32_FASTCALL)
++-	if (compiler->args > 2)
++-		size += 2;
++-#else
++-	if (compiler->args > 0)
++-		size += 2;
++-#endif
++ 	inst = (sljit_u8*)ensure_buf(compiler, 1 + size);
++ 	FAIL_IF(!inst);
++ 
++@@ -328,6 +324,23 @@ SLJIT_API_FUNC_ATTRIBUTE sljit_s32 sljit_emit_return(struct sljit_compiler *comp
++ 	if (compiler->saveds > 2 || compiler->scratches > 9)
++ 		POP_REG(reg_map[SLJIT_S2]);
++ 	POP_REG(reg_map[TMP_REG1]);
+++
+++	/* Adjust shadow stack if needed. */
+++	FAIL_IF(adjust_shadow_stack(compiler));
+++
+++	size = 1;
+++#if (defined SLJIT_X86_32_FASTCALL && SLJIT_X86_32_FASTCALL)
+++	if (compiler->args > 2)
+++		size += 2;
+++#else
+++	/* FIXME: Is this correct?  */
+++	if (0 && compiler->args > 0)
+++		size += 2;
+++#endif
+++	inst = (sljit_u8*)ensure_buf(compiler, 1 + size);
+++	FAIL_IF(!inst);
+++	INC_SIZE(size);
+++
++ #if (defined SLJIT_X86_32_FASTCALL && SLJIT_X86_32_FASTCALL)
++ 	if (compiler->args > 2)
++ 		RET_I16(sizeof(sljit_sw));
++diff --git a/src/sljit/sljitNativeX86_64.c b/src/sljit/sljitNativeX86_64.c
++index 5758711..318ce2f 100644
++--- a/src/sljit/sljitNativeX86_64.c
+++++ b/src/sljit/sljitNativeX86_64.c
++@@ -135,6 +135,9 @@ SLJIT_API_FUNC_ATTRIBUTE sljit_s32 sljit_emit_enter(struct sljit_compiler *compi
++ 	CHECK(check_sljit_emit_enter(compiler, options, arg_types, scratches, saveds, fscratches, fsaveds, local_size));
++ 	set_emit_enter(compiler, options, arg_types, scratches, saveds, fscratches, fsaveds, local_size);
++ 
+++	/* Emit ENDBR64 at function entry if needed.  */
+++	FAIL_IF(emit_endbranch(compiler));
+++
++ 	compiler->mode32 = 0;
++ 
++ #ifdef _WIN64
++@@ -361,6 +364,9 @@ SLJIT_API_FUNC_ATTRIBUTE sljit_s32 sljit_emit_return(struct sljit_compiler *comp
++ 		POP_REG(reg_lmap[i]);
++ 	}
++ 
+++	/* Adjust shadow stack if needed.  */
+++	FAIL_IF(adjust_shadow_stack(compiler));
+++
++ 	inst = (sljit_u8*)ensure_buf(compiler, 1 + 1);
++ 	FAIL_IF(!inst);
++ 	INC_SIZE(1);
++diff --git a/src/sljit/sljitNativeX86_common.c b/src/sljit/sljitNativeX86_common.c
++index 6296da5..b6c1c29 100644
++--- a/src/sljit/sljitNativeX86_common.c
+++++ b/src/sljit/sljitNativeX86_common.c
++@@ -69,6 +69,8 @@ SLJIT_API_FUNC_ATTRIBUTE const char* sljit_get_platform_name(void)
++ 
++ /* Last register + 1. */
++ #define TMP_REG1	(SLJIT_NUMBER_OF_REGISTERS + 2)
+++/* ECX is used as scratch register when returning from JIT.  */
+++#define ECX_REG		3
++ 
++ static const sljit_u8 reg_map[SLJIT_NUMBER_OF_REGISTERS + 3] = {
++ 	0, 0, 2, 1, 0, 0, 0, 0, 0, 0, 7, 6, 3, 4, 5
++@@ -89,6 +91,8 @@ static const sljit_u8 reg_map[SLJIT_NUMBER_OF_REGISTERS + 3] = {
++ /* Last register + 1. */
++ #define TMP_REG1	(SLJIT_NUMBER_OF_REGISTERS + 2)
++ #define TMP_REG2	(SLJIT_NUMBER_OF_REGISTERS + 3)
+++/* ECX is used as scratch register when returning from JIT.  */
+++#define ECX_REG		4
++ 
++ /* Note: r12 & 0x7 == 0b100, which decoded as SIB byte present
++    Note: avoid to use r12 and r13 for memory addessing
++@@ -702,6 +706,142 @@ static SLJIT_INLINE sljit_s32 emit_sse2_store(struct sljit_compiler *compiler,
++ static SLJIT_INLINE sljit_s32 emit_sse2_load(struct sljit_compiler *compiler,
++ 	sljit_s32 single, sljit_s32 dst, sljit_s32 src, sljit_sw srcw);
++ 
+++static sljit_s32 emit_cmp_binary(struct sljit_compiler *compiler,
+++	sljit_s32 src1, sljit_sw src1w,
+++	sljit_s32 src2, sljit_sw src2w);
+++
+++static SLJIT_INLINE sljit_s32 emit_endbranch(struct sljit_compiler *compiler)
+++{
+++#if (defined SLJIT_CONFIG_X86_CET && SLJIT_CONFIG_X86_CET)
+++	/* Emit endbr32/endbr64 when CET is enabled.  */
+++	sljit_u8 *inst;
+++	inst = (sljit_u8*)ensure_buf(compiler, 1 + 4);
+++	FAIL_IF(!inst);
+++	INC_SIZE(4);
+++	*inst++ = 0xf3;
+++	*inst++ = 0x0f;
+++	*inst++ = 0x1e;
+++#if (defined SLJIT_CONFIG_X86_32 && SLJIT_CONFIG_X86_32)
+++	*inst = 0xfb;
+++#else
+++	*inst = 0xfa;
+++#endif
+++#else
+++	(void)compiler;
+++#endif
+++	return SLJIT_SUCCESS;
+++}
+++
+++static SLJIT_INLINE sljit_s32 emit_rdssp(struct sljit_compiler *compiler, sljit_s32 reg)
+++{
+++#if (defined SLJIT_CONFIG_X86_CET && SLJIT_CONFIG_X86_CET)
+++	sljit_u8 *inst;
+++	sljit_s32 size;
+++
+++#if (defined SLJIT_CONFIG_X86_64 && SLJIT_CONFIG_X86_64)
+++	size = 5;
+++#else
+++	size = 4;
+++#endif
+++
+++	inst = (sljit_u8*)ensure_buf(compiler, 1 + size);
+++	FAIL_IF(!inst);
+++	INC_SIZE(size);
+++	*inst++ = 0xf3;
+++#if (defined SLJIT_CONFIG_X86_64 && SLJIT_CONFIG_X86_64)
+++	*inst++ = REX_W | (reg_map[reg] <= 7 ? 0 : REX_B);
+++#endif
+++	*inst++ = 0x0f;
+++	*inst++ = 0x1e;
+++	*inst = (0x3 << 6) | (0x1 << 3) | (reg_map[reg] & 0x7);
+++#else
+++	(void)compiler;
+++#endif
+++	return SLJIT_SUCCESS;
+++}
+++
+++static SLJIT_INLINE sljit_s32 emit_incssp(struct sljit_compiler *compiler, sljit_s32 reg)
+++{
+++#if (defined SLJIT_CONFIG_X86_CET && SLJIT_CONFIG_X86_CET)
+++	sljit_u8 *inst;
+++	sljit_s32 size;
+++
+++#if (defined SLJIT_CONFIG_X86_64 && SLJIT_CONFIG_X86_64)
+++	size = 5;
+++#else
+++	size = 4;
+++#endif
+++
+++	inst = (sljit_u8*)ensure_buf(compiler, 1 + size);
+++	FAIL_IF(!inst);
+++	INC_SIZE(size);
+++	*inst++ = 0xf3;
+++#if (defined SLJIT_CONFIG_X86_64 && SLJIT_CONFIG_X86_64)
+++	*inst++ = REX_W | (reg_map[reg] <= 7 ? 0 : REX_B);
+++#endif
+++	*inst++ = 0x0f;
+++	*inst++ = 0xae;
+++	*inst = (0x3 << 6) | (0x5 << 3) | (reg_map[reg] & 0x7);
+++#else
+++	(void)compiler;
+++#endif
+++	return SLJIT_SUCCESS;
+++}
+++
+++static SLJIT_INLINE sljit_s32 adjust_shadow_stack(struct sljit_compiler *compiler)
+++{
+++#if (defined SLJIT_CONFIG_X86_CET && SLJIT_CONFIG_X86_CET)
+++	/* Don't adjust shadow stack if it isn't enabled.  */
+++	if (!_get_ssp())
+++		return SLJIT_SUCCESS;
+++
+++	sljit_u8 *inst;
+++
+++	sljit_s32 size_before_rdssp_inst = compiler->size;
+++
+++	/* Generate "RDSSP ECX".  */
+++	FAIL_IF(emit_rdssp(compiler, ECX_REG));
+++
+++	/* Load return address on shadow stack into ECX_REG.  */
+++	EMIT_MOV(compiler, ECX_REG, 0, SLJIT_MEM1(ECX_REG), 0);
+++
+++	/* Compare return address on stack against ECX_REG.  */
+++	FAIL_IF(emit_cmp_binary (compiler, ECX_REG, 0,
+++				 SLJIT_MEM1(SLJIT_SP), 0));
+++
+++	/* Generate JZ to skip shadow stack ajdustment when shadow
+++	   stack matches normal stack.  */
+++	inst = (sljit_u8*)ensure_buf(compiler, 1 + 2);
+++	FAIL_IF(!inst);
+++	INC_SIZE(2);
+++	*inst++ = get_jump_code(SLJIT_EQUAL) - 0x10;
+++	sljit_s32 size_jz_after_cmp_inst = compiler->size;
+++	sljit_u8 *jz_after_cmp_inst = inst;
+++
+++#if (defined SLJIT_CONFIG_X86_64 && SLJIT_CONFIG_X86_64)
+++	/* REX_W is not necessary. */
+++	compiler->mode32 = 1;
+++#endif
+++	/* Load 1 into ECX_REG. */
+++	EMIT_MOV(compiler, ECX_REG, 0, SLJIT_IMM, 1);
+++
+++	/* Generate "INCSSP ECX_REG".  */
+++	FAIL_IF(emit_incssp(compiler, ECX_REG));
+++
+++	/* Jump back to "RDSSP ECX_REG" to check shadow stack again.  */
+++	inst = (sljit_u8*)ensure_buf(compiler, 1 + 2);
+++	FAIL_IF(!inst);
+++	INC_SIZE(2);
+++	*inst++ = JMP_i8;
+++	*inst = size_before_rdssp_inst - compiler->size;
+++
+++	*jz_after_cmp_inst = compiler->size - size_jz_after_cmp_inst;
+++#else
+++	(void)compiler;
+++#endif
+++	return SLJIT_SUCCESS;
+++}
+++
++ #if (defined SLJIT_CONFIG_X86_32 && SLJIT_CONFIG_X86_32)
++ #include "sljitNativeX86_32.c"
++ #else
++@@ -905,6 +1045,8 @@ SLJIT_API_FUNC_ATTRIBUTE sljit_s32 sljit_emit_op0(struct sljit_compiler *compile
++ 			EMIT_MOV(compiler, SLJIT_R1, 0, TMP_REG1, 0);
++ #endif
++ 		break;
+++	case SLJIT_ENDBR:
+++		return emit_endbranch(compiler);
++ 	}
++ 
++ 	return SLJIT_SUCCESS;
++-- 
++2.24.1
++
+diff --git a/pcre2.spec b/pcre2.spec
+index 3043c56..3155d9b 100644
+--- a/pcre2.spec
++++ b/pcre2.spec
+@@ -1,3 +1,5 @@
++Patch100000: 0001-X86-Enable-Intel-Control-flow-Enforcement-Technology.patch
++
+ # Add readline edditing in pcre2test tool
+ %bcond_without pcre2_enables_readline
+ 
+@@ -193,6 +195,8 @@ Utilities demonstrating PCRE2 capabilities like pcre2grep or pcre2test.
+ libtoolize --copy --force
+ autoreconf -vif
+ 
++%patch100000 -p1
++
+ %build
+ # There is a strict-aliasing problem on PPC64, bug #881232
+ %ifarch ppc64
+-- 
+2.25.1
+
