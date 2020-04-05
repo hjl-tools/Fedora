@@ -1,0 +1,25 @@
+From 76a55e8e436f03a46c3c7f9f7e6927fefc9b11f5 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Fri, 20 Nov 2015 12:28:57 -0800
+Subject: [PATCH] Add .0 to Release string
+
+---
+ isl.spec | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/isl.spec b/isl.spec
+index ec2ed40..ee4b2e5 100644
+--- a/isl.spec
++++ b/isl.spec
+@@ -16,7 +16,7 @@ URL: http://isl.gforge.inria.fr/
+ #
+ # % global buildid .local
+ 
+-Release: 10%{?buildid}%{?dist}
++Release: 10.0%{?buildid}%{?dist}
+ 
+ BuildRequires:  gcc
+ BuildRequires: gmp-devel
+-- 
+2.25.1
+
