@@ -1,0 +1,25 @@
+From e0916e7eeca2a952a844340b09fc9360d5b8c4af Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Fri, 28 Feb 2020 11:51:57 -0800
+Subject: [PATCH 2/2] Add .0 to Release string
+
+---
+ nettle.spec | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/nettle.spec b/nettle.spec
+index d71d1a3..63d136d 100644
+--- a/nettle.spec
++++ b/nettle.spec
+@@ -16,7 +16,7 @@ Patch100000: 0001-x86-Add-X86_ENDBR-and-CET-marker-to-config.m4.in.patch
+ 
+ Name:           nettle
+ Version:        3.5.1
+-Release:        5%{?dist}
++Release:        5.0%{?dist}
+ Summary:        A low-level cryptographic library
+ 
+ License:        LGPLv3+ or GPLv2+
+-- 
+2.25.1
+
