@@ -1,0 +1,25 @@
+From 28eb651843bfb58803f13e2a678dc6fe4290a697 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Tue, 10 Jan 2017 09:23:43 -0800
+Subject: [PATCH] Add .0 to Release string
+
+---
+ libmpc.spec | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/libmpc.spec b/libmpc.spec
+index 34d3aa7..2f73a23 100644
+--- a/libmpc.spec
++++ b/libmpc.spec
+@@ -5,7 +5,7 @@
+ Summary: C library for multiple precision complex arithmetic
+ Name: libmpc
+ Version: 1.1.0
+-Release: 8%{?dist}
++Release: 8.0%{?dist}
+ License: LGPLv3+
+ URL: http://www.multiprecision.org/mpc/
+ Source0: https://ftp.gnu.org/gnu/mpc/mpc-%{version}.tar.gz
+-- 
+2.25.1
+
