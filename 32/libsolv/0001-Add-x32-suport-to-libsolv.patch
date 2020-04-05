@@ -1,0 +1,89 @@
+From 8cfc7b84358c58f8987ed9b858065dca855b4b98 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Wed, 22 Jun 2016 07:50:34 -0700
+Subject: [PATCH 1/2] Add x32 suport to libsolv
+
+---
+ 0001-Add-x32-suport-to-libsolv.patch | 59 ++++++++++++++++++++++++++++
+ libsolv.spec                         |  2 +
+ 2 files changed, 61 insertions(+)
+ create mode 100644 0001-Add-x32-suport-to-libsolv.patch
+
+diff --git a/0001-Add-x32-suport-to-libsolv.patch b/0001-Add-x32-suport-to-libsolv.patch
+new file mode 100644
+index 0000000..f04a78a
+--- /dev/null
++++ b/0001-Add-x32-suport-to-libsolv.patch
+@@ -0,0 +1,59 @@
++From de5b480ad8002cb194a77791bc754627cd7e1136 Mon Sep 17 00:00:00 2001
++From: "H.J. Lu" <hjl.tools@gmail.com>
++Date: Tue, 23 Jun 2015 16:08:16 -0700
++Subject: [PATCH] Add x32 suport to libsolv
++
++---
++ src/poolarch.c | 5 ++++-
++ src/poolarch.h | 5 +++--
++ 2 files changed, 7 insertions(+), 3 deletions(-)
++
++diff --git a/src/poolarch.c b/src/poolarch.c
++index 788646b..14fe0da 100644
++--- a/src/poolarch.c
+++++ b/src/poolarch.c
++@@ -22,7 +22,7 @@
++ 
++ static const char *archpolicies[] = {
++ #if defined(FEDORA) || defined(MAGEIA)
++-  "x86_64",	"x86_64:athlon:i686:i586:i486:i386",
+++  "x86_64",	"x86_64:x32:athlon:i686:i586:i486:i386",
++ #else
++   "x86_64",	"x86_64:i686:i586:i486:i386",
++ #endif
++@@ -68,6 +68,7 @@ static const char *archpolicies[] = {
++   "ia32e",	"ia32e:x86_64:athlon:i686:i586:i486:i386",
++   "athlon",	"athlon:i686:i586:i486:i386",
++   "amd64",	"amd64:x86_64:athlon:i686:i586:i486:i386",
+++  "x32",	"x32:x86_64:athlon:i686:i586:i486:i386",
++   "geode",	"geode:i586:i486:i386",
++   "ppc64iseries", "ppc64iseries:ppc64:ppc",
++   "ppc64pseries", "ppc64pseries:ppc64:ppc",
++@@ -169,6 +170,8 @@ pool_arch2color_slow(Pool *pool, Id arch)
++     color = ARCHCOLOR_ALL;
++   else if (!strcmp(s, "s390x") || strstr(s, "64"))
++     color = ARCHCOLOR_64;
+++  else if (!strcmp(s, "x32"))
+++    color = ARCHCOLOR_X32;
++   else
++     color = ARCHCOLOR_32;
++   pool->id2color[arch] = color;
++diff --git a/src/poolarch.h b/src/poolarch.h
++index 3fe5f02..e68b587 100644
++--- a/src/poolarch.h
+++++ b/src/poolarch.h
++@@ -18,8 +18,9 @@ extern void pool_setarch(Pool *, const char *);
++ extern void pool_setarchpolicy(Pool *, const char *);
++ extern unsigned char pool_arch2color_slow(Pool *pool, Id arch);
++ 
++-#define ARCHCOLOR_32    1
++-#define ARCHCOLOR_64    2
+++#define ARCHCOLOR_32    (1 << 0)
+++#define ARCHCOLOR_X32   (1 << 1)
+++#define ARCHCOLOR_64    (1 << 2)
++ #define ARCHCOLOR_ALL   255
++ 
++ static inline unsigned char pool_arch2color(Pool *pool, Id arch)
++-- 
++2.5.0
++
+diff --git a/libsolv.spec b/libsolv.spec
+index 01c4ade..0af95c8 100644
+--- a/libsolv.spec
++++ b/libsolv.spec
+@@ -1,3 +1,5 @@
++Patch100000: 0001-Add-x32-suport-to-libsolv.patch
++
+ %global libname solv
+ 
+ %bcond_with    python2_bindings
+-- 
+2.25.1
+
