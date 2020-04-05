@@ -1,0 +1,24 @@
+From cfb487b3a5c45f524ee61230cd8900beca73541d Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Fri, 20 Nov 2015 15:34:19 -0800
+Subject: [PATCH 1/2] Add x32 support to optflags
+
+---
+ rpmrc | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/rpmrc b/rpmrc
+index 2e98e7a..66f0e18 100644
+--- a/rpmrc
++++ b/rpmrc
+@@ -7,6 +7,7 @@ optflags: i686 %{__global_compiler_flags} -m32 -march=i686 -mtune=generic -msse2
+ optflags: athlon %{__global_compiler_flags} -m32 -march=athlon -fasynchronous-unwind-tables -fstack-clash-protection
+ optflags: ia64 %{__global_compiler_flags}
+ optflags: x86_64 %{__global_compiler_flags} -m64 -mtune=generic -fasynchronous-unwind-tables -fstack-clash-protection -fcf-protection
++optflags: x32 %{__global_compiler_flags} -mx32 -mtune=generic -fasynchronous-unwind-tables -fstack-clash-protection -fcf-protection
+ 
+ optflags: alpha %{__global_compiler_flags} -mieee
+ optflags: alphaev5 %{__global_compiler_flags} -mieee -mcpu=ev5
+-- 
+2.25.1
+

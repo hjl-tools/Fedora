@@ -1,0 +1,25 @@
+From f2b8cd2d6fc5a1106b32e8fa314849c74bf61f55 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Fri, 20 Nov 2015 15:35:07 -0800
+Subject: [PATCH 2/2] Add .0 to Release string
+
+---
+ redhat-rpm-config.spec | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/redhat-rpm-config.spec b/redhat-rpm-config.spec
+index ac5389a..f6c1fa9 100644
+--- a/redhat-rpm-config.spec
++++ b/redhat-rpm-config.spec
+@@ -7,7 +7,7 @@
+ Summary: Red Hat specific rpm configuration files
+ Name: redhat-rpm-config
+ Version: 150
+-Release: 1%{?dist}
++Release: 1.0%{?dist}
+ # No version specified.
+ License: GPL+
+ URL: https://src.fedoraproject.org/rpms/redhat-rpm-config
+-- 
+2.25.1
+
