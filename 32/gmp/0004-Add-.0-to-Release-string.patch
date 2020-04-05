@@ -1,0 +1,25 @@
+From eff013c16bd09bbb3390aa2a22e7dc103170deff Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Tue, 6 Aug 2013 11:40:11 -0700
+Subject: [PATCH 4/4] Add .0 to Release string
+
+---
+ gmp.spec | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/gmp.spec b/gmp.spec
+index 3c48c49..6052db8 100644
+--- a/gmp.spec
++++ b/gmp.spec
+@@ -18,7 +18,7 @@ Patch100011: 0011-x86-k7-Prepend-X86_NOTRACK-to-indirect-branches.patch
+ Summary: A GNU arbitrary precision library
+ Name: gmp
+ Version: 6.1.2
+-Release: 13%{?dist}
++Release: 13.0%{?dist}
+ Epoch: 1
+ URL: http://gmplib.org/
+ Source0: ftp://ftp.gmplib.org/pub/gmp-%{version}/gmp-%{version}.tar.bz2
+-- 
+2.25.1
+
