@@ -1,0 +1,25 @@
+From 47718be5bd576b5770c2f92d0660a888452cbde7 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Fri, 28 Feb 2020 13:27:01 -0800
+Subject: [PATCH 2/2] Add .0 to Release string
+
+---
+ gnutls.spec | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/gnutls.spec b/gnutls.spec
+index 59b3e91..3161deb 100644
+--- a/gnutls.spec
++++ b/gnutls.spec
+@@ -2,7 +2,7 @@ Patch100000: 0001-Update-x86-64-assembly-codes-with-CET-support.patch
+ 
+ # This spec file has been automatically updated
+ Version:	3.6.13
+-Release: 1%{?dist}
++Release: 1.0%{?dist}
+ Patch1:	gnutls-3.6.7-no-now-guile.patch
+ Patch2:	gnutls-3.2.7-rpath.patch
+ %bcond_without dane
+-- 
+2.25.1
+
