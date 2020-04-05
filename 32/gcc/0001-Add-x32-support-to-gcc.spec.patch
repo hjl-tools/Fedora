@@ -1,0 +1,556 @@
+From 57fa3e8dbf47b4ec705c138d37c99fc297d873fd Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Mon, 29 Oct 2018 04:08:31 -0700
+Subject: [PATCH 1/3] Add x32 support to gcc.spec
+
+---
+ gcc.spec | 240 +++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 240 insertions(+)
+
+diff --git a/gcc.spec b/gcc.spec
+index 131b321..3893fce 100644
+--- a/gcc.spec
++++ b/gcc.spec
+@@ -28,6 +28,7 @@
+ %else
+ %global multilib_64_archs sparc64 ppc64 ppc64p7 x86_64
+ %endif
++%global multilib_x32_archs x86_64
+ %if 0%{?rhel} > 7
+ %global build_ada 0
+ %global build_objc 0
+@@ -189,6 +190,9 @@ BuildRequires: glibc >= 2.3.90-35
+ # Ensure glibc{,-devel} is installed for both multilib arches
+ BuildRequires: /lib/libc.so.6 /usr/lib/libc.so /lib64/libc.so.6 /usr/lib64/libc.so
+ %endif
++%ifarch %{multilib_x32_archs}
++BuildRequires: /libx32/libc.so.6 /usr/libx32/libc.so /usr/libx32/libc.a
++%endif
+ %if %{build_ada}
+ # Ada requires Ada to build
+ BuildRequires: gcc-gnat >= 3.1, libgnat >= 3.1
+@@ -982,6 +986,9 @@ CONFIGURE_OPTS="\
+ %ifarch x86_64
+ 	--with-arch_32=i686 \
+ %endif
++%ifarch %{multilib_x32_archs}
++	--with-multilib-list=m32,m64,mx32 \
++%endif
+ %endif
+ %ifarch s390 s390x
+ %if 0%{?rhel} >= 7
+@@ -1328,6 +1335,18 @@ GROUP ( /lib/libgcc_s.so.1 libgcc.a )' > $FULLPATH/32/libgcc_s.so
+ ln -sf /lib/libgcc_s.so.1 $FULLPATH/32/libgcc_s.so
+ %endif
+ %endif
++%ifarch %{multilib_x32_archs}
++rm -f $FULLPATH/x32/libgcc_s.so
++echo '/* GNU ld script
++   Use the shared library, but some functions are only in
++   the static library, so try that secondarily.  */
++OUTPUT_FORMAT('`gcc -mx32 -Wl,--print-output-format -nostdlib -r -o /dev/null`')
++GROUP ( /libx32/libgcc_s.so.1 libgcc.a )' > $FULLPATH/x32/libgcc_s.so
++mkdir -p %{buildroot}/libx32
++mv -f %{buildroot}%{_prefix}/libx32/libgcc_s.so.1 %{buildroot}/libx32/libgcc_s-%{gcc_major}-%{DATE}.so.1
++chmod 755 %{buildroot}/libx32/libgcc_s-%{gcc_major}-%{DATE}.so.1
++ln -sf libgcc_s-%{gcc_major}-%{DATE}.so.1 %{buildroot}/libx32/libgcc_s.so.1
++%endif
+ 
+ mv -f %{buildroot}%{_prefix}/%{_lib}/libgomp.spec $FULLPATH/
+ 
+@@ -1335,6 +1354,11 @@ mv -f %{buildroot}%{_prefix}/%{_lib}/libgomp.spec $FULLPATH/
+ mv -f $FULLPATH/adalib/libgnarl-*.so %{buildroot}%{_prefix}/%{_lib}/
+ mv -f $FULLPATH/adalib/libgnat-*.so %{buildroot}%{_prefix}/%{_lib}/
+ rm -f $FULLPATH/adalib/libgnarl.so* $FULLPATH/adalib/libgnat.so*
++%ifarch %{multilib_x32_archs}
++mv -f $FULLPATH/x32/adalib/libgnarl-*.so %{buildroot}%{_prefix}/libx32/
++mv -f $FULLPATH/x32/adalib/libgnat-*.so %{buildroot}%{_prefix}/libx32/
++rm -f $FULLPATH/x32/adalib/libgnarl.so* $FULLPATH/x32/adalib/libgnat.so*
++%endif
+ %endif
+ 
+ mkdir -p %{buildroot}%{_prefix}/libexec/getconf
+@@ -1347,6 +1371,11 @@ fi
+ mkdir -p %{buildroot}%{_datadir}/gdb/auto-load/%{_prefix}/%{_lib}
+ mv -f %{buildroot}%{_prefix}/%{_lib}/libstdc++*gdb.py* \
+       %{buildroot}%{_datadir}/gdb/auto-load/%{_prefix}/%{_lib}/
++%ifarch %{multilib_x32_archs}
++mkdir -p %{buildroot}%{_datadir}/gdb/auto-load/%{_prefix}/libx32
++mv -f %{buildroot}%{_prefix}/libx32/libstdc++*gdb.py* \
++      %{buildroot}%{_datadir}/gdb/auto-load/%{_prefix}/libx32/
++%endif
+ pushd ../libstdc++-v3/python
+ for i in `find . -name \*.py`; do
+   touch -r $i %{buildroot}%{_prefix}/share/gcc-%{gcc_major}/python/$i
+@@ -1626,11 +1655,17 @@ ln -sf ../`echo ../../../../lib64/libgomp.so.1.* | sed s~/../lib64/~/~` 32/libgo
+ rm -f libgo.so
+ echo 'INPUT ( %{_prefix}/lib64/'`echo ../../../../lib64/libgo.so.16.* | sed 's,^.*libg,libg,'`' )' > libgo.so
+ echo 'INPUT ( %{_prefix}/lib/'`echo ../../../../lib64/libgo.so.16.* | sed 's,^.*libg,libg,'`' )' > 32/libgo.so
++%ifarch %{multilib_x32_archs}
++echo 'INPUT ( %{_prefix}/libx32/'`echo ../../../../lib64/libgo.so.16.* | sed 's,^.*libg,libg,'`' )' > x32/libgo.so
++%endif
+ %endif
+ %if %{build_libquadmath}
+ rm -f libquadmath.so
+ echo 'INPUT ( %{_prefix}/lib64/'`echo ../../../../lib64/libquadmath.so.0.* | sed 's,^.*libq,libq,'`' )' > libquadmath.so
+ echo 'INPUT ( %{_prefix}/lib/'`echo ../../../../lib64/libquadmath.so.0.* | sed 's,^.*libq,libq,'`' )' > 32/libquadmath.so
++%ifarch %{multilib_x32_archs}
++echo 'INPUT ( %{_prefix}/libx32/'`echo ../../../../lib64/libquadmath.so.0.* | sed 's,^.*libq,libq,'`' )' > x32/libquadmath.so
++%endif
+ %endif
+ %if %{build_d}
+ rm -f libgdruntime.so libgphobos.so
+@@ -1643,28 +1678,53 @@ echo 'INPUT ( %{_prefix}/lib/'`echo ../../../../lib64/libgphobos.so.1.* | sed 's
+ rm -f libitm.so
+ echo 'INPUT ( %{_prefix}/lib64/'`echo ../../../../lib64/libitm.so.1.* | sed 's,^.*libi,libi,'`' )' > libitm.so
+ echo 'INPUT ( %{_prefix}/lib/'`echo ../../../../lib64/libitm.so.1.* | sed 's,^.*libi,libi,'`' )' > 32/libitm.so
++%ifarch %{multilib_x32_archs}
++echo 'INPUT ( %{_prefix}/libx32/'`echo ../../../../lib64/libitm.so.1.* | sed 's,^.*libi,libi,'`' )' > x32/libitm.so
++%endif
+ %endif
+ %if %{build_libatomic}
+ rm -f libatomic.so
+ echo 'INPUT ( %{_prefix}/lib64/'`echo ../../../../lib64/libatomic.so.1.* | sed 's,^.*liba,liba,'`' )' > libatomic.so
+ echo 'INPUT ( %{_prefix}/lib/'`echo ../../../../lib64/libatomic.so.1.* | sed 's,^.*liba,liba,'`' )' > 32/libatomic.so
++%ifarch %{multilib_x32_archs}
++echo 'INPUT ( %{_prefix}/libx32/'`echo ../../../../lib64/libatomic.so.1.* | sed 's,^.*liba,liba,'`' )' > x32/libatomic.so
++%endif
+ %endif
+ %if %{build_libasan}
+ rm -f libasan.so
+ echo 'INPUT ( %{_prefix}/lib64/'`echo ../../../../lib64/libasan.so.6.* | sed 's,^.*liba,liba,'`' )' > libasan.so
+ echo 'INPUT ( %{_prefix}/lib/'`echo ../../../../lib64/libasan.so.6.* | sed 's,^.*liba,liba,'`' )' > 32/libasan.so
+ mv ../../../../lib/libasan_preinit.o 32/libasan_preinit.o
++%ifarch %{multilib_x32_archs}
++echo 'INPUT ( %{_prefix}/libx32/'`echo ../../../../lib64/libasan.so.6.* | sed 's,^.*liba,liba,'`' )' > x32/libasan.so
++mv ../../../../libx32/libasan_preinit.o x32/libasan_preinit.o
++%endif
+ %endif
+ %if %{build_libubsan}
+ rm -f libubsan.so
+ echo 'INPUT ( %{_prefix}/lib64/'`echo ../../../../lib64/libubsan.so.1.* | sed 's,^.*libu,libu,'`' )' > libubsan.so
+ echo 'INPUT ( %{_prefix}/lib/'`echo ../../../../lib64/libubsan.so.1.* | sed 's,^.*libu,libu,'`' )' > 32/libubsan.so
++%ifarch %{multilib_x32_archs}
++echo 'INPUT ( %{_prefix}/libx32/'`echo ../../../../lib64/libubsan.so.1.* | sed 's,^.*libu,libu,'`' )' > x32/libubsan.so
++%endif
+ %endif
+ %if %{build_objc}
+ mv -f %{buildroot}%{_prefix}/lib/libobjc.*a 32/
+ %endif
+ mv -f %{buildroot}%{_prefix}/lib/libgomp.*a 32/
+ %endif
++%ifarch %{multilib_x32_archs}
++pushd x32
++%if %{build_objc}
++ln -sf ../../../../../libx32/libobjc.so.4 libobjc.so
++mv -f ../../../../../libx32/libobjc.a .
++%endif
++ln -sf ../../../../../libx32/libstdc++.so.6.*[0-9] libstdc++.so
++ln -sf ../../../../../libx32/libgfortran.so.5.* libgfortran.so
++ln -sf ../../../../../libx32/libgomp.so.1.* libgomp.so
++mv -f ../../../../../libx32/libgomp.a .
++popd
++%endif
+ %ifarch sparc64 ppc64 ppc64p7
+ ln -sf ../lib32/libgfortran.a 32/libgfortran.a
+ ln -sf lib64/libgfortran.a libgfortran.a
+@@ -1749,6 +1809,31 @@ ln -sf ../../../%{multilib_32_arch}-%{_vendor}-%{_target_os}/%{gcc_major}/adainc
+ ln -sf ../../../%{multilib_32_arch}-%{_vendor}-%{_target_os}/%{gcc_major}/adalib 32/adalib
+ %endif
+ %endif
++%ifarch %{multilib_x32_archs}
++mv ../../../../libx32/libgfortran.a x32/libgfortran.a
++mv ../../../../libx32/libstdc++.a x32/libstdc++.a
++mv ../../../../libx32/libstdc++fs.a x32/libstdc++fs.a
++mv ../../../../libx32/libsupc++.a x32/libsupc++.a
++%if %{build_libquadmath}
++mv ../../../../libx32/libquadmath.a x32/libquadmath.a
++%endif
++%if %{build_libitm}
++mv ../../../../libx32/libitm.a x32/libitm.a
++%endif
++%if %{build_libatomic}
++mv ../../../../libx32/libatomic.a x32/libatomic.a
++%endif
++%if %{build_libasan}
++mv ../../../../libx32/libasan.a x32/libasan.a
++%endif
++%if %{build_libubsan}
++mv ../../../../libx32/libubsan.a x32/libubsan.a
++%endif
++%if %{build_go}
++mv ../../../../libx32/libgo.a x32/libgo.a
++mv ../../../../libx32/libgobegin.a x32/libgobegin.a
++%endif
++%endif
+ %endif
+ 
+ # If we are building a debug package then copy all of the static archives
+@@ -1883,6 +1968,10 @@ rm -f %{buildroot}%{_prefix}/bin/%{_target_platform}-gcc-ar || :
+ rm -f %{buildroot}%{_prefix}/bin/%{_target_platform}-gcc-nm || :
+ rm -f %{buildroot}%{_prefix}/bin/%{_target_platform}-gcc-ranlib || :
+ rm -f %{buildroot}%{_prefix}/bin/%{_target_platform}-gdc || :
++%ifarch %{multilib_x32_archs}
++rm -f %{buildroot}%{_prefix}/libx32/{libffi*,libiberty.a}
++rm -f %{buildroot}%{_prefix}/libx32/libssp*
++%endif
+ 
+ %ifarch %{multilib_64_archs}
+ # Remove libraries for the other arch on multilib arches
+@@ -2270,6 +2359,37 @@ end
+ %{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/32/libubsan.so
+ %endif
+ %endif
++%ifarch %{multilib_x32_archs}
++%dir %{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32
++%{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32/crt*.o
++%{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32/libgcc.a
++%{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32/libgcov.a
++%{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32/libgcc_eh.a
++%{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32/libgcc_s.so
++%{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32/libgomp.a
++%{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32/libgomp.so
++%if %{build_libquadmath}
++%{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32/libquadmath.a
++%{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32/libquadmath.so
++%endif
++%if %{build_libitm}
++%{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32/libitm.a
++%{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32/libitm.so
++%endif
++%if %{build_libatomic}
++%{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32/libatomic.a
++%{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32/libatomic.so
++%endif
++%if %{build_libasan}
++%{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32/libasan.a
++%{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32/libasan.so
++%{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32/libasan_preinit.o
++%endif
++%if %{build_libubsan}
++%{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32/libubsan.a
++%{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32/libubsan.so
++%endif
++%endif
+ %ifarch sparcv9 sparc64 ppc ppc64 ppc64p7
+ %if %{build_libquadmath}
+ %{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/libquadmath.a
+@@ -2330,6 +2450,10 @@ end
+ %files -n libgcc
+ /%{_lib}/libgcc_s-%{gcc_major}-%{DATE}.so.1
+ /%{_lib}/libgcc_s.so.1
++%ifarch %{multilib_x32_archs}
++/libx32/libgcc_s-%{gcc_major}-%{DATE}.so.1
++/libx32/libgcc_s.so.1
++%endif
+ %{!?_licensedir:%global license %%doc}
+ %license gcc/COPYING* COPYING.RUNTIME
+ 
+@@ -2362,6 +2486,13 @@ end
+ %ifarch sparcv9 ppc %{multilib_64_archs}
+ %{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/libstdc++.so
+ %endif
++%ifarch %{multilib_x32_archs}
++%dir %{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32
++%{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32/libstdc++.so
++%{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32/libstdc++.a
++%{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32/libstdc++fs.a
++%{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32/libsupc++.a
++%endif
+ %ifarch sparcv9 sparc64 ppc ppc64 ppc64p7
+ %{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/libstdc++.a
+ %{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/libstdc++fs.a
+@@ -2371,6 +2502,9 @@ end
+ 
+ %files -n libstdc++
+ %{_prefix}/%{_lib}/libstdc++.so.6*
++%ifarch %{multilib_x32_archs}
++%{_prefix}/libx32/libstdc++.so.6*
++%endif
+ %dir %{_datadir}/gdb
+ %dir %{_datadir}/gdb/auto-load
+ %dir %{_datadir}/gdb/auto-load/%{_prefix}
+@@ -2381,6 +2515,10 @@ end
+ %endif
+ %{_datadir}/gdb/auto-load/%{_prefix}/%{_lib}/libstdc*gdb.py*
+ %{_datadir}/gdb/auto-load/%{_prefix}/%{_lib}/__pycache__
++%ifarch %{multilib_x32_archs}
++%dir %{_datadir}/gdb/auto-load/%{_prefix}/libx32/
++%{_datadir}/gdb/auto-load/%{_prefix}/libx32/libstdc*gdb.py*
++%endif
+ %dir %{_prefix}/share/gcc-%{gcc_major}
+ %dir %{_prefix}/share/gcc-%{gcc_major}/python
+ %{_prefix}/share/gcc-%{gcc_major}/python/libstdcxx
+@@ -2455,6 +2593,11 @@ end
+ %{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/32/libobjc.a
+ %{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/32/libobjc.so
+ %endif
++%ifarch %{multilib_x32_archs}
++%dir %{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32
++%{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32/libobjc.a
++%{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32/libobjc.so
++%endif
+ %doc rpm.doc/objc/*
+ %doc libobjc/THREADS* rpm.doc/changelogs/libobjc/ChangeLog*
+ 
+@@ -2466,6 +2609,9 @@ end
+ 
+ %files -n libobjc
+ %{_prefix}/%{_lib}/libobjc.so.4*
++%ifarch %{multilib_x32_archs}
++%{_prefix}/libx32/libobjc.so.4*
++%endif
+ %endif
+ 
+ %files gfortran
+@@ -2514,11 +2660,21 @@ end
+ %{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/32/libgfortran.so
+ %{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/32/finclude
+ %endif
++%ifarch %{multilib_x32_archs}
++%dir %{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32
++%{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32/libcaf_single.a
++%{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/32/libgfortran.a
++%{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32/libgfortran.so
++%{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32/finclude
++%endif
+ %dir %{_fmoddir}
+ %doc rpm.doc/gfortran/*
+ 
+ %files -n libgfortran
+ %{_prefix}/%{_lib}/libgfortran.so.5*
++%ifarch %{multilib_x32_archs}
++%{_prefix}/libx32/libgfortran.so.5*
++%endif
+ 
+ %files -n libgfortran-static
+ %dir %{_prefix}/lib/gcc
+@@ -2535,6 +2691,10 @@ end
+ %ifnarch sparcv9 sparc64 ppc ppc64 ppc64p7
+ %{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/libgfortran.a
+ %endif
++%ifarch %{multilib_x32_archs}
++%dir %{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32
++%{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32/libgfortran.a
++%endif
+ 
+ %if %{build_d}
+ %files gdc
+@@ -2632,6 +2792,10 @@ end
+ %files -n libgnat
+ %{_prefix}/%{_lib}/libgnat-*.so
+ %{_prefix}/%{_lib}/libgnarl-*.so
++%ifarch %{multilib_x32_archs}
++%{_prefix}/libx32/libgnat-*.so
++%{_prefix}/libx32/libgnarl-*.so
++%endif
+ 
+ %files -n libgnat-devel
+ %dir %{_prefix}/lib/gcc
+@@ -2657,6 +2821,13 @@ end
+ %exclude %{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/adalib/libgnat.a
+ %exclude %{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/adalib/libgnarl.a
+ %endif
++%ifarch %{multilib_x32_archs}
++%dir %{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32
++%{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32/adainclude
++%{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32/adalib
++%exclude %{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32/adalib/libgnat.a
++%exclude %{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32/adalib/libgnarl.a
++%endif
+ 
+ %files -n libgnat-static
+ %dir %{_prefix}/lib/gcc
+@@ -2679,17 +2850,29 @@ end
+ %{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/adalib/libgnat.a
+ %{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/adalib/libgnarl.a
+ %endif
++%ifarch %{multilib_x32_archs}
++%dir %{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32
++%dir %{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32/adalib
++%{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32/adalib/libgnat.a
++%{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32/adalib/libgnarl.a
++%endif
+ %endif
+ 
+ %files -n libgomp
+ %{_prefix}/%{_lib}/libgomp.so.1*
+ %{_infodir}/libgomp.info*
++%ifarch %{multilib_x32_archs}
++%{_prefix}/libx32/libgomp.so.1*
++%endif
+ %doc rpm.doc/changelogs/libgomp/ChangeLog*
+ 
+ %if %{build_libquadmath}
+ %files -n libquadmath
+ %{_prefix}/%{_lib}/libquadmath.so.0*
+ %{_infodir}/libquadmath.info*
++%ifarch %{multilib_x32_archs}
++%{_prefix}/libx32/libquadmath.so.0*
++%endif
+ %{!?_licensedir:%global license %%doc}
+ %license rpm.doc/libquadmath/COPYING*
+ 
+@@ -2703,6 +2886,10 @@ end
+ %ifnarch sparcv9 sparc64 ppc ppc64 ppc64p7
+ %{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/libquadmath.so
+ %endif
++%ifarch %{multilib_x32_archs}
++%dir %{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32
++%{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32/libquadmath.so
++%endif
+ %doc rpm.doc/libquadmath/ChangeLog*
+ 
+ %files -n libquadmath-static
+@@ -2720,12 +2907,19 @@ end
+ %ifnarch sparcv9 sparc64 ppc ppc64 ppc64p7
+ %{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/libquadmath.a
+ %endif
++%ifarch %{multilib_x32_archs}
++%dir %{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32
++%{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32/libquadmath.a
++%endif
+ %endif
+ 
+ %if %{build_libitm}
+ %files -n libitm
+ %{_prefix}/%{_lib}/libitm.so.1*
+ %{_infodir}/libitm.info*
++%ifarch %{multilib_x32_archs}
++%{_prefix}/libx32/libitm.so.1*
++%endif
+ 
+ %files -n libitm-devel
+ %dir %{_prefix}/lib/gcc
+@@ -2737,6 +2931,10 @@ end
+ %ifnarch sparcv9 sparc64 ppc ppc64 ppc64p7
+ %{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/libitm.so
+ %endif
++%ifarch %{multilib_x32_archs}
++%dir %{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32
++%{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32/libitm.so
++%endif
+ %doc rpm.doc/libitm/ChangeLog*
+ 
+ %files -n libitm-static
+@@ -2759,6 +2957,9 @@ end
+ %if %{build_libatomic}
+ %files -n libatomic
+ %{_prefix}/%{_lib}/libatomic.so.1*
++%ifarch %{multilib_x32_archs}
++%{_prefix}/libx32/libatomic.so.1*
++%endif
+ 
+ %files -n libatomic-static
+ %dir %{_prefix}/lib/gcc
+@@ -2775,12 +2976,19 @@ end
+ %ifnarch sparcv9 sparc64 ppc ppc64 ppc64p7
+ %{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/libatomic.a
+ %endif
++%ifarch %{multilib_x32_archs}
++%dir %{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32
++%{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32/libatomic.a
++%endif
+ %doc rpm.doc/changelogs/libatomic/ChangeLog*
+ %endif
+ 
+ %if %{build_libasan}
+ %files -n libasan
+ %{_prefix}/%{_lib}/libasan.so.6*
++%ifarch %{multilib_x32_archs}
++%{_prefix}/libx32/libasan.so.6*
++%endif
+ 
+ %files -n libasan-static
+ %dir %{_prefix}/lib/gcc
+@@ -2797,6 +3005,10 @@ end
+ %ifnarch sparcv9 sparc64 ppc ppc64 ppc64p7
+ %{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/libasan.a
+ %endif
++%ifarch %{multilib_x32_archs}
++%dir %{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32
++%{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32/libasan.a
++%endif
+ %doc rpm.doc/changelogs/libsanitizer/ChangeLog*
+ %{!?_licensedir:%global license %%doc}
+ %license libsanitizer/LICENSE.TXT
+@@ -2805,6 +3017,9 @@ end
+ %if %{build_libubsan}
+ %files -n libubsan
+ %{_prefix}/%{_lib}/libubsan.so.1*
++%ifarch %{multilib_x32_archs}
++%{_prefix}/libx32/libubsan.so.1*
++%endif
+ 
+ %files -n libubsan-static
+ %dir %{_prefix}/lib/gcc
+@@ -2821,6 +3036,10 @@ end
+ %ifnarch sparcv9 sparc64 ppc ppc64 ppc64p7
+ %{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/libubsan.a
+ %endif
++%ifarch %{multilib_x32_archs}
++%dir %{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32
++%{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32/libubsan.a
++%endif
+ %doc rpm.doc/changelogs/libsanitizer/ChangeLog*
+ %{!?_licensedir:%global license %%doc}
+ %license libsanitizer/LICENSE.TXT
+@@ -2892,6 +3111,10 @@ end
+ %ifarch sparcv9 ppc %{multilib_64_archs}
+ %{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/libgo.so
+ %endif
++%ifarch %{multilib_x32_archs}
++%dir %{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32
++%{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32/libgo.so
++%endif
+ %ifarch sparcv9 sparc64 ppc ppc64 ppc64p7
+ %{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/libgo.a
+ %{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/libgobegin.a
+@@ -2901,6 +3124,9 @@ end
+ 
+ %files -n libgo
+ %attr(755,root,root) %{_prefix}/%{_lib}/libgo.so.16*
++%ifarch %{multilib_x32_archs}
++%attr(755,root,root) %{_prefix}/libx32/libgo.so.16*
++%endif
+ %doc rpm.doc/libgo/*
+ 
+ %files -n libgo-devel
+@@ -2917,6 +3143,11 @@ end
+ %{_prefix}/lib/go/%{gcc_major}/%{gcc_target_platform}
+ %endif
+ %endif
++%ifarch %{multilib_x32_archs}
++%dir %{_prefix}/libx32/go
++%dir %{_prefix}/libx32/go/%{gcc_major}
++%{_prefix}/libx32/go/%{gcc_major}/%{gcc_target_platform}
++%endif
+ %ifarch sparcv9 ppc
+ %dir %{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/lib32
+ %{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/lib32/libgobegin.a
+@@ -2932,6 +3163,11 @@ end
+ %{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/libgolibbegin.a
+ %{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/libgo.so
+ %endif
++%ifarch %{multilib_x32_archs}
++%dir %{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32
++%{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32/libgobegin.a
++%{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32/libgo.so
++%endif
+ 
+ %files -n libgo-static
+ %dir %{_prefix}/lib/gcc
+@@ -2948,6 +3184,10 @@ end
+ %ifnarch sparcv9 sparc64 ppc ppc64 ppc64p7
+ %{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/libgo.a
+ %endif
++%ifarch %{multilib_x32_archs}
++%dir %{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32
++%{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/x32/libgo.a
++%endif
+ %endif
+ 
+ %files -n libgccjit
+-- 
+2.25.1
+

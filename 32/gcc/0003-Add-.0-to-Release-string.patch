@@ -1,0 +1,25 @@
+From cd534220d77622f5716dd5fb5cb2388230715704 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Mon, 9 Sep 2019 13:07:50 -0700
+Subject: [PATCH 3/3] Add .0 to Release string
+
+---
+ gcc.spec | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/gcc.spec b/gcc.spec
+index c9d94cc..bcb98e2 100644
+--- a/gcc.spec
++++ b/gcc.spec
+@@ -120,7 +120,7 @@
+ Summary: Various compilers (C, C++, Objective-C, ...)
+ Name: gcc
+ Version: %{gcc_version}
+-Release: %{gcc_release}%{?dist}
++Release: %{gcc_release}.0%{?dist}
+ # libgcc, libgfortran, libgomp, libstdc++ and crtstuff have
+ # GCC Runtime Exception.
+ License: GPLv3+ and GPLv3+ with exceptions and GPLv2+ with exceptions and LGPLv2+ and BSD
+-- 
+2.25.1
+

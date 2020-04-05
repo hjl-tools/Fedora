@@ -1,0 +1,44 @@
+From a71cdf9d701b6cd1bc286a544d447e751a204b0f Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Thu, 9 Jun 2016 14:29:15 -0700
+Subject: [PATCH 2/3] Not to run testsuite by default
+
+Add support for --with testsuite.
+---
+ gcc.spec | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/gcc.spec b/gcc.spec
+index 3893fce..c9d94cc 100644
+--- a/gcc.spec
++++ b/gcc.spec
+@@ -113,6 +113,10 @@
+ %ifarch x86_64
+ %global multilib_32_arch i686
+ %endif
++
++# Default: Not to run "make check"
++%bcond_with testsuite
++
+ Summary: Various compilers (C, C++, Objective-C, ...)
+ Name: gcc
+ Version: %{gcc_version}
+@@ -2000,6 +2004,7 @@ rm -f %{buildroot}%{mandir}/man3/ffi*
+ # Help plugins find out nvra.
+ echo gcc-%{version}-%{release}.%{_arch} > $FULLPATH/rpmver
+ 
++%if %{with testsuite}
+ %check
+ cd obj-%{gcc_target_platform}
+ 
+@@ -2020,6 +2025,7 @@ done
+ tar cf - testlogs-%{_target_platform}-%{version}-%{release} | xz -9e \
+   | uuencode testlogs-%{_target_platform}.tar.xz || :
+ rm -rf testlogs-%{_target_platform}-%{version}-%{release}
++%endif
+ 
+ %post go
+ %{_sbindir}/update-alternatives --install \
+-- 
+2.25.1
+
