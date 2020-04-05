@@ -1,0 +1,25 @@
+From ffbd0e06e57c681d1ccfbeb2a1b8ca69acee0d65 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Tue, 10 Jan 2017 09:31:20 -0800
+Subject: [PATCH] Add .0 to Release string
+
+---
+ zlib.spec | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/zlib.spec b/zlib.spec
+index d49f4cd..ba053c3 100644
+--- a/zlib.spec
++++ b/zlib.spec
+@@ -2,7 +2,7 @@
+ 
+ Name:    zlib
+ Version: 1.2.11
+-Release: 21%{?dist}
++Release: 21.0%{?dist}
+ Summary: The compression and decompression library
+ # /contrib/dotzlib/ have Boost license
+ License: zlib and Boost
+-- 
+2.25.1
+
