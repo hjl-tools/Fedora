@@ -1,0 +1,65 @@
+From fa5680242788ad88478c705a42c9a1dd287ad532 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Sun, 1 Mar 2020 04:20:12 -0800
+Subject: [PATCH 1/2] guids.S: Include <cet.h> when CET is enabled
+
+---
+ ....S-Include-cet.h-when-CET-is-enabled.patch | 35 +++++++++++++++++++
+ efivar.spec                                   |  2 ++
+ 2 files changed, 37 insertions(+)
+ create mode 100644 0001-guids.S-Include-cet.h-when-CET-is-enabled.patch
+
+diff --git a/0001-guids.S-Include-cet.h-when-CET-is-enabled.patch b/0001-guids.S-Include-cet.h-when-CET-is-enabled.patch
+new file mode 100644
+index 0000000..58642b0
+--- /dev/null
++++ b/0001-guids.S-Include-cet.h-when-CET-is-enabled.patch
+@@ -0,0 +1,35 @@
++From 4d175c29ea68a89bb6688a98e988528bd96b12e0 Mon Sep 17 00:00:00 2001
++From: "H.J. Lu" <hjl.tools@gmail.com>
++Date: Sun, 1 Mar 2020 04:10:58 -0800
++Subject: [PATCH] guids.S: Include <cet.h> when CET is enabled
++
++Intel Control-flow Enforcement Technology (CET):
++
++https://software.intel.com/en-us/articles/intel-sdm
++
++contains shadow stack (SHSTK) and indirect branch tracking (IBT). When
++CET is enabled, ELF object files must be marked with .note.gnu.property
++section. CET enabled GCC provides a header file, <cet.h>, which can be
++included in assembly files to generate the CET marker automatically.
++
++Signed-off-by: H.J. Lu <hjl.tools@gmail.com>
++---
++ src/guids.S | 3 +++
++ 1 file changed, 3 insertions(+)
++
++diff --git a/src/guids.S b/src/guids.S
++index f8541a9..56356d2 100644
++--- a/src/guids.S
+++++ b/src/guids.S
++@@ -28,5 +28,8 @@ efi_well_known_names_end:
++ 	.byte 0
++ 
++ #if defined(__linux__) && defined(__ELF__)
+++#if defined(__CET__) && (defined(__i386__) || defined(__x86_64__))
+++#include <cet.h>
+++#endif
++ .section .note.GNU-stack,"",%progbits
++ #endif
++-- 
++2.24.1
++
+diff --git a/efivar.spec b/efivar.spec
+index d92994d..8e86aec 100644
+--- a/efivar.spec
++++ b/efivar.spec
+@@ -1,3 +1,5 @@
++Patch100000: 0001-guids.S-Include-cet.h-when-CET-is-enabled.patch
++
+ Name:           efivar
+ Version:        37
+ Release:        6%{?dist}
+-- 
+2.25.1
+

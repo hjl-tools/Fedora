@@ -1,0 +1,25 @@
+From a699c25aede3245a7968faf8f77f32fa80610e36 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Sun, 1 Mar 2020 03:46:28 -0800
+Subject: [PATCH 2/2] Add .0 to Release string
+
+---
+ efivar.spec | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/efivar.spec b/efivar.spec
+index 8e86aec..b63f34b 100644
+--- a/efivar.spec
++++ b/efivar.spec
+@@ -2,7 +2,7 @@ Patch100000: 0001-guids.S-Include-cet.h-when-CET-is-enabled.patch
+ 
+ Name:           efivar
+ Version:        37
+-Release:        6%{?dist}
++Release:        6.0%{?dist}
+ Summary:        Tools to manage UEFI variables
+ License:        LGPLv2.1
+ URL:            https://github.com/rhboot/efivar
+-- 
+2.25.1
+
