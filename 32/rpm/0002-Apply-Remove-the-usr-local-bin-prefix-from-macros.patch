@@ -1,0 +1,56 @@
+From 8d9153456c0bda5c6ef2e2f3bbcfe1323a66cfb2 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Wed, 6 Sep 2017 14:13:20 -0700
+Subject: [PATCH 2/3] Apply "Remove the "/usr/local/bin/" prefix from macros"
+
+---
+ rpm-4.13-macros.patch | 26 ++++++++++++++++++++++++++
+ rpm.spec              |  1 +
+ 2 files changed, 27 insertions(+)
+ create mode 100644 rpm-4.13-macros.patch
+
+diff --git a/rpm-4.13-macros.patch b/rpm-4.13-macros.patch
+new file mode 100644
+index 0000000..f4d036d
+--- /dev/null
++++ b/rpm-4.13-macros.patch
+@@ -0,0 +1,26 @@
++From 5c1a92d1b371a64112ca1e6e944ebf5f51a76c46 Mon Sep 17 00:00:00 2001
++From: "H.J. Lu" <hjl.tools@gmail.com>
++Date: Wed, 6 Sep 2017 14:00:43 -0700
++Subject: [PATCH] Remove the "/usr/local/bin/" prefix from macros
++
++---
++ Makefile.am | 3 ++-
++ 1 file changed, 2 insertions(+), 1 deletion(-)
++
++diff --git a/Makefile.am b/Makefile.am
++index 6b37b5898..e6b3b1437 100644
++--- a/Makefile.am
+++++ b/Makefile.am
++@@ -195,7 +195,8 @@ EXTRA_DIST += rpmrc.in
++ 
++ noinst_DATA = macros
++ macros: $(top_srcdir)/macros.in
++-	  ( cd $(top_builddir) && ./config.status --file=${subdir}/macros:${subdir}/macros.in )
+++	  ( cd $(top_builddir) && ./config.status --file=${subdir}/macros:${subdir}/macros.in \
+++	    && $(SED) -i -e "s,/usr/local/bin/,,g" ${subdir}/macros)
++ CLEANFILES += macros
++ EXTRA_DIST += macros.in
++ 
++-- 
++2.13.5
++
+diff --git a/rpm.spec b/rpm.spec
+index 096207f..ddb7937 100644
+--- a/rpm.spec
++++ b/rpm.spec
+@@ -1,4 +1,5 @@
+ PATCH100000: rpm-4.12-x32-1.patch
++PATCH200000: rpm-4.13-macros.patch
+ 
+ # build against xz?
+ %bcond_without xz
+-- 
+2.25.1
+

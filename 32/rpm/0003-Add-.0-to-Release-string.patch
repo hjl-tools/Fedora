@@ -1,0 +1,25 @@
+From 016e25057ea9a3249aa736f53b7c137e783b94a8 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Tue, 23 Jun 2015 07:40:17 -0700
+Subject: [PATCH 3/3] Add .0 to Release string
+
+---
+ rpm.spec | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/rpm.spec b/rpm.spec
+index ddb7937..9bca33d 100644
+--- a/rpm.spec
++++ b/rpm.spec
+@@ -37,7 +37,7 @@ PATCH200000: rpm-4.13-macros.patch
+ Summary: The RPM package management system
+ Name: rpm
+ Version: %{rpmver}
+-Release: %{?snapver:0.%{snapver}.}%{rel}%{?dist}.1
++Release: %{?snapver:0.%{snapver}.}%{rel}.0%{?dist}.1
+ Url: http://www.rpm.org/
+ Source0: http://ftp.rpm.org/releases/%{srcdir}/%{name}-%{srcver}.tar.bz2
+ %if %{with int_bdb}
+-- 
+2.25.1
+
