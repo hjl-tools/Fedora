@@ -1,0 +1,25 @@
+From 43d591fcb1b0789d1e05b3098186c5875654b6a2 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Thu, 19 Mar 2020 07:57:06 -0700
+Subject: [PATCH 4/4] Add .0 to fedora_build
+
+---
+ kernel.spec | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/kernel.spec b/kernel.spec
+index d75d5869f..0131d0736 100644
+--- a/kernel.spec
++++ b/kernel.spec
+@@ -86,7 +86,7 @@ Summary: The Linux kernel
+ # gitX tags, so a 3 here would become part of release "0.rcX.gitX.3"
+ #
+ %global baserelease 300
+-%global fedora_build %{baserelease}
++%global fedora_build %{baserelease}.0
+ 
+ # base_sublevel is the kernel version we're starting with and patching
+ # on top of -- for example, 3.1-rc7-git1 starts with a 3.0 base,
+-- 
+2.25.1
+
