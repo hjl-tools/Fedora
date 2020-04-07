@@ -1,0 +1,24 @@
+From 313c8bab9dc331da1c5867593689d3e270dafc0a Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Sat, 22 Feb 2020 06:21:38 -0800
+Subject: [PATCH] Add .0 to Release string
+
+---
+ p11-kit.spec | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/p11-kit.spec b/p11-kit.spec
+index 99889e7..fb7dc2b 100644
+--- a/p11-kit.spec
++++ b/p11-kit.spec
+@@ -1,6 +1,6 @@
+ # This spec file has been automatically updated
+ Version:	0.23.20
+-Release: 1%{?dist}
++Release: 1.0%{?dist}
+ Name:           p11-kit
+ Summary:        Library for loading and sharing PKCS#11 modules
+ 
+-- 
+2.25.1
+
