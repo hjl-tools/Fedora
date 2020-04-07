@@ -1,0 +1,25 @@
+From 9e813aa8cde03ee539b2f32be958db961178c8d4 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Tue, 7 Apr 2020 10:50:49 -0700
+Subject: [PATCH 2/2] Add .0 to Release string
+
+---
+ mozjs68.spec | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/mozjs68.spec b/mozjs68.spec
+index c58e7a3..615eabe 100644
+--- a/mozjs68.spec
++++ b/mozjs68.spec
+@@ -33,7 +33,7 @@ Patch100004: 0004-Insert-ENDBR64-ENBR32-at-entry-of-atomic-prologue.patch
+ 
+ Name:           mozjs%{major}
+ Version:        68.7.0
+-Release:        1%{?dist}
++Release:        1.0%{?dist}
+ Summary:        SpiderMonkey JavaScript library
+ 
+ License:        MPLv2.0 and MPLv1.1 and BSD and GPLv2+ and GPLv3+ and LGPLv2+ and AFL and ASL 2.0
+-- 
+2.26.0
+

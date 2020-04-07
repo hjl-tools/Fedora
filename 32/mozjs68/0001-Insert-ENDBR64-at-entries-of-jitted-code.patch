@@ -1,0 +1,288 @@
+From 698b2a2761ecf5b151426ce01818dc93daf2f7f3 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Tue, 7 Apr 2020 10:49:11 -0700
+Subject: [PATCH 1/2] Insert ENDBR64 at entries of jitted code
+
+1. x86: Add endbr and notrack.
+2. Add notrack prefix before indirect call/jmp.
+3. Insert ENDBR32/ENDB64 at entries of jitted code.
+4. Insert ENDBR64/ENBR32 at entry of atomic prologue.
+---
+ 0001-x86-Add-endbr-and-notrack.patch          | 64 ++++++++++++++++
+ ...rack-prefix-before-indirect-call-jmp.patch | 50 +++++++++++++
+ ...R32-ENDB64-at-entries-of-jitted-code.patch | 74 +++++++++++++++++++
+ ...4-ENBR32-at-entry-of-atomic-prologue.patch | 27 +++++++
+ mozjs68.spec                                  | 10 +++
+ 5 files changed, 225 insertions(+)
+ create mode 100644 0001-x86-Add-endbr-and-notrack.patch
+ create mode 100644 0002-Add-notrack-prefix-before-indirect-call-jmp.patch
+ create mode 100644 0003-Insert-ENDBR32-ENDB64-at-entries-of-jitted-code.patch
+ create mode 100644 0004-Insert-ENDBR64-ENBR32-at-entry-of-atomic-prologue.patch
+
+diff --git a/0001-x86-Add-endbr-and-notrack.patch b/0001-x86-Add-endbr-and-notrack.patch
+new file mode 100644
+index 0000000..9731151
+--- /dev/null
++++ b/0001-x86-Add-endbr-and-notrack.patch
+@@ -0,0 +1,64 @@
++From afe0ec08a9e45d2d174cfbb6b977b0273dd82cb6 Mon Sep 17 00:00:00 2001
++From: "H.J. Lu" <hjl.tools@gmail.com>
++Date: Thu, 20 Feb 2020 03:46:53 -0800
++Subject: [PATCH 1/4] x86: Add endbr and notrack
++
++---
++ js/src/jit/x86-shared/Assembler-x86-shared.h     |  1 +
++ js/src/jit/x86-shared/BaseAssembler-x86-shared.h | 15 +++++++++++++++
++ js/src/jit/x86-shared/Encoding-x86-shared.h      |  1 +
++ 3 files changed, 17 insertions(+)
++
++diff --git a/js/src/jit/x86-shared/Assembler-x86-shared.h b/js/src/jit/x86-shared/Assembler-x86-shared.h
++index 24729fd8dc66..c102a2540c00 100644
++--- a/js/src/jit/x86-shared/Assembler-x86-shared.h
+++++ b/js/src/jit/x86-shared/Assembler-x86-shared.h
++@@ -951,6 +951,7 @@ class AssemblerX86Shared : public AssemblerShared {
++  public:
++   void nop() { masm.nop(); }
++   void nop(size_t n) { masm.insert_nop(n); }
+++  void endbr() { masm.endbr(); }
++   void j(Condition cond, Label* label) { jSrc(cond, label); }
++   void jmp(Label* label) { jmpSrc(label); }
++   void j(Condition cond, RepatchLabel* label) { jSrc(cond, label); }
++diff --git a/js/src/jit/x86-shared/BaseAssembler-x86-shared.h b/js/src/jit/x86-shared/BaseAssembler-x86-shared.h
++index 674aa6284291..3b7147747a26 100644
++--- a/js/src/jit/x86-shared/BaseAssembler-x86-shared.h
+++++ b/js/src/jit/x86-shared/BaseAssembler-x86-shared.h
++@@ -63,6 +63,21 @@ class BaseAssembler : public GenericAssembler {
++     m_formatter.oneByteOp(OP_NOP);
++   }
++ 
+++  void endbr() {
+++#if defined(JS_CODEGEN_X86)
+++    spew("endbr32");
+++    m_formatter.int32Constant(0xfb1e0ff3);
+++#else
+++    spew("endbr64");
+++    m_formatter.int32Constant(0xfa1e0ff3);
+++#endif
+++  }
+++
+++  void notrack() {
+++    spew("notrack");
+++    m_formatter.oneByteOp(PRE_NOTRACK);
+++  }
+++
++   void comment(const char* msg) { spew("; %s", msg); }
++ 
++   static void patchFiveByteNopToCall(uint8_t* callsite, uint8_t* target) {
++diff --git a/js/src/jit/x86-shared/Encoding-x86-shared.h b/js/src/jit/x86-shared/Encoding-x86-shared.h
++index 36d2a043d626..7000e4e4dd97 100644
++--- a/js/src/jit/x86-shared/Encoding-x86-shared.h
+++++ b/js/src/jit/x86-shared/Encoding-x86-shared.h
++@@ -83,6 +83,7 @@ enum OneByteOpcodeID {
++   OP_CMP_EvGv = 0x39,
++   OP_CMP_GvEv = 0x3B,
++   OP_CMP_EAXIv = 0x3D,
+++  PRE_NOTRACK = 0x3E,
++ #ifdef JS_CODEGEN_X64
++   PRE_REX = 0x40,
++ #endif
++-- 
++2.25.2
++
+diff --git a/0002-Add-notrack-prefix-before-indirect-call-jmp.patch b/0002-Add-notrack-prefix-before-indirect-call-jmp.patch
+new file mode 100644
+index 0000000..929e300
+--- /dev/null
++++ b/0002-Add-notrack-prefix-before-indirect-call-jmp.patch
+@@ -0,0 +1,50 @@
++From 47a946846fdf77d734362e9d515296de2a4c5d9e Mon Sep 17 00:00:00 2001
++From: "H.J. Lu" <hjl.tools@gmail.com>
++Date: Fri, 21 Feb 2020 03:50:22 -0800
++Subject: [PATCH 2/4] Add notrack prefix before indirect call/jmp
++
++---
++ js/src/jit/x86-shared/BaseAssembler-x86-shared.h | 5 +++++
++ 1 file changed, 5 insertions(+)
++
++diff --git a/js/src/jit/x86-shared/BaseAssembler-x86-shared.h b/js/src/jit/x86-shared/BaseAssembler-x86-shared.h
++index 3b7147747a26..a9a85d515bda 100644
++--- a/js/src/jit/x86-shared/BaseAssembler-x86-shared.h
+++++ b/js/src/jit/x86-shared/BaseAssembler-x86-shared.h
++@@ -2436,11 +2436,13 @@ class BaseAssembler : public GenericAssembler {
++   }
++ 
++   void call_r(RegisterID dst) {
+++    notrack();
++     m_formatter.oneByteOp(OP_GROUP5_Ev, dst, GROUP5_OP_CALLN);
++     spew("call       *%s", GPRegName(dst));
++   }
++ 
++   void call_m(int32_t offset, RegisterID base) {
+++    notrack();
++     spew("call       *" MEM_ob, ADDR_ob(offset, base));
++     m_formatter.oneByteOp(OP_GROUP5_Ev, offset, base, GROUP5_OP_CALLN);
++   }
++@@ -2478,16 +2480,19 @@ class BaseAssembler : public GenericAssembler {
++   }
++ 
++   void jmp_r(RegisterID dst) {
+++    notrack();
++     spew("jmp        *%s", GPRegName(dst));
++     m_formatter.oneByteOp(OP_GROUP5_Ev, dst, GROUP5_OP_JMPN);
++   }
++ 
++   void jmp_m(int32_t offset, RegisterID base) {
+++    notrack();
++     spew("jmp        *" MEM_ob, ADDR_ob(offset, base));
++     m_formatter.oneByteOp(OP_GROUP5_Ev, offset, base, GROUP5_OP_JMPN);
++   }
++ 
++   void jmp_m(int32_t offset, RegisterID base, RegisterID index, int scale) {
+++    notrack();
++     spew("jmp        *" MEM_obs, ADDR_obs(offset, base, index, scale));
++     m_formatter.oneByteOp(OP_GROUP5_Ev, offset, base, index, scale,
++                           GROUP5_OP_JMPN);
++-- 
++2.25.2
++
+diff --git a/0003-Insert-ENDBR32-ENDB64-at-entries-of-jitted-code.patch b/0003-Insert-ENDBR32-ENDB64-at-entries-of-jitted-code.patch
+new file mode 100644
+index 0000000..8c533ef
+--- /dev/null
++++ b/0003-Insert-ENDBR32-ENDB64-at-entries-of-jitted-code.patch
+@@ -0,0 +1,74 @@
++From 38c05fd8b2789c4aa867d08ee747263ff07705c3 Mon Sep 17 00:00:00 2001
++From: "H.J. Lu" <hjl.tools@gmail.com>
++Date: Fri, 21 Feb 2020 06:22:06 -0800
++Subject: [PATCH 3/4] Insert ENDBR32/ENDB64 at entries of jitted code
++
++---
++ js/src/irregexp/NativeRegExpMacroAssembler.cpp | 5 +++++
++ js/src/jit/x64/MacroAssembler-x64.cpp          | 3 +++
++ js/src/jit/x64/Trampoline-x64.cpp              | 3 +++
++ js/src/wasm/WasmStubs.cpp                      | 4 ++++
++ 4 files changed, 15 insertions(+)
++
++diff --git a/js/src/irregexp/NativeRegExpMacroAssembler.cpp b/js/src/irregexp/NativeRegExpMacroAssembler.cpp
++index 1cb155441d10..765dede6c1ce 100644
++--- a/js/src/irregexp/NativeRegExpMacroAssembler.cpp
+++++ b/js/src/irregexp/NativeRegExpMacroAssembler.cpp
++@@ -93,6 +93,11 @@ NativeRegExpMacroAssembler::NativeRegExpMacroAssembler(JSContext* cx, LifoAlloc*
++             temp1.name(),
++             temp2.name());
++ 
+++#if defined(JS_CODEGEN_X86) || defined(JS_CODEGEN_X64)
+++    // Generate ENDBR32/ENDB64 at indirect branch target.
+++    masm.endbr();
+++#endif
+++
++     savedNonVolatileRegisters = SavedNonVolatileRegisters(regs);
++ 
++     masm.jump(&entry_label_);
++diff --git a/js/src/jit/x64/MacroAssembler-x64.cpp b/js/src/jit/x64/MacroAssembler-x64.cpp
++index 30ad955fa541..5e7235c69e9c 100644
++--- a/js/src/jit/x64/MacroAssembler-x64.cpp
+++++ b/js/src/jit/x64/MacroAssembler-x64.cpp
++@@ -314,6 +314,9 @@ void MacroAssembler::callWithABIPre(uint32_t* stackAdjust, bool callFromWasm) {
++   MOZ_ASSERT(inCall_);
++   uint32_t stackForCall = abiArgs_.stackBytesConsumedSoFar();
++ 
+++  // Generate ENDBR64 at indirect branch target.
+++  endbr();
+++
++   if (dynamicAlignment_) {
++     // sizeof(intptr_t) accounts for the saved stack pointer pushed by
++     // setupUnalignedABICall.
++diff --git a/js/src/jit/x64/Trampoline-x64.cpp b/js/src/jit/x64/Trampoline-x64.cpp
++index a1fdf9021192..a5b0e447fc27 100644
++--- a/js/src/jit/x64/Trampoline-x64.cpp
+++++ b/js/src/jit/x64/Trampoline-x64.cpp
++@@ -34,6 +34,9 @@ static const LiveRegisterSet AllRegs =
++ void JitRuntime::generateEnterJIT(JSContext* cx, MacroAssembler& masm) {
++   enterJITOffset_ = startTrampolineCode(masm);
++ 
+++  // Generate ENDBR64 at indirect branch target.
+++  masm.endbr();
+++
++   masm.assertStackAlignment(ABIStackAlignment,
++                             -int32_t(sizeof(uintptr_t)) /* return address */);
++ 
++diff --git a/js/src/wasm/WasmStubs.cpp b/js/src/wasm/WasmStubs.cpp
++index 709540b5976b..7ddfc03c86f1 100644
++--- a/js/src/wasm/WasmStubs.cpp
+++++ b/js/src/wasm/WasmStubs.cpp
++@@ -440,6 +440,10 @@ static bool GenerateInterpEntry(MacroAssembler& masm, const FuncExport& fe,
++ #  else
++   MOZ_CRASH("Implement this");
++ #  endif
+++#endif
+++#if defined(JS_CODEGEN_X86) || defined(JS_CODEGEN_X64)
+++  // Generate ENDBR32/ENDB64 at indirect branch target.
+++  masm.endbr();
++ #endif
++ 
++   // Save all caller non-volatile registers before we clobber them here and in
++-- 
++2.25.2
++
+diff --git a/0004-Insert-ENDBR64-ENBR32-at-entry-of-atomic-prologue.patch b/0004-Insert-ENDBR64-ENBR32-at-entry-of-atomic-prologue.patch
+new file mode 100644
+index 0000000..76bbf66
+--- /dev/null
++++ b/0004-Insert-ENDBR64-ENBR32-at-entry-of-atomic-prologue.patch
+@@ -0,0 +1,27 @@
++From c68b80829b05775bfca98906947da21fa4aca902 Mon Sep 17 00:00:00 2001
++From: "H.J. Lu" <hjl.tools@gmail.com>
++Date: Mon, 6 Apr 2020 13:33:03 -0700
++Subject: [PATCH 4/4] Insert ENDBR64/ENBR32 at entry of atomic prologue
++
++---
++ js/src/jit/shared/AtomicOperations-shared-jit.cpp | 4 ++++
++ 1 file changed, 4 insertions(+)
++
++diff --git a/js/src/jit/shared/AtomicOperations-shared-jit.cpp b/js/src/jit/shared/AtomicOperations-shared-jit.cpp
++index 526434613e03..dc4b6197a2ac 100644
++--- a/js/src/jit/shared/AtomicOperations-shared-jit.cpp
+++++ b/js/src/jit/shared/AtomicOperations-shared-jit.cpp
++@@ -246,6 +246,10 @@ static uint32_t GenPrologue(MacroAssembler& masm, ArgIterator* iter) {
++   masm.haltingAlign(CodeAlignment);
++   masm.setFramePushed(0);
++   uint32_t start = masm.currentOffset();
+++#if defined(JS_CODEGEN_X86) || defined(JS_CODEGEN_X64)
+++  // Generate ENDBR32/ENDB64 at indirect branch target.
+++  masm.endbr();
+++#endif
++   masm.PushRegsInMask(AtomicNonVolatileRegs);
++ #if defined(JS_CODEGEN_ARM) || defined(JS_CODEGEN_ARM64)
++   // The return address is among the nonvolatile registers, if pushed at all.
++-- 
++2.25.2
++
+diff --git a/mozjs68.spec b/mozjs68.spec
+index bd77d85..c58e7a3 100644
+--- a/mozjs68.spec
++++ b/mozjs68.spec
+@@ -1,3 +1,8 @@
++Patch100001: 0001-x86-Add-endbr-and-notrack.patch
++Patch100002: 0002-Add-notrack-prefix-before-indirect-call-jmp.patch
++Patch100003: 0003-Insert-ENDBR32-ENDB64-at-entries-of-jitted-code.patch
++Patch100004: 0004-Insert-ENDBR64-ENBR32-at-entry-of-atomic-prologue.patch
++
+ %global major 68
+ 
+ # LTO - Enable in Release builds, but consider disabling for development as it increases compile time
+@@ -133,6 +138,11 @@ pushd ../..
+ # Execute tests with Python 3
+ %patch30 -p1
+ 
++%patch100001 -p1
++%patch100002 -p1
++%patch100003 -p1
++%patch100004 -p1
++
+ # make sure we don't ever accidentally link against bundled security libs
+ rm -rf security/
+ popd
+-- 
+2.26.0
+
