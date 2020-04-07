@@ -1,0 +1,25 @@
+From 4e150b2c130b5033ae3945e2cf245875cc08467f Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Sat, 22 Feb 2020 06:18:00 -0800
+Subject: [PATCH] Add .0 to Release string
+
+---
+ gobject-introspection.spec | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/gobject-introspection.spec b/gobject-introspection.spec
+index b4f286f..b46492c 100644
+--- a/gobject-introspection.spec
++++ b/gobject-introspection.spec
+@@ -4,7 +4,7 @@
+ 
+ Name:           gobject-introspection
+ Version:        1.64.1
+-Release:        1%{?dist}
++Release:        1.0%{?dist}
+ Summary:        Introspection system for GObject-based libraries
+ 
+ License:        GPLv2+, LGPLv2+, MIT
+-- 
+2.25.1
+
