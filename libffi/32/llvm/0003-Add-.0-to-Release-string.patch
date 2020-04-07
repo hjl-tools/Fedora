@@ -1,0 +1,25 @@
+From fea6e353a5bab1f4add0f4673a5ea46413e352c4 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Sun, 23 Feb 2020 03:09:23 -0800
+Subject: [PATCH 3/3] Add .0 to Release string
+
+---
+ llvm.spec | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/llvm.spec b/llvm.spec
+index 5190f6c..b6fd18b 100644
+--- a/llvm.spec
++++ b/llvm.spec
+@@ -43,7 +43,7 @@ Patch200000: 0001-X86-Enable-IndirectBranchTracking-in-JIT-with-CET.patch
+ 
+ Name:		%{pkg_name}
+ Version:	%{maj_ver}.%{min_ver}.%{patch_ver}
+-Release:	%{baserelease}%{?rc_ver:.rc%{rc_ver}}%{?dist}
++Release:	%{baserelease}.0%{?rc_ver:.rc%{rc_ver}}%{?dist}
+ Summary:	The Low Level Virtual Machine
+ 
+ License:	NCSA
+-- 
+2.25.1
+

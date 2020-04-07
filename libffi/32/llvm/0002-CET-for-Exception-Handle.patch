@@ -1,0 +1,119 @@
+From 718d0d03c81268606c2d2d7cabc9abe9086bdc63 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Mon, 23 Mar 2020 05:40:24 -0700
+Subject: [PATCH 2/3] CET for Exception Handle
+
+---
+ 0001-CET-for-Exception-Handle.patch | 90 +++++++++++++++++++++++++++++
+ llvm.spec                           |  1 +
+ 2 files changed, 91 insertions(+)
+ create mode 100644 0001-CET-for-Exception-Handle.patch
+
+diff --git a/0001-CET-for-Exception-Handle.patch b/0001-CET-for-Exception-Handle.patch
+new file mode 100644
+index 0000000..edf4f75
+--- /dev/null
++++ b/0001-CET-for-Exception-Handle.patch
+@@ -0,0 +1,90 @@
++From 5ae8594a0ad7a006953bf24b0f965f6c5797de9d Mon Sep 17 00:00:00 2001
++From: Pengfei Wang <pengfei.wang@intel.com>
++Date: Tue, 17 Mar 2020 21:39:49 -0700
++Subject: [PATCH] CET for Exception Handle
++
++Summary:
++Bug fix for https://bugs.llvm.org/show_bug.cgi?id=45182
++Exception handle may indirectly jump to catch pad, So we should add ENDBR instruction before catch pad instructions.
++
++Reviewers: craig.topper, hjl.tools, LuoYuanke, annita.zhang, pengfei
++
++Reviewed By: LuoYuanke
++
++Subscribers: hiraditya, llvm-commits
++
++Patch By: Xiang Zhang (xiangzhangllvm)
++
++Differential Revision: https://reviews.llvm.org/D76190
++---
++ .../Target/X86/X86IndirectBranchTracking.cpp  | 13 ++++++--
++ .../X86/indirect-branch-tracking-eh.ll        | 31 +++++++++++++++++++
++ 2 files changed, 41 insertions(+), 3 deletions(-)
++ create mode 100644 llvm/test/CodeGen/X86/indirect-branch-tracking-eh.ll
++
++diff --git a/llvm/lib/Target/X86/X86IndirectBranchTracking.cpp b/llvm/lib/Target/X86/X86IndirectBranchTracking.cpp
++index 04e8b2231fe..b1707399319 100644
++--- a/llvm/lib/Target/X86/X86IndirectBranchTracking.cpp
+++++ b/llvm/lib/Target/X86/X86IndirectBranchTracking.cpp
++@@ -127,11 +127,18 @@ bool X86IndirectBranchTrackingPass::runOnMachineFunction(MachineFunction &MF) {
++     if (MBB.hasAddressTaken())
++       Changed |= addENDBR(MBB, MBB.begin());
++ 
+++    // Exception handle may indirectly jump to catch pad, So we should add
+++    // ENDBR before catch pad instructions.
+++    bool EHPadIBTNeeded = MBB.isEHPad();
+++
++     for (MachineBasicBlock::iterator I = MBB.begin(); I != MBB.end(); ++I) {
++-      if (!I->isCall())
++-        continue;
++-      if (IsCallReturnTwice(I->getOperand(0)))
+++      if (I->isCall() && IsCallReturnTwice(I->getOperand(0)))
++         Changed |= addENDBR(MBB, std::next(I));
+++
+++      if (EHPadIBTNeeded && I->isEHLabel()) {
+++          Changed |= addENDBR(MBB, std::next(I));
+++          EHPadIBTNeeded = false;
+++      }
++     }
++   }
++   return Changed;
++diff --git a/llvm/test/CodeGen/X86/indirect-branch-tracking-eh.ll b/llvm/test/CodeGen/X86/indirect-branch-tracking-eh.ll
++new file mode 100644
++index 00000000000..c14e82dc8f3
++--- /dev/null
+++++ b/llvm/test/CodeGen/X86/indirect-branch-tracking-eh.ll
++@@ -0,0 +1,31 @@
+++; RUN: llc -mtriple=x86_64-unknown-unknown < %s | FileCheck %s
+++; RUN: llc -mtriple=i386-unknown-unknown < %s | FileCheck %s
+++
+++;There should be 2 endbr* instruction at entry and catch pad.
+++;CHECK-COUNT-2: endbr
+++
+++declare void @_Z20function_that_throwsv()
+++declare i32 @__gxx_personality_sj0(...)
+++declare i8* @__cxa_begin_catch(i8*)
+++declare void @__cxa_end_catch()
+++
+++define void @test8() personality i8* bitcast (i32 (...)* @__gxx_personality_sj0 to i8*) {
+++entry:
+++  invoke void @_Z20function_that_throwsv()
+++          to label %try.cont unwind label %lpad
+++
+++lpad:
+++  %0 = landingpad { i8*, i32 }
+++          catch i8* null
+++  %1 = extractvalue { i8*, i32 } %0, 0
+++  %2 = tail call i8* @__cxa_begin_catch(i8* %1)
+++  tail call void @__cxa_end_catch()
+++  br label %try.cont
+++
+++try.cont:
+++  ret void
+++}
+++
+++!llvm.module.flags = !{!0}
+++
+++!0 = !{i32 4, !"cf-protection-branch", i32 1}
++-- 
++2.25.1
++
+diff --git a/llvm.spec b/llvm.spec
+index a581baa..5190f6c 100644
+--- a/llvm.spec
++++ b/llvm.spec
+@@ -1,3 +1,4 @@
++Patch100000: 0001-CET-for-Exception-Handle.patch
+ Patch200000: 0001-X86-Enable-IndirectBranchTracking-in-JIT-with-CET.patch
+ 
+ # Components enabled if supported by target architecture:
+-- 
+2.25.1
+

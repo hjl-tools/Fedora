@@ -1,0 +1,129 @@
+From ef73d7961cd751a05ed3930f47ef6340640b43c5 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Wed, 4 Mar 2020 07:50:48 -0800
+Subject: [PATCH 1/3] [X86] Enable IndirectBranchTracking in JIT with CET
+
+1. Enable IndirectBranchTracking in JIT with CET.
+2. Insert ENDBR at function entry for large code model.
+---
+ ...directBranchTracking-in-JIT-with-CET.patch | 97 +++++++++++++++++++
+ llvm.spec                                     |  2 +
+ 2 files changed, 99 insertions(+)
+ create mode 100644 0001-X86-Enable-IndirectBranchTracking-in-JIT-with-CET.patch
+
+diff --git a/0001-X86-Enable-IndirectBranchTracking-in-JIT-with-CET.patch b/0001-X86-Enable-IndirectBranchTracking-in-JIT-with-CET.patch
+new file mode 100644
+index 0000000..f8fbe91
+--- /dev/null
++++ b/0001-X86-Enable-IndirectBranchTracking-in-JIT-with-CET.patch
+@@ -0,0 +1,97 @@
++From 64b44d7c419fb3aa2beb459475c18c67f1767ba5 Mon Sep 17 00:00:00 2001
++From: "H.J. Lu" <hjl.tools@gmail.com>
++Date: Tue, 25 Feb 2020 14:17:41 -0800
++Subject: [PATCH] [X86] Enable IndirectBranchTracking in JIT with CET
++
++1. Enable IndirectBranchTracking in JIT with CET.
++2. Insert ENDBR at function entry for large code model.
++---
++ .../Target/X86/X86IndirectBranchTracking.cpp  | 21 ++++++++++++++-----
++ llvm/lib/Target/X86/X86TargetMachine.cpp      |  2 +-
++ llvm/lib/Target/X86/X86TargetMachine.h        |  4 ++++
++ 3 files changed, 21 insertions(+), 6 deletions(-)
++
++diff --git a/llvm/lib/Target/X86/X86IndirectBranchTracking.cpp b/llvm/lib/Target/X86/X86IndirectBranchTracking.cpp
++index 743df41a00f..99a405dd32b 100644
++--- a/llvm/lib/Target/X86/X86IndirectBranchTracking.cpp
+++++ b/llvm/lib/Target/X86/X86IndirectBranchTracking.cpp
++@@ -18,6 +18,7 @@
++ #include "X86.h"
++ #include "X86InstrInfo.h"
++ #include "X86Subtarget.h"
+++#include "X86TargetMachine.h"
++ #include "llvm/ADT/Statistic.h"
++ #include "llvm/CodeGen/MachineFunctionPass.h"
++ #include "llvm/CodeGen/MachineInstrBuilder.h"
++@@ -102,7 +103,16 @@ bool X86IndirectBranchTrackingPass::runOnMachineFunction(MachineFunction &MF) {
++   // Check that the cf-protection-branch is enabled.
++   Metadata *isCFProtectionSupported =
++       MF.getMMI().getModule()->getModuleFlag("cf-protection-branch");
++-  if (!isCFProtectionSupported && !IndirectBranchTracking)
+++  // NB: We need to enable IBT in jitted code if JIT compiler is CET
+++  // enabled.
+++  const X86TargetMachine *TM =
+++      static_cast<const X86TargetMachine *>(&MF.getTarget());
+++#ifdef __CET__
+++  bool isJITwithCET = TM->isJIT();
+++#else
+++  bool isJITwithCET = false;
+++#endif
+++  if (!isCFProtectionSupported && !IndirectBranchTracking && !isJITwithCET)
++     return false;
++ 
++   // True if the current MF was changed and false otherwise.
++@@ -111,10 +121,11 @@ bool X86IndirectBranchTrackingPass::runOnMachineFunction(MachineFunction &MF) {
++   TII = SubTarget.getInstrInfo();
++   EndbrOpcode = SubTarget.is64Bit() ? X86::ENDBR64 : X86::ENDBR32;
++ 
++-  // Non-internal function or function whose address was taken, can be
++-  // accessed through indirect calls. Mark the first BB with ENDBR instruction
++-  // unless nocf_check attribute is used.
++-  if ((MF.getFunction().hasAddressTaken() ||
+++  // Large code model, non-internal function or function whose address
+++  // was taken, can be accessed through indirect calls. Mark the first
+++  // BB with ENDBR instruction unless nocf_check attribute is used.
+++  if ((TM->getCodeModel() == CodeModel::Large ||
+++       MF.getFunction().hasAddressTaken() ||
++        !MF.getFunction().hasLocalLinkage()) &&
++       !MF.getFunction().doesNoCfCheck()) {
++     auto MBB = MF.begin();
++diff --git a/llvm/lib/Target/X86/X86TargetMachine.cpp b/llvm/lib/Target/X86/X86TargetMachine.cpp
++index 8c696e9adbe..7176e46f07b 100644
++--- a/llvm/lib/Target/X86/X86TargetMachine.cpp
+++++ b/llvm/lib/Target/X86/X86TargetMachine.cpp
++@@ -222,7 +222,7 @@ X86TargetMachine::X86TargetMachine(const Target &T, const Triple &TT,
++           getEffectiveRelocModel(TT, JIT, RM),
++           getEffectiveX86CodeModel(CM, JIT, TT.getArch() == Triple::x86_64),
++           OL),
++-      TLOF(createTLOF(getTargetTriple())) {
+++      TLOF(createTLOF(getTargetTriple())), IsJIT(JIT) {
++   // On PS4, the "return address" of a 'noreturn' call must still be within
++   // the calling function, and TrapUnreachable is an easy way to get that.
++   if (TT.isPS4() || TT.isOSBinFormatMachO()) {
++diff --git a/llvm/lib/Target/X86/X86TargetMachine.h b/llvm/lib/Target/X86/X86TargetMachine.h
++index ec3db7b1e9e..757ce8bc5c7 100644
++--- a/llvm/lib/Target/X86/X86TargetMachine.h
+++++ b/llvm/lib/Target/X86/X86TargetMachine.h
++@@ -30,6 +30,8 @@ class TargetTransformInfo;
++ class X86TargetMachine final : public LLVMTargetMachine {
++   std::unique_ptr<TargetLoweringObjectFile> TLOF;
++   mutable StringMap<std::unique_ptr<X86Subtarget>> SubtargetMap;
+++  // True if this is used in JIT.
+++  bool IsJIT;
++ 
++ public:
++   X86TargetMachine(const Target &T, const Triple &TT, StringRef CPU,
++@@ -52,6 +54,8 @@ public:
++   TargetLoweringObjectFile *getObjFileLowering() const override {
++     return TLOF.get();
++   }
+++
+++  bool isJIT() const { return IsJIT; }
++ };
++ 
++ } // end namespace llvm
++-- 
++2.25.2
++
+diff --git a/llvm.spec b/llvm.spec
+index 21cb5ce..a581baa 100644
+--- a/llvm.spec
++++ b/llvm.spec
+@@ -1,3 +1,5 @@
++Patch200000: 0001-X86-Enable-IndirectBranchTracking-in-JIT-with-CET.patch
++
+ # Components enabled if supported by target architecture:
+ %define gold_arches %{ix86} x86_64 %{arm} aarch64 %{power64} s390x
+ %ifarch %{gold_arches}
+-- 
+2.25.1
+
