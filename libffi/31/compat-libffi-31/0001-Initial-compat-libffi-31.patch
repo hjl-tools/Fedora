@@ -1,0 +1,101 @@
+From ee06447ffb5e36530fbbe31575527401902f6a60 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Fri, 21 Feb 2020 12:37:35 -0800
+Subject: [PATCH 1/2] Initial compat-libffi-31
+
+---
+ libffi.spec => compat-libffi-31.spec | 50 +++++-----------------------
+ 1 file changed, 9 insertions(+), 41 deletions(-)
+ rename libffi.spec => compat-libffi-31.spec (87%)
+
+diff --git a/libffi.spec b/compat-libffi-31.spec
+similarity index 87%
+rename from libffi.spec
+rename to compat-libffi-31.spec
+index bf98f36..1503255 100644
+--- a/libffi.spec
++++ b/compat-libffi-31.spec
+@@ -2,10 +2,10 @@
+ 
+ %global multilib_arches %{ix86} ppc ppc64 ppc64p7 s390 s390x x86_64
+ 
+-Name:		libffi
++Name:		compat-libffi-31
+ Version:	3.1
+-Release:	23%{?dist}
+-Summary:	A portable foreign function interface library
++Release:	0%{?dist}
++Summary:	Compatibility version of the libffi library
+ License:	MIT
+ URL:		http://sourceware.org/libffi
+ 
+@@ -51,18 +51,8 @@ exist above `libffi' that handles type conversions for values passed
+ between the two languages.  
+ 
+ 
+-%package	devel
+-Summary:	Development files for %{name}
+-Requires:	%{name} = %{version}-%{release}
+-Requires:	pkgconfig
+-
+-%description	devel
+-The %{name}-devel package contains libraries and header files for
+-developing applications that use %{name}.
+-
+-
+ %prep
+-%setup -q
++%setup -q -n libffi-3.1
+ %patch0 -p1 -b .fixpath
+ %patch1 -p1 -b .execstack
+ %patch2 -p1 -b .aarch64
+@@ -82,27 +72,12 @@ make %{?_smp_mflags}
+ make install DESTDIR=$RPM_BUILD_ROOT
+ find $RPM_BUILD_ROOT -name '*.la' -exec rm -f {} ';'
+ rm -f $RPM_BUILD_ROOT%{_infodir}/dir
+-
+-# Determine generic arch target name for multilib wrapper
+-basearch=%{_arch}
+-%ifarch %{ix86}
+-basearch=i386
+-%endif
+-
+-mkdir -p $RPM_BUILD_ROOT%{_includedir}
+-%ifarch %{multilib_arches}
+-# Do header file switcheroo to avoid file conflicts on systems where you
+-# can have both a 32- and 64-bit version of the library, and they each need
+-# their own correct-but-different versions of the headers to be usable.
+-for i in ffi ffitarget; do
+-  mv $RPM_BUILD_ROOT%{_libdir}/libffi-%{version}/include/$i.h $RPM_BUILD_ROOT%{_includedir}/$i-${basearch}.h
+-done
+-install -m644 %{SOURCE1} $RPM_BUILD_ROOT%{_includedir}/ffi.h
+-install -m644 %{SOURCE2} $RPM_BUILD_ROOT%{_includedir}/ffitarget.h
+-%else
+-mv $RPM_BUILD_ROOT%{_libdir}/libffi-%{version}/include/{ffi,ffitarget}.h $RPM_BUILD_ROOT%{_includedir}
+-%endif
+ rm -rf $RPM_BUILD_ROOT%{_libdir}/libffi-%{version}
++rm -rf $RPM_BUILD_ROOT%{_includedir}
++rm -rf $RPM_BUILD_ROOT%{_infodir}
++rm -rf $RPM_BUILD_ROOT%{_libdir}/*.so
++rm -rf $RPM_BUILD_ROOT%{_libdir}/pkgconfig
++rm -rf $RPM_BUILD_ROOT%{_mandir}
+ 
+ 
+ %ldconfig_scriptlets
+@@ -112,13 +87,6 @@ rm -rf $RPM_BUILD_ROOT%{_libdir}/libffi-%{version}
+ %doc README
+ %{_libdir}/*.so.*
+ 
+-%files devel
+-%{_libdir}/pkgconfig/*.pc
+-%{_includedir}/ffi*.h
+-%{_libdir}/*.so
+-%{_mandir}/man3/*.gz
+-%{_infodir}/libffi.info.*
+-
+ %changelog
+ * Thu Jul 25 2019 Fedora Release Engineering <releng@fedoraproject.org> - 3.1-23
+ - Rebuilt for https://fedoraproject.org/wiki/Fedora_31_Mass_Rebuild
+-- 
+2.25.1
+
