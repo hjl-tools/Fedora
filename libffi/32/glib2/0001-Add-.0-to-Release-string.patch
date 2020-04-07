@@ -1,0 +1,25 @@
+From b6ac7bef76e9f1b694731a7e06e41214b1eeb642 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Sat, 22 Feb 2020 06:14:20 -0800
+Subject: [PATCH] Add .0 to Release string
+
+---
+ glib2.spec | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/glib2.spec b/glib2.spec
+index 167b386..1f81d01 100644
+--- a/glib2.spec
++++ b/glib2.spec
+@@ -2,7 +2,7 @@
+ 
+ Name: glib2
+ Version: 2.64.1
+-Release: 1%{?dist}
++Release: 1.0%{?dist}
+ Summary: A library of handy utility functions
+ 
+ License: LGPLv2+
+-- 
+2.25.1
+
