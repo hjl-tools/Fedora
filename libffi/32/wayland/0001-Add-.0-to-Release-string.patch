@@ -1,0 +1,24 @@
+From 7670f31b9f377c9cf8dd71b879f0670d955cb651 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Sat, 22 Feb 2020 06:25:28 -0800
+Subject: [PATCH] Add .0 to Release string
+
+---
+ wayland.spec | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/wayland.spec b/wayland.spec
+index eb3c001..aa7f494 100644
+--- a/wayland.spec
++++ b/wayland.spec
+@@ -1,6 +1,6 @@
+ Name:           wayland
+ Version:        1.18.0
+-Release:        1%{?dist}
++Release:        1.0%{?dist}
+ Summary:        Wayland Compositor Infrastructure
+ 
+ License:        MIT
+-- 
+2.25.1
+
