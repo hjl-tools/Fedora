@@ -1,0 +1,215 @@
+From 8e808162fb0c6b562191f469e504de9ee383c3e6 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Fri, 21 Feb 2020 12:37:35 -0800
+Subject: [PATCH] Initial libffi 3.4 build
+
+---
+ libffi-3.1-aarch64-fix-exec-stack.patch | 11 ---------
+ libffi-3.1-fix-exec-stack.patch         | 31 -------------------------
+ libffi-3.1-fix-include-path.patch       | 17 --------------
+ libffi-3.4-fix-include-path.patch       | 29 +++++++++++++++++++++++
+ libffi-aarch64-rhbz1174037.patch        | 11 ---------
+ libffi.spec                             | 21 +++++------------
+ 6 files changed, 35 insertions(+), 85 deletions(-)
+ delete mode 100644 libffi-3.1-aarch64-fix-exec-stack.patch
+ delete mode 100644 libffi-3.1-fix-exec-stack.patch
+ delete mode 100644 libffi-3.1-fix-include-path.patch
+ create mode 100644 libffi-3.4-fix-include-path.patch
+ delete mode 100644 libffi-aarch64-rhbz1174037.patch
+
+diff --git a/libffi-3.1-aarch64-fix-exec-stack.patch b/libffi-3.1-aarch64-fix-exec-stack.patch
+deleted file mode 100644
+index e20c920..0000000
+--- a/libffi-3.1-aarch64-fix-exec-stack.patch
++++ /dev/null
+@@ -1,11 +0,0 @@
+---- a/src/aarch64/sysv.S
+-+++ b/src/aarch64/sysv.S
+-@@ -396,3 +396,8 @@
+- #ifdef __ELF__
+-         .size CNAME(ffi_closure_SYSV), .-CNAME(ffi_closure_SYSV)
+- #endif
+-+
+-+#if defined __ELF__ && defined __linux__
+-+	.section .note.GNU-stack,"",%progbits
+-+#endif
+-+
+diff --git a/libffi-3.1-fix-exec-stack.patch b/libffi-3.1-fix-exec-stack.patch
+deleted file mode 100644
+index 4c2a59f..0000000
+--- a/libffi-3.1-fix-exec-stack.patch
++++ /dev/null
+@@ -1,31 +0,0 @@
+-From 978c9540154d320525488db1b7049277122f736d Mon Sep 17 00:00:00 2001
+-From: Samuli Suominen <ssuominen@gentoo.org>
+-Date: Sat, 31 May 2014 08:53:10 -0400
+-Subject: [PATCH] Add missing GNU stack markings in win32.S
+-
+----
+- src/x86/win32.S | 6 +++++-
+- 1 file changed, 5 insertions(+), 1 deletion(-)
+-
+-diff --git a/src/x86/win32.S b/src/x86/win32.S
+-index daf0e79..e42baf2 100644
+---- a/src/x86/win32.S
+-+++ b/src/x86/win32.S
+-@@ -1,5 +1,6 @@
+- /* -----------------------------------------------------------------------
+--   win32.S - Copyright (c) 1996, 1998, 2001, 2002, 2009  Red Hat, Inc.
+-+   win32.S - Copyright (c) 2014  Anthony Green
+-+	     Copyright (c) 1996, 1998, 2001, 2002, 2009  Red Hat, Inc.
+- 	     Copyright (c) 2001  John Beniton
+- 	     Copyright (c) 2002  Ranjit Mathew
+- 	     Copyright (c) 2009  Daniel Witte
+-@@ -1304,3 +1305,6 @@ L_ffi_closure_SYSV_inner$stub:
+- 
+- #endif /* !_MSC_VER */
+- 
+-+#if defined __ELF__ && defined __linux__
+-+	.section	.note.GNU-stack,"",@progbits
+-+#endif
+--- 
+-1.9.3
+-
+diff --git a/libffi-3.1-fix-include-path.patch b/libffi-3.1-fix-include-path.patch
+deleted file mode 100644
+index 5a3b7a5..0000000
+--- a/libffi-3.1-fix-include-path.patch
++++ /dev/null
+@@ -1,17 +0,0 @@
+-diff -up libffi-3.1/libffi.pc.in.fixpath libffi-3.1/libffi.pc.in
+---- libffi-3.1/libffi.pc.in.fixpath	2014-04-25 19:45:13.000000000 +0200
+-+++ libffi-3.1/libffi.pc.in	2014-06-12 12:06:06.000000000 +0200
+-@@ -1,11 +1,10 @@
+- prefix=@prefix@
+- exec_prefix=@exec_prefix@
+- libdir=@libdir@
+--toolexeclibdir=@toolexeclibdir@
+--includedir=${libdir}/@PACKAGE_NAME@-@PACKAGE_VERSION@/include
+-+includedir=@includedir@
+- 
+- Name: @PACKAGE_NAME@
+- Description: Library supporting Foreign Function Interfaces
+- Version: @PACKAGE_VERSION@
+--Libs: -L${toolexeclibdir} -lffi
+-+Libs: -L${libdir} -lffi
+- Cflags: -I${includedir}
+diff --git a/libffi-3.4-fix-include-path.patch b/libffi-3.4-fix-include-path.patch
+new file mode 100644
+index 0000000..30fec18
+--- /dev/null
++++ b/libffi-3.4-fix-include-path.patch
+@@ -0,0 +1,29 @@
++From 5dbaba68e40ba19206a9ba1179f4c7ebcd3bd78c Mon Sep 17 00:00:00 2001
++From: "H.J. Lu" <hjl.tools@gmail.com>
++Date: Sat, 22 Feb 2020 05:12:25 -0800
++Subject: [PATCH] Fix libffi.pc.in
++
++---
++ libffi.pc.in | 3 +--
++ 1 file changed, 1 insertion(+), 2 deletions(-)
++
++diff --git a/libffi.pc.in b/libffi.pc.in
++index 6fad83b..7695266 100644
++--- a/libffi.pc.in
+++++ b/libffi.pc.in
++@@ -1,11 +1,10 @@
++ prefix=@prefix@
++ exec_prefix=@exec_prefix@
++ libdir=@libdir@
++-toolexeclibdir=@toolexeclibdir@
++ includedir=@includedir@
++ 
++ Name: @PACKAGE_NAME@
++ Description: Library supporting Foreign Function Interfaces
++ Version: @PACKAGE_VERSION@
++-Libs: -L${toolexeclibdir} -lffi
+++Libs: -L${libdir} -lffi
++ Cflags: -I${includedir}
++-- 
++2.24.1
++
+diff --git a/libffi-aarch64-rhbz1174037.patch b/libffi-aarch64-rhbz1174037.patch
+deleted file mode 100644
+index dbf6308..0000000
+--- a/libffi-aarch64-rhbz1174037.patch
++++ /dev/null
+@@ -1,11 +0,0 @@
+---- libffi-3.1/src/aarch64/ffi.c.orig	2014-04-25 18:45:13.000000000 +0100
+-+++ libffi-3.1/src/aarch64/ffi.c	2015-01-15 02:36:56.314906455 +0000
+-@@ -728,7 +728,7 @@
+- 	      state.ngrn = N_X_ARG_REG;
+- 
+- 	      memcpy (allocate_to_stack (&state, stack, ty->alignment,
+--					 ty->size), ecif->avalue + i, ty->size);
+-+					 ty->size), ecif->avalue[i], ty->size);
+- 	    }
+- 	  break;
+- 
+diff --git a/libffi.spec b/libffi.spec
+index bf98f36..20cdc21 100644
+--- a/libffi.spec
++++ b/libffi.spec
+@@ -3,21 +3,19 @@
+ %global multilib_arches %{ix86} ppc ppc64 ppc64p7 s390 s390x x86_64
+ 
+ Name:		libffi
+-Version:	3.1
+-Release:	23%{?dist}
++Version:	3.4
++Release:	0%{?dist}
+ Summary:	A portable foreign function interface library
+ License:	MIT
+ URL:		http://sourceware.org/libffi
+ 
+-Source0:	ftp://sourceware.org/pub/libffi/libffi-%{version}.tar.gz
++Source0:	ftp://sourceware.org/pub/libffi/libffi-%{version}.tar.xz
+ Source1:	ffi-multilib.h
+ Source2:	ffitarget-multilib.h
+-Patch0:		libffi-3.1-fix-include-path.patch
+-Patch1:		libffi-3.1-fix-exec-stack.patch
+-Patch2:		libffi-aarch64-rhbz1174037.patch
+-Patch3:		libffi-3.1-aarch64-fix-exec-stack.patch
++Patch0:		libffi-3.4-fix-include-path.patch
+ 
+ BuildRequires: gcc
++BuildRequires: texinfo
+ %if %{without bootstrap}
+ BuildRequires: gcc-c++
+ BuildRequires: dejagnu
+@@ -64,9 +62,6 @@ developing applications that use %{name}.
+ %prep
+ %setup -q
+ %patch0 -p1 -b .fixpath
+-%patch1 -p1 -b .execstack
+-%patch2 -p1 -b .aarch64
+-%patch3 -p1 -b .aarch64execstack
+ 
+ 
+ %build
+@@ -95,21 +90,17 @@ mkdir -p $RPM_BUILD_ROOT%{_includedir}
+ # can have both a 32- and 64-bit version of the library, and they each need
+ # their own correct-but-different versions of the headers to be usable.
+ for i in ffi ffitarget; do
+-  mv $RPM_BUILD_ROOT%{_libdir}/libffi-%{version}/include/$i.h $RPM_BUILD_ROOT%{_includedir}/$i-${basearch}.h
++  mv $RPM_BUILD_ROOT%{_includedir}/$i.h $RPM_BUILD_ROOT%{_includedir}/$i-${basearch}.h
+ done
+ install -m644 %{SOURCE1} $RPM_BUILD_ROOT%{_includedir}/ffi.h
+ install -m644 %{SOURCE2} $RPM_BUILD_ROOT%{_includedir}/ffitarget.h
+-%else
+-mv $RPM_BUILD_ROOT%{_libdir}/libffi-%{version}/include/{ffi,ffitarget}.h $RPM_BUILD_ROOT%{_includedir}
+ %endif
+-rm -rf $RPM_BUILD_ROOT%{_libdir}/libffi-%{version}
+ 
+ 
+ %ldconfig_scriptlets
+ 
+ %files
+ %license LICENSE
+-%doc README
+ %{_libdir}/*.so.*
+ 
+ %files devel
+-- 
+2.25.1
+
