@@ -1,0 +1,24 @@
+From bda69512042172d62de2800ef9c96ba6ad44ddb9 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Mon, 24 Feb 2020 10:53:17 -0800
+Subject: [PATCH] Add .0 to Release string
+
+---
+ python-cffi.spec | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/python-cffi.spec b/python-cffi.spec
+index f2471b1..9e49670 100644
+--- a/python-cffi.spec
++++ b/python-cffi.spec
+@@ -1,6 +1,6 @@
+ Name:           python-cffi
+ Version:        1.14.0
+-Release:        1%{?dist}
++Release:        1.0%{?dist}
+ Summary:        Foreign Function Interface for Python to call C code
+ License:        MIT
+ URL:            https://cffi.readthedocs.org/
+-- 
+2.25.1
+
