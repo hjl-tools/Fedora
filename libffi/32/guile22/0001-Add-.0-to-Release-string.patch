@@ -1,0 +1,25 @@
+From c93f01dcb7be1bd4206331882be9f0d2fc7301bf Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Mon, 24 Feb 2020 08:10:08 -0800
+Subject: [PATCH 1/2] Add .0 to Release string
+
+---
+ guile22.spec | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/guile22.spec b/guile22.spec
+index 69ba785..2d0063a 100644
+--- a/guile22.spec
++++ b/guile22.spec
+@@ -7,7 +7,7 @@
+ Summary: A GNU implementation of Scheme for application extensibility
+ Name: guile22
+ Version: 2.2.6
+-Release: 4%{?dist}
++Release: 4.0%{?dist}
+ Source: ftp://ftp.gnu.org/pub/gnu/guile/guile-%{version}.tar.gz
+ URL: http://www.gnu.org/software/guile/
+ License: LGPLv3+
+-- 
+2.25.1
+

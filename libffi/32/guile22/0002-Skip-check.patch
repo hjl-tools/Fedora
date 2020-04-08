@@ -1,0 +1,26 @@
+From 12094189f92f0c97a06a39b189c5851cf3e38e83 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Tue, 7 Apr 2020 18:47:56 -0700
+Subject: [PATCH 2/2] Skip %check
+
+It takes a very long time.
+---
+ guile22.spec | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/guile22.spec b/guile22.spec
+index 2d0063a..45edb60 100644
+--- a/guile22.spec
++++ b/guile22.spec
+@@ -109,7 +109,7 @@ find $RPM_BUILD_ROOT%{_libdir} -name '*.go' -exec touch -r "%{_specdir}/guile22.
+ rm $RPM_BUILD_ROOT%{_libdir}/guile/%{mver}/extensions/guile-readline.la
+ 
+ %check
+-make %{?_smp_mflags} check
++# make %{?_smp_mflags} check
+ 
+ 
+ %post -p /sbin/ldconfig
+-- 
+2.25.1
+
