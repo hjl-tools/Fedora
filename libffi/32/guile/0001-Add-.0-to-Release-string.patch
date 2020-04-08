@@ -1,0 +1,25 @@
+From 18c67015ab6c67e49459140ff54b26a651489ff4 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Mon, 24 Feb 2020 03:20:11 -0800
+Subject: [PATCH 1/2] Add .0 to Release string
+
+---
+ guile.spec | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/guile.spec b/guile.spec
+index 606eaec..4bb75e7 100644
+--- a/guile.spec
++++ b/guile.spec
+@@ -2,7 +2,7 @@ Summary: A GNU implementation of Scheme for application extensibility
+ Name: guile
+ %define mver 2.0
+ Version: 2.0.14
+-Release: 19%{?dist}
++Release: 19.0%{?dist}
+ Epoch: 5
+ Source: ftp://ftp.gnu.org/pub/gnu/guile/guile-%{version}.tar.xz
+ URL: http://www.gnu.org/software/guile/
+-- 
+2.25.1
+
