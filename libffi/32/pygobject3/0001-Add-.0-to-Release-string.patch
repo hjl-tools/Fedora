@@ -1,0 +1,25 @@
+From d3700038f90ce84c9b2dd8add00b0a4562b49869 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Mon, 24 Feb 2020 10:48:37 -0800
+Subject: [PATCH] Add .0 to Release string
+
+---
+ pygobject3.spec | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/pygobject3.spec b/pygobject3.spec
+index d241f3e..87f5474 100644
+--- a/pygobject3.spec
++++ b/pygobject3.spec
+@@ -6,7 +6,7 @@
+ 
+ Name:           pygobject3
+ Version:        3.36.0
+-Release:        2%{?dist}
++Release:        2.0%{?dist}
+ Summary:        Python bindings for GObject Introspection
+ 
+ License:        LGPLv2+ and MIT
+-- 
+2.25.1
+
