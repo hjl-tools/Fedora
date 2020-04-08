@@ -1,0 +1,25 @@
+From 1a152067405a1bf357ef8d067e8866b9be60f9a1 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Sat, 22 Feb 2020 05:51:18 -0800
+Subject: [PATCH] Add .0 to Release string
+
+---
+ gjs.spec | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/gjs.spec b/gjs.spec
+index 388d480..ffdb109 100644
+--- a/gjs.spec
++++ b/gjs.spec
+@@ -5,7 +5,7 @@
+ 
+ Name:          gjs
+ Version:       1.64.1
+-Release:       2%{?dist}
++Release:       2.0%{?dist}
+ Summary:       Javascript Bindings for GNOME
+ 
+ # The following files contain code from Mozilla which
+-- 
+2.25.1
+
