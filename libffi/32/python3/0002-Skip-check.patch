@@ -1,0 +1,26 @@
+From eadd3b05ac575f250bb805b3a285d9b2b744eb46 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Tue, 7 Apr 2020 18:52:50 -0700
+Subject: [PATCH 2/2] Skip check
+
+It takes a very long time.
+---
+ python3.spec | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/python3.spec b/python3.spec
+index 2b54bd3..75135a4 100644
+--- a/python3.spec
++++ b/python3.spec
+@@ -1028,6 +1028,8 @@ done
+ 
+ topdir=$(pwd)
+ CheckPython() {
++  return
++
+   ConfName=$1
+   ConfDir=$(pwd)/build/$ConfName
+ 
+-- 
+2.25.1
+
