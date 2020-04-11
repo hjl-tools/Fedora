@@ -1,0 +1,191 @@
+From d98e7923c3142ab48ae59182a6c8c26b499b7c3d Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Fri, 10 Apr 2020 17:57:04 -0700
+Subject: [PATCH 3/3] Update Apply [BZ #25810] fix
+
+Don't apply changes to misc/Makefile and misc/tst-syscalls.c to avoid
+conflict with Fedora 31 patches.
+---
+ ...-SYSCALL_ULONG-to-pass-long-to-sysca.patch | 166 ------------------
+ 1 file changed, 166 deletions(-)
+
+diff --git a/0001-Add-SYSCALL_LONG-SYSCALL_ULONG-to-pass-long-to-sysca.patch b/0001-Add-SYSCALL_LONG-SYSCALL_ULONG-to-pass-long-to-sysca.patch
+index 3a0eb6d..2c43681 100644
+--- a/0001-Add-SYSCALL_LONG-SYSCALL_ULONG-to-pass-long-to-sysca.patch
++++ b/0001-Add-SYSCALL_LONG-SYSCALL_ULONG-to-pass-long-to-sysca.patch
+@@ -68,172 +68,6 @@ Tested on i386, x86-64 and 32 as well as with build-many-glibcs.py.
+  42 files changed, 440 insertions(+), 75 deletions(-)
+  create mode 100644 misc/tst-syscalls.c
+ 
+-diff --git a/misc/Makefile b/misc/Makefile
+-index 032f28fc38..060dd856b8 100644
+---- a/misc/Makefile
+-+++ b/misc/Makefile
+-@@ -86,7 +86,8 @@ tests := tst-dirname tst-tsearch tst-fdset tst-mntent tst-hsearch \
+- 	 tst-mntent-blank-corrupt tst-mntent-blank-passno bug18240 \
+- 	 tst-preadvwritev tst-preadvwritev64 tst-makedev tst-empty \
+- 	 tst-preadvwritev2 tst-preadvwritev64v2 tst-warn-wide \
+--	 tst-ldbl-warn tst-ldbl-error tst-dbl-efgcvt tst-ldbl-efgcvt
+-+	 tst-ldbl-warn tst-ldbl-error tst-dbl-efgcvt tst-ldbl-efgcvt \
+-+	 tst-syscalls
+- 
+- # Tests which need libdl.
+- ifeq (yes,$(build-shared))
+-diff --git a/misc/tst-syscalls.c b/misc/tst-syscalls.c
+-new file mode 100644
+-index 0000000000..d07f03633b
+---- /dev/null
+-+++ b/misc/tst-syscalls.c
+-@@ -0,0 +1,146 @@
+-+/* Test for syscall interfaces.
+-+   Copyright (C) 2020 Free Software Foundation, Inc.
+-+   This file is part of the GNU C Library.
+-+
+-+   The GNU C Library is free software; you can redistribute it and/or
+-+   modify it under the terms of the GNU Lesser General Public
+-+   License as published by the Free Software Foundation; either
+-+   version 2.1 of the License, or (at your option) any later version.
+-+
+-+   The GNU C Library is distributed in the hope that it will be useful,
+-+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+-+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+-+   Lesser General Public License for more details.
+-+
+-+   You should have received a copy of the GNU Lesser General Public
+-+   License along with the GNU C Library; if not, see
+-+   <https://www.gnu.org/licenses/>.  */
+-+
+-+#include <stdio.h>
+-+#include <stdlib.h>
+-+#include <fcntl.h>
+-+#include <sys/mman.h>
+-+#include <support/check.h>
+-+#include <support/xunistd.h>
+-+
+-+struct Array
+-+{
+-+  size_t length;
+-+  void *ptr;
+-+};
+-+
+-+static int error_count;
+-+
+-+__attribute__ ((noclone, noinline))
+-+struct Array
+-+allocate (size_t bytes)
+-+{
+-+  if (!bytes)
+-+    return __extension__ (struct Array) {0, 0};
+-+
+-+  void *p = mmap (0x0, bytes, PROT_READ | PROT_WRITE,
+-+		  MAP_PRIVATE | MAP_ANON, -1, 0);
+-+  if (p == MAP_FAILED)
+-+    return __extension__ (struct Array) {0, 0};
+-+
+-+  return __extension__ (struct Array) {bytes, p};
+-+}
+-+
+-+__attribute__ ((noclone, noinline))
+-+void
+-+deallocate (struct Array b)
+-+{
+-+  if (b.length && munmap (b.ptr, b.length))
+-+    {
+-+      printf ("munmap error: %m\n");
+-+      error_count++;
+-+    }
+-+}
+-+
+-+__attribute__ ((noclone, noinline))
+-+void *
+-+do_mmap (void *addr, size_t length)
+-+{
+-+  return mmap (addr, length, PROT_READ | PROT_WRITE,
+-+	       MAP_PRIVATE | MAP_ANON, -1, 0);
+-+}
+-+
+-+__attribute__ ((noclone, noinline))
+-+void *
+-+reallocate (struct Array b)
+-+{
+-+  if (b.length)
+-+    return do_mmap (b.ptr, b.length);
+-+  return NULL;
+-+}
+-+
+-+__attribute__ ((noclone, noinline))
+-+void
+-+protect (struct Array b)
+-+{
+-+  if (b.length)
+-+    {
+-+      if (mprotect (b.ptr, b.length,
+-+		    PROT_READ | PROT_WRITE | PROT_EXEC))
+-+	{
+-+	  printf ("mprotect error: %m\n");
+-+	  error_count++;
+-+	}
+-+    }
+-+}
+-+
+-+__attribute__ ((noclone, noinline))
+-+ssize_t
+-+do_read (int fd, void *ptr, struct Array b)
+-+{
+-+  if (b.length)
+-+    return read (fd, ptr, b.length);
+-+  return 0;
+-+}
+-+
+-+__attribute__ ((noclone, noinline))
+-+ssize_t
+-+do_write (int fd, void *ptr, struct Array b)
+-+{
+-+  if (b.length)
+-+    return write (fd, ptr, b.length);
+-+  return 0;
+-+}
+-+
+-+static int
+-+do_test (void)
+-+{
+-+  struct Array array;
+-+
+-+  array = allocate (1);
+-+  protect (array);
+-+  deallocate (array);
+-+  void *p = reallocate (array);
+-+  if (p == MAP_FAILED)
+-+    {
+-+      printf ("mmap error: %m\n");
+-+      error_count++;
+-+    }
+-+  array.ptr = p;
+-+  protect (array);
+-+  deallocate (array);
+-+
+-+  int fd = xopen ("/dev/null", O_RDWR, 0);
+-+  char buf[2];
+-+  array.ptr = buf;
+-+  if (do_read (fd, array.ptr, array) == -1)
+-+    {
+-+      printf ("read error: %m\n");
+-+      error_count++;
+-+    }
+-+  if (do_write (fd, array.ptr, array) == -1)
+-+    {
+-+      printf ("write error: %m\n");
+-+      error_count++;
+-+    }
+-+  xclose (fd);
+-+
+-+  return error_count ? EXIT_FAILURE : EXIT_SUCCESS;
+-+}
+-+
+-+#include <support/test-driver.c>
+ diff --git a/sysdeps/unix/make-syscalls.sh b/sysdeps/unix/make-syscalls.sh
+ index 6a5c10d54e..2b487e2e22 100644
+ --- a/sysdeps/unix/make-syscalls.sh
+-- 
+2.26.0
+

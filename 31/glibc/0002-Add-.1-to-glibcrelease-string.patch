@@ -1,0 +1,25 @@
+From a773fc8f80a283c9642c9ea61c26f08ef4dcc990 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Fri, 10 Apr 2020 16:28:26 -0700
+Subject: [PATCH 2/3] Add .1 to glibcrelease string
+
+---
+ glibc.spec | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/glibc.spec b/glibc.spec
+index eb75b4b..354fa97 100644
+--- a/glibc.spec
++++ b/glibc.spec
+@@ -96,7 +96,7 @@ Patch300000: 0001-Add-SYSCALL_LONG-SYSCALL_ULONG-to-pass-long-to-sysca.patch
+ Summary: The GNU libc libraries
+ Name: glibc
+ Version: %{glibcversion}
+-Release: 11.0%{?dist}
++Release: 11.1%{?dist}
+ 
+ # In general, GPLv2+ is used by programs, LGPLv2+ is used for
+ # libraries.
+-- 
+2.26.0
+
