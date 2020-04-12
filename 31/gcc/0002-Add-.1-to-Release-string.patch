@@ -1,0 +1,25 @@
+From 5b9b67aa152de8e0ec40871211a42e896caf89ca Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Sun, 12 Apr 2020 11:20:43 -0700
+Subject: [PATCH 2/2] Add .1 to Release string
+
+---
+ gcc.spec | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/gcc.spec b/gcc.spec
+index 84e71f8..fbbc976 100644
+--- a/gcc.spec
++++ b/gcc.spec
+@@ -116,7 +116,7 @@ Patch100003: 0001-x86-Restore-the-frame-pointer-in-word_mode.patch
+ Summary: Various compilers (C, C++, Objective-C, ...)
+ Name: gcc
+ Version: %{gcc_version}
+-Release: %{gcc_release}.0%{?dist}
++Release: %{gcc_release}.1%{?dist}
+ # libgcc, libgfortran, libgomp, libstdc++ and crtstuff have
+ # GCC Runtime Exception.
+ License: GPLv3+ and GPLv3+ with exceptions and GPLv2+ with exceptions and LGPLv2+ and BSD
+-- 
+2.26.0
+
