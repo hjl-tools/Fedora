@@ -1,0 +1,25 @@
+From 69a3f8e4b4c66ef4c8a338351946d36cffe7d20f Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Thu, 19 Mar 2020 07:57:06 -0700
+Subject: [PATCH 5/5] Add .1.cet to fedora_build
+
+---
+ kernel.spec | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/kernel.spec b/kernel.spec
+index f1d461858..df259a59b 100644
+--- a/kernel.spec
++++ b/kernel.spec
+@@ -136,7 +136,7 @@ Summary: The Linux kernel
+ # gitX tags, so a 3 here would become part of release "0.rcX.gitX.3"
+ #
+ %global baserelease 300
+-%global fedora_build %{baserelease}
++%global fedora_build %{baserelease}.1.cet
+ 
+ # base_sublevel is the kernel version we're starting with and patching
+ # on top of -- for example, 3.1-rc7-git1 starts with a 3.0 base,
+-- 
+2.26.0
+
