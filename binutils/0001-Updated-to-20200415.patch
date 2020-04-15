@@ -1,0 +1,27 @@
+From c84a8be09ac1c7c994cfbb8010c4356b14c99a06 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Wed, 15 Apr 2020 05:38:00 -0700
+Subject: [PATCH] Updated to 20200415
+
+---
+ binutils.spec | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/binutils.spec b/binutils.spec
+index a03d706..277e08e 100644
+--- a/binutils.spec
++++ b/binutils.spec
+@@ -105,8 +105,8 @@ URL: https://sourceware.org/binutils
+ # too many controversial patches so we stick with the official FSF version
+ # instead.
+ 
+-%global DATE 20200411
+-Epoch: 257
++%global DATE 20200415
++Epoch: 258
+ Source: binutils-%{version}-%{DATE}.tar.bz2
+ #Source: https://ftp.gnu.org/gnu/binutils/binutils-%{version}.tar.xz
+ 
+-- 
+2.26.0
+
