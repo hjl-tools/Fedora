@@ -1,0 +1,25 @@
+From e21b1d4da6d9003dea319f56ba90603e2c685c22 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Tue, 10 Mar 2020 04:43:35 -0700
+Subject: [PATCH 3/3] Add .0 to Release string
+
+---
+ icu.spec | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/icu.spec b/icu.spec
+index acd775d..db140f2 100644
+--- a/icu.spec
++++ b/icu.spec
+@@ -4,7 +4,7 @@ Patch100000: 0001-x86-Add-.note.gnu.property-section-for-Intel-CET.patch
+ 
+ Name:      icu
+ Version:   65.1
+-Release:   2%{?dist}
++Release:   2.0%{?dist}
+ Summary:   International Components for Unicode
+ 
+ License:   MIT and UCD and Public Domain
+-- 
+2.26.0
+

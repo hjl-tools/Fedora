@@ -1,0 +1,32 @@
+From 2dad0f0f84cdae05dd4034771cb2688b14755c0d Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Tue, 10 Mar 2020 04:52:11 -0700
+Subject: [PATCH 2/3] Update x86: Add .note.gnu.property section for Intel CET
+
+a/icu4c/source/tools/toolutil/pkg_genc.cpp ->
+a/source/tools/toolutil/pkg_genc.cpp
+---
+ 0001-x86-Add-.note.gnu.property-section-for-Intel-CET.patch | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/0001-x86-Add-.note.gnu.property-section-for-Intel-CET.patch b/0001-x86-Add-.note.gnu.property-section-for-Intel-CET.patch
+index 2b9c921..2fe6b10 100644
+--- a/0001-x86-Add-.note.gnu.property-section-for-Intel-CET.patch
++++ b/0001-x86-Add-.note.gnu.property-section-for-Intel-CET.patch
+@@ -15,10 +15,10 @@ to generate CET maker when compiling with -fcf-protection.
+  icu4c/source/tools/toolutil/pkg_genc.cpp | 3 +++
+  1 file changed, 3 insertions(+)
+ 
+-diff --git a/icu4c/source/tools/toolutil/pkg_genc.cpp b/icu4c/source/tools/toolutil/pkg_genc.cpp
++diff --git a/source/tools/toolutil/pkg_genc.cpp b/source/tools/toolutil/pkg_genc.cpp
+ index a4b6d7aa93..21996434d3 100644
+---- a/icu4c/source/tools/toolutil/pkg_genc.cpp
+-+++ b/icu4c/source/tools/toolutil/pkg_genc.cpp
++--- a/source/tools/toolutil/pkg_genc.cpp
+++++ b/source/tools/toolutil/pkg_genc.cpp
+ @@ -131,6 +131,9 @@ static const struct AssemblyType {
+      {"gcc",
+          ".globl %s\n"
+-- 
+2.26.0
+
