@@ -1,0 +1,39 @@
+From 2f50fb5f5841480988b826fd9ba53425b4e344ef Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Thu, 19 Mar 2020 07:57:03 -0700
+Subject: [PATCH 1/5] Enable CONFIG_X86_X32
+
+---
+ kernel-x86_64-debug-fedora.config | 2 +-
+ kernel-x86_64-fedora.config       | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/kernel-x86_64-debug-fedora.config b/kernel-x86_64-debug-fedora.config
+index d9af235e8..8003b3400 100644
+--- a/kernel-x86_64-debug-fedora.config
++++ b/kernel-x86_64-debug-fedora.config
+@@ -7004,7 +7004,7 @@ CONFIG_X86_UV=y
+ # CONFIG_X86_VERBOSE_BOOTUP is not set
+ # CONFIG_X86_VSMP is not set
+ CONFIG_X86_X2APIC=y
+-# CONFIG_X86_X32 is not set
++CONFIG_X86_X32=y
+ CONFIG_XDP_SOCKETS_DIAG=m
+ CONFIG_XDP_SOCKETS=y
+ CONFIG_XEN_512GB=y
+diff --git a/kernel-x86_64-fedora.config b/kernel-x86_64-fedora.config
+index f68dc1037..2c43bc5eb 100644
+--- a/kernel-x86_64-fedora.config
++++ b/kernel-x86_64-fedora.config
+@@ -6983,7 +6983,7 @@ CONFIG_X86_UV=y
+ # CONFIG_X86_VERBOSE_BOOTUP is not set
+ # CONFIG_X86_VSMP is not set
+ CONFIG_X86_X2APIC=y
+-# CONFIG_X86_X32 is not set
++CONFIG_X86_X32=y
+ CONFIG_XDP_SOCKETS_DIAG=m
+ CONFIG_XDP_SOCKETS=y
+ CONFIG_XEN_512GB=y
+-- 
+2.26.0
+
