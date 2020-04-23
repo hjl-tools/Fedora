@@ -1,0 +1,1151 @@
+From f630b8a7e2803d414f25fac67b18a9ea0d6d0a00 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Thu, 23 Apr 2020 08:22:20 -0700
+Subject: [PATCH 1/2] Revert "Apply [BZ #25810] fix"
+
+This reverts commit 52591f901451518c2a27947b5a228940602ba744.
+---
+ ...-SYSCALL_ULONG-to-pass-long-to-sysca.patch | 1118 -----------------
+ glibc.spec                                    |    1 -
+ 2 files changed, 1119 deletions(-)
+ delete mode 100644 0001-Add-SYSCALL_LONG-SYSCALL_ULONG-to-pass-long-to-sysca.patch
+
+diff --git a/0001-Add-SYSCALL_LONG-SYSCALL_ULONG-to-pass-long-to-sysca.patch b/0001-Add-SYSCALL_LONG-SYSCALL_ULONG-to-pass-long-to-sysca.patch
+deleted file mode 100644
+index d6e071c..0000000
+--- a/0001-Add-SYSCALL_LONG-SYSCALL_ULONG-to-pass-long-to-sysca.patch
++++ /dev/null
+@@ -1,1118 +0,0 @@
+-From fe84c89537dd88f0727203d4e14c831c3120c91b Mon Sep 17 00:00:00 2001
+-From: "H.J. Lu" <hjl.tools@gmail.com>
+-Date: Fri, 10 Apr 2020 05:46:45 -0700
+-Subject: [PATCH] Add SYSCALL_LONG/SYSCALL_ULONG to pass long to syscall [BZ
+- #25810]
+-
+-X32 has 32-bit long and pointer with 64-bit off_t.  Since x32 psABI
+-requires that pointers passed in registers must be zero-extended to
+-64bit, x32 can share many syscall interfaces with LP64.  When a LP64
+-syscall with long and unsigned long arguments is used for x32, these
+-arguments must be properly extended to 64-bit.  Otherwise if the upper
+-32 bits of the register have undefined value, such a syscall will be
+-rejected by kernel.
+-
+-For inline syscalls, SYSCALL_LONG and SYSCALL_ULONG are introduced as
+-wrappers for long and unsigned long arguments.
+-
+-For syscalls implemented in assembly codes, 'U' is added to syscall
+-signature key letters for unsigned long.  SYSCALL_ULONG_ARG_1 and
+-SYSCALL_ULONG_ARG_2 are passed to syscall-template.S for the first
+-and the second unsigned long arguments.  They are used by x32 to
+-zero-extend 32-bit arguments to 64 bits.
+-
+-Tested on i386, x86-64 and 32 as well as with build-many-glibcs.py.
+----
+- misc/Makefile                                 |   2 +-
+- misc/tst-syscalls.c                           | 146 ++++++++++++++++++
+- sysdeps/unix/make-syscalls.sh                 |  88 +++++++++++
+- sysdeps/unix/syscall-template.S               |  37 ++++-
+- sysdeps/unix/sysv/linux/copy_file_range.c     |   2 +-
+- sysdeps/unix/sysv/linux/getcwd.c              |   2 +-
+- sysdeps/unix/sysv/linux/getdents.c            |   3 +-
+- sysdeps/unix/sysv/linux/getdents64.c          |   6 +-
+- sysdeps/unix/sysv/linux/getentropy.c          |   4 +-
+- sysdeps/unix/sysv/linux/getrandom.c           |   3 +-
+- sysdeps/unix/sysv/linux/mlock2.c              |   8 +-
+- sysdeps/unix/sysv/linux/mmap64.c              |   7 +-
+- sysdeps/unix/sysv/linux/mq_timedreceive.c     |   4 +-
+- sysdeps/unix/sysv/linux/mq_timedsend.c        |   4 +-
+- sysdeps/unix/sysv/linux/msgrcv.c              |   7 +-
+- sysdeps/unix/sysv/linux/msgsnd.c              |   7 +-
+- sysdeps/unix/sysv/linux/msync.c               |   2 +-
+- sysdeps/unix/sysv/linux/pkey_mprotect.c       |   3 +-
+- sysdeps/unix/sysv/linux/pread.c               |   3 +-
+- sysdeps/unix/sysv/linux/pread64.c             |   3 +-
+- sysdeps/unix/sysv/linux/pread64_nocancel.c    |   3 +-
+- sysdeps/unix/sysv/linux/pwrite.c              |   3 +-
+- sysdeps/unix/sysv/linux/pwrite64.c            |   3 +-
+- sysdeps/unix/sysv/linux/read.c                |   2 +-
+- sysdeps/unix/sysv/linux/read_nocancel.c       |   2 +-
+- sysdeps/unix/sysv/linux/readahead.c           |   2 +-
+- sysdeps/unix/sysv/linux/recv.c                |   7 +-
+- sysdeps/unix/sysv/linux/recvfrom.c            |   8 +-
+- sysdeps/unix/sysv/linux/sched_setaffinity.c   |   3 +-
+- sysdeps/unix/sysv/linux/semtimedop.c          |   6 +-
+- sysdeps/unix/sysv/linux/send.c                |   7 +-
+- sysdeps/unix/sysv/linux/sendto.c              |   8 +-
+- sysdeps/unix/sysv/linux/shmget.c              |   6 +-
+- sysdeps/unix/sysv/linux/splice.c              |   3 +-
+- sysdeps/unix/sysv/linux/sysdep.h              |   5 +
+- sysdeps/unix/sysv/linux/tee.c                 |   2 +-
+- sysdeps/unix/sysv/linux/vmsplice.c            |   2 +-
+- sysdeps/unix/sysv/linux/write.c               |   2 +-
+- sysdeps/unix/sysv/linux/write_nocancel.c      |   2 +-
+- sysdeps/unix/sysv/linux/x86_64/sysdep.h       |  57 +++++--
+- .../unix/sysv/linux/x86_64/x32/syscalls.list  |  10 ++
+- sysdeps/unix/sysv/linux/x86_64/x32/sysdep.h   |  30 ++++
+- 42 files changed, 439 insertions(+), 75 deletions(-)
+- create mode 100644 misc/tst-syscalls.c
+-
+-diff --git a/misc/Makefile b/misc/Makefile
+-index e0465980c7..e167e199eb 100644
+---- a/misc/Makefile
+-+++ b/misc/Makefile
+-@@ -87,7 +87,7 @@ tests := tst-dirname tst-tsearch tst-fdset tst-mntent tst-hsearch \
+- 	 tst-preadvwritev tst-preadvwritev64 tst-makedev tst-empty \
+- 	 tst-preadvwritev2 tst-preadvwritev64v2 tst-warn-wide \
+- 	 tst-ldbl-warn tst-ldbl-error tst-dbl-efgcvt tst-ldbl-efgcvt \
+--	 tst-mntent-autofs
+-+	 tst-mntent-autofs tst-syscalls
+- 
+- # Tests which need libdl.
+- ifeq (yes,$(build-shared))
+-diff --git a/misc/tst-syscalls.c b/misc/tst-syscalls.c
+-new file mode 100644
+-index 0000000000..d07f03633b
+---- /dev/null
+-+++ b/misc/tst-syscalls.c
+-@@ -0,0 +1,146 @@
+-+/* Test for syscall interfaces.
+-+   Copyright (C) 2020 Free Software Foundation, Inc.
+-+   This file is part of the GNU C Library.
+-+
+-+   The GNU C Library is free software; you can redistribute it and/or
+-+   modify it under the terms of the GNU Lesser General Public
+-+   License as published by the Free Software Foundation; either
+-+   version 2.1 of the License, or (at your option) any later version.
+-+
+-+   The GNU C Library is distributed in the hope that it will be useful,
+-+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+-+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+-+   Lesser General Public License for more details.
+-+
+-+   You should have received a copy of the GNU Lesser General Public
+-+   License along with the GNU C Library; if not, see
+-+   <https://www.gnu.org/licenses/>.  */
+-+
+-+#include <stdio.h>
+-+#include <stdlib.h>
+-+#include <fcntl.h>
+-+#include <sys/mman.h>
+-+#include <support/check.h>
+-+#include <support/xunistd.h>
+-+
+-+struct Array
+-+{
+-+  size_t length;
+-+  void *ptr;
+-+};
+-+
+-+static int error_count;
+-+
+-+__attribute__ ((noclone, noinline))
+-+struct Array
+-+allocate (size_t bytes)
+-+{
+-+  if (!bytes)
+-+    return __extension__ (struct Array) {0, 0};
+-+
+-+  void *p = mmap (0x0, bytes, PROT_READ | PROT_WRITE,
+-+		  MAP_PRIVATE | MAP_ANON, -1, 0);
+-+  if (p == MAP_FAILED)
+-+    return __extension__ (struct Array) {0, 0};
+-+
+-+  return __extension__ (struct Array) {bytes, p};
+-+}
+-+
+-+__attribute__ ((noclone, noinline))
+-+void
+-+deallocate (struct Array b)
+-+{
+-+  if (b.length && munmap (b.ptr, b.length))
+-+    {
+-+      printf ("munmap error: %m\n");
+-+      error_count++;
+-+    }
+-+}
+-+
+-+__attribute__ ((noclone, noinline))
+-+void *
+-+do_mmap (void *addr, size_t length)
+-+{
+-+  return mmap (addr, length, PROT_READ | PROT_WRITE,
+-+	       MAP_PRIVATE | MAP_ANON, -1, 0);
+-+}
+-+
+-+__attribute__ ((noclone, noinline))
+-+void *
+-+reallocate (struct Array b)
+-+{
+-+  if (b.length)
+-+    return do_mmap (b.ptr, b.length);
+-+  return NULL;
+-+}
+-+
+-+__attribute__ ((noclone, noinline))
+-+void
+-+protect (struct Array b)
+-+{
+-+  if (b.length)
+-+    {
+-+      if (mprotect (b.ptr, b.length,
+-+		    PROT_READ | PROT_WRITE | PROT_EXEC))
+-+	{
+-+	  printf ("mprotect error: %m\n");
+-+	  error_count++;
+-+	}
+-+    }
+-+}
+-+
+-+__attribute__ ((noclone, noinline))
+-+ssize_t
+-+do_read (int fd, void *ptr, struct Array b)
+-+{
+-+  if (b.length)
+-+    return read (fd, ptr, b.length);
+-+  return 0;
+-+}
+-+
+-+__attribute__ ((noclone, noinline))
+-+ssize_t
+-+do_write (int fd, void *ptr, struct Array b)
+-+{
+-+  if (b.length)
+-+    return write (fd, ptr, b.length);
+-+  return 0;
+-+}
+-+
+-+static int
+-+do_test (void)
+-+{
+-+  struct Array array;
+-+
+-+  array = allocate (1);
+-+  protect (array);
+-+  deallocate (array);
+-+  void *p = reallocate (array);
+-+  if (p == MAP_FAILED)
+-+    {
+-+      printf ("mmap error: %m\n");
+-+      error_count++;
+-+    }
+-+  array.ptr = p;
+-+  protect (array);
+-+  deallocate (array);
+-+
+-+  int fd = xopen ("/dev/null", O_RDWR, 0);
+-+  char buf[2];
+-+  array.ptr = buf;
+-+  if (do_read (fd, array.ptr, array) == -1)
+-+    {
+-+      printf ("read error: %m\n");
+-+      error_count++;
+-+    }
+-+  if (do_write (fd, array.ptr, array) == -1)
+-+    {
+-+      printf ("write error: %m\n");
+-+      error_count++;
+-+    }
+-+  xclose (fd);
+-+
+-+  return error_count ? EXIT_FAILURE : EXIT_SUCCESS;
+-+}
+-+
+-+#include <support/test-driver.c>
+-diff --git a/sysdeps/unix/make-syscalls.sh b/sysdeps/unix/make-syscalls.sh
+-index c07626677f..52cf7e2f16 100644
+---- a/sysdeps/unix/make-syscalls.sh
+-+++ b/sysdeps/unix/make-syscalls.sh
+-@@ -30,6 +30,7 @@
+- # P: optionally-NULL pointer to typed object (e.g., 3rd argument to sigaction)
+- # s: non-NULL string (e.g., 1st arg to open)
+- # S: optionally-NULL string (e.g., 1st arg to acct)
+-+# U: unsigned long
+- # v: vararg scalar (e.g., optional 3rd arg to open)
+- # V: byte-per-page vector (3rd arg to mincore)
+- # W: wait status, optionally-NULL pointer to int (e.g., 2nd arg of wait4)
+-@@ -184,6 +185,91 @@ while read file srcfile caller syscall args strong weak; do
+-   ?:?????????) nargs=9;;
+-   esac
+- 
+-+  # Derive the long arguments from the argument signature
+-+  ulong_arg_1=0
+-+  ulong_arg_2=0
+-+  case $args in
+-+  ?:U*)
+-+    ulong_arg_1=1
+-+    case $args in
+-+    ?:UU*) ulong_arg_2=2;;
+-+    ?:U?U*) ulong_arg_2=3;;
+-+    ?:U??U*) ulong_arg_2=4;;
+-+    ?:U???U*) ulong_arg_2=5;;
+-+    ?:U????U*) ulong_arg_2=6;;
+-+    ?:U?????U*) ulong_arg_2=7;;
+-+    ?:U??????U*) ulong_arg_2=8;;
+-+    ?:U???????U) ulong_arg_2=9;;
+-+    esac
+-+    ;;
+-+  ?:?U*)
+-+    ulong_arg_1=2
+-+    case $args in
+-+    ?:?UU*) ulong_arg_2=3;;
+-+    ?:?U?U*) ulong_arg_2=4;;
+-+    ?:?U??U*) ulong_arg_2=5;;
+-+    ?:?U???U*) ulong_arg_2=6;;
+-+    ?:?U????U*) ulong_arg_2=7;;
+-+    ?:?U?????U*) ulong_arg_2=8;;
+-+    ?:?U??????U) ulong_arg_2=9;;
+-+    esac
+-+    ;;
+-+  ?:??U*)
+-+    ulong_arg_1=3
+-+    case $args in
+-+    ?:??UU*) ulong_arg_2=4;;
+-+    ?:??U?U*) ulong_arg_2=5;;
+-+    ?:??U??U*) ulong_arg_2=6;;
+-+    ?:??U???U*) ulong_arg_2=7;;
+-+    ?:??U????U*) ulong_arg_2=8;;
+-+    ?:??U?????U) ulong_arg_2=9;;
+-+    esac
+-+    ;;
+-+  ?:???U*)
+-+    ulong_arg_1=4
+-+    case $args in
+-+    ?:???UU*) ulong_arg_2=5;;
+-+    ?:???U?U*) ulong_arg_2=6;;
+-+    ?:???U??U*) ulong_arg_2=7;;
+-+    ?:???U???U*) ulong_arg_2=8;;
+-+    ?:???U????U) ulong_arg_2=9;;
+-+    esac
+-+    ;;
+-+  ?:????U*)
+-+    ulong_arg_1=5
+-+    case $args in
+-+    ?:????UU*) ulong_arg_2=6;;
+-+    ?:????U?U*) ulong_arg_2=7;;
+-+    ?:????U??U*) ulong_arg_2=8;;
+-+    ?:????U???U) ulong_arg_2=9;;
+-+    esac
+-+    ;;
+-+  ?:?????U*)
+-+    ulong_arg_1=6
+-+    case $args in
+-+    ?:?????UU*) ulong_arg_2=7;;
+-+    ?:?????U?U*) ulong_arg_2=8;;
+-+    ?:?????U??U) ulong_arg_2=9;;
+-+    esac
+-+    ;;
+-+  ?:??????U*)
+-+    ulong_arg_1=7
+-+    case $args in
+-+    ?:??????UU*) ulong_arg_2=8;;
+-+    ?:??????U?U) ulong_arg_2=9;;
+-+    esac
+-+    ;;
+-+  ?:???????U*)
+-+    ulong_arg_1=8
+-+    case $args in
+-+    ?:??????UU) ulong_arg_2=9;;
+-+    esac
+-+    ;;
+-+  ?:????????U)
+-+    ulong_arg_1=9
+-+    ;;
+-+  esac
+-+
+-   # Make sure only the first syscall rule is used, if multiple dirs
+-   # define the same syscall.
+-   echo ''
+-@@ -245,6 +331,8 @@ while read file srcfile caller syscall args strong weak; do
+- 	\$(make-target-directory)
+- 	(echo '#define SYSCALL_NAME $syscall'; \\
+- 	 echo '#define SYSCALL_NARGS $nargs'; \\
+-+	 echo '#define SYSCALL_ULONG_ARG_1 $ulong_arg_1'; \\
+-+	 echo '#define SYSCALL_ULONG_ARG_2 $ulong_arg_2'; \\
+- 	 echo '#define SYSCALL_SYMBOL $strong'; \\
+- 	 echo '#define SYSCALL_NOERRNO $noerrno'; \\
+- 	 echo '#define SYSCALL_ERRVAL $errval'; \\
+-diff --git a/sysdeps/unix/syscall-template.S b/sysdeps/unix/syscall-template.S
+-index cf6c7a58fb..e8d6d59b15 100644
+---- a/sysdeps/unix/syscall-template.S
+-+++ b/sysdeps/unix/syscall-template.S
+-@@ -25,6 +25,10 @@
+-    defining a few macros:
+- 	SYSCALL_NAME		syscall name
+- 	SYSCALL_NARGS		number of arguments this call takes
+-+	SYSCALL_ULONG_ARG_1	the first unsigned long argument this
+-+				call takes
+-+	SYSCALL_ULONG_ARG_2	the second unsigned long argument this
+-+				call takes
+- 	SYSCALL_SYMBOL		primary symbol name
+- 	SYSCALL_NOERRNO		1 to define a no-errno version (see below)
+- 	SYSCALL_ERRVAL		1 to define an error-value version (see below)
+-@@ -44,9 +48,21 @@
+- /* This indirection is needed so that SYMBOL gets macro-expanded.  */
+- #define syscall_hidden_def(SYMBOL)		hidden_def (SYMBOL)
+- 
+--#define T_PSEUDO(SYMBOL, NAME, N)		PSEUDO (SYMBOL, NAME, N)
+--#define T_PSEUDO_NOERRNO(SYMBOL, NAME, N)	PSEUDO_NOERRNO (SYMBOL, NAME, N)
+--#define T_PSEUDO_ERRVAL(SYMBOL, NAME, N)	PSEUDO_ERRVAL (SYMBOL, NAME, N)
+-+#if SYSCALL_ULONG_ARG_1
+-+# define T_PSEUDO(SYMBOL, NAME, N, U1, U2) \
+-+  PSEUDO (SYMBOL, NAME, N, U1, U2)
+-+# define T_PSEUDO_NOERRNO(SYMBOL, NAME, N, U1, U2) \
+-+  PSEUDO_NOERRNO (SYMBOL, NAME, N, U1, U2)
+-+# define T_PSEUDO_ERRVAL(SYMBOL, NAME, N, U1, U2) \
+-+  PSEUDO_ERRVAL (SYMBOL, NAME, N, U1, U2)
+-+#else
+-+# define T_PSEUDO(SYMBOL, NAME, N) \
+-+  PSEUDO (SYMBOL, NAME, N)
+-+# define T_PSEUDO_NOERRNO(SYMBOL, NAME, N) \
+-+  PSEUDO_NOERRNO (SYMBOL, NAME, N)
+-+# define T_PSEUDO_ERRVAL(SYMBOL, NAME, N) \
+-+  PSEUDO_ERRVAL (SYMBOL, NAME, N)
+-+#endif
+- #define T_PSEUDO_END(SYMBOL)			PSEUDO_END (SYMBOL)
+- #define T_PSEUDO_END_NOERRNO(SYMBOL)		PSEUDO_END_NOERRNO (SYMBOL)
+- #define T_PSEUDO_END_ERRVAL(SYMBOL)		PSEUDO_END_ERRVAL (SYMBOL)
+-@@ -56,7 +72,12 @@
+- /* This kind of system call stub never returns an error.
+-    We return the return value register to the caller unexamined.  */
+- 
+-+# if SYSCALL_ULONG_ARG_1
+-+T_PSEUDO_NOERRNO (SYSCALL_SYMBOL, SYSCALL_NAME, SYSCALL_NARGS,
+-+		  SYSCALL_ULONG_ARG_1, SYSCALL_ULONG_ARG_2)
+-+# else
+- T_PSEUDO_NOERRNO (SYSCALL_SYMBOL, SYSCALL_NAME, SYSCALL_NARGS)
+-+# endif
+- 	ret_NOERRNO
+- T_PSEUDO_END_NOERRNO (SYSCALL_SYMBOL)
+- 
+-@@ -66,7 +87,12 @@ T_PSEUDO_END_NOERRNO (SYSCALL_SYMBOL)
+-    value, or zero for success.  We may massage the kernel's return value
+-    to meet that ABI, but we never set errno here.  */
+- 
+-+# if SYSCALL_ULONG_ARG_1
+-+T_PSEUDO_ERRVAL (SYSCALL_SYMBOL, SYSCALL_NAME, SYSCALL_NARGS,
+-+		 SYSCALL_ULONG_ARG_1, SYSCALL_ULONG_ARG_2)
+-+# else
+- T_PSEUDO_ERRVAL (SYSCALL_SYMBOL, SYSCALL_NAME, SYSCALL_NARGS)
+-+# endif
+- 	ret_ERRVAL
+- T_PSEUDO_END_ERRVAL (SYSCALL_SYMBOL)
+- 
+-@@ -75,7 +101,12 @@ T_PSEUDO_END_ERRVAL (SYSCALL_SYMBOL)
+- /* This is a "normal" system call stub: if there is an error,
+-    it returns -1 and sets errno.  */
+- 
+-+# if SYSCALL_ULONG_ARG_1
+-+T_PSEUDO (SYSCALL_SYMBOL, SYSCALL_NAME, SYSCALL_NARGS,
+-+	  SYSCALL_ULONG_ARG_1, SYSCALL_ULONG_ARG_2)
+-+# else
+- T_PSEUDO (SYSCALL_SYMBOL, SYSCALL_NAME, SYSCALL_NARGS)
+-+# endif
+- 	ret
+- T_PSEUDO_END (SYSCALL_SYMBOL)
+- 
+-diff --git a/sysdeps/unix/sysv/linux/copy_file_range.c b/sysdeps/unix/sysv/linux/copy_file_range.c
+-index 65597ca025..077c4c0c27 100644
+---- a/sysdeps/unix/sysv/linux/copy_file_range.c
+-+++ b/sysdeps/unix/sysv/linux/copy_file_range.c
+-@@ -27,7 +27,7 @@ copy_file_range (int infd, __off64_t *pinoff,
+- {
+- #ifdef __NR_copy_file_range
+-   return SYSCALL_CANCEL (copy_file_range, infd, pinoff, outfd, poutoff,
+--                         length, flags);
+-+                         SYSCALL_ULONG (length), flags);
+- #else
+-   __set_errno (ENOSYS);
+-   return -1;
+-diff --git a/sysdeps/unix/sysv/linux/getcwd.c b/sysdeps/unix/sysv/linux/getcwd.c
+-index fabc4bb8cc..d228467edf 100644
+---- a/sysdeps/unix/sysv/linux/getcwd.c
+-+++ b/sysdeps/unix/sysv/linux/getcwd.c
+-@@ -75,7 +75,7 @@ __getcwd (char *buf, size_t size)
+- 
+-   int retval;
+- 
+--  retval = INLINE_SYSCALL (getcwd, 2, path, alloc_size);
+-+  retval = INLINE_SYSCALL (getcwd, 2, path, SYSCALL_ULONG (alloc_size));
+-   if (retval > 0 && path[0] == '/')
+-     {
+- #ifndef NO_ALLOCATION
+-diff --git a/sysdeps/unix/sysv/linux/getdents.c b/sysdeps/unix/sysv/linux/getdents.c
+-index a76be2e5e7..fc8da0caae 100644
+---- a/sysdeps/unix/sysv/linux/getdents.c
+-+++ b/sysdeps/unix/sysv/linux/getdents.c
+-@@ -53,7 +53,8 @@ __getdents (int fd, void *buf0, size_t nbytes)
+-   if (nbytes <= sizeof (struct dirent))
+-     kbuf = (void*) kbuftmp;
+- 
+--  retval = INLINE_SYSCALL_CALL (getdents64, fd, kbuf, kbytes);
+-+  retval = INLINE_SYSCALL_CALL (getdents64, fd, kbuf,
+-+				SYSCALL_ULONG (kbytes));
+-   if (retval == -1)
+-     return -1;
+- 
+-diff --git a/sysdeps/unix/sysv/linux/getdents64.c b/sysdeps/unix/sysv/linux/getdents64.c
+-index 75892c2823..63c89c7d60 100644
+---- a/sysdeps/unix/sysv/linux/getdents64.c
+-+++ b/sysdeps/unix/sysv/linux/getdents64.c
+-@@ -29,7 +29,8 @@ __getdents64 (int fd, void *buf, size_t nbytes)
+-      checks in the kernel use an int type.  */
+-   if (nbytes > INT_MAX)
+-     nbytes = INT_MAX;
+--  return INLINE_SYSCALL_CALL (getdents64, fd, buf, nbytes);
+-+  return INLINE_SYSCALL_CALL (getdents64, fd, buf,
+-+			      SYSCALL_ULONG (nbytes));
+- }
+- libc_hidden_def (__getdents64)
+- weak_alias (__getdents64, getdents64)
+-@@ -74,7 +75,8 @@ __old_getdents64 (int fd, char *buf, size_t nbytes)
+- 		  <= __alignof__ (struct dirent64),
+- 		  "alignment of __old_dirent64 is larger than dirent64");
+- 
+--  ssize_t retval = INLINE_SYSCALL_CALL (getdents64, fd, buf, nbytes);
+-+  ssize_t retval = INLINE_SYSCALL_CALL (getdents64, fd, buf,
+-+					SYSCALL_ULONG (nbytes));
+-   if (retval > 0)
+-     {
+-       /* This is the marker for the first entry.  Offset 0 is reserved
+-diff --git a/sysdeps/unix/sysv/linux/getentropy.c b/sysdeps/unix/sysv/linux/getentropy.c
+-index 5d0b8d10c1..401445e4b2 100644
+---- a/sysdeps/unix/sysv/linux/getentropy.c
+-+++ b/sysdeps/unix/sysv/linux/getentropy.c
+-@@ -42,7 +42,9 @@ getentropy (void *buffer, size_t length)
+-   while (buffer < end)
+-     {
+-       /* NB: No cancellation point.  */
+--      ssize_t bytes = INLINE_SYSCALL_CALL (getrandom, buffer, end - buffer, 0);
+-+      ssize_t bytes = INLINE_SYSCALL_CALL (getrandom, buffer,
+-+					   SYSCALL_ULONG (end - buffer),
+-+					   0);
+-       if (bytes < 0)
+-         {
+-           if (errno == EINTR)
+-diff --git a/sysdeps/unix/sysv/linux/getrandom.c b/sysdeps/unix/sysv/linux/getrandom.c
+-index 309beadf72..dfe0023642 100644
+---- a/sysdeps/unix/sysv/linux/getrandom.c
+-+++ b/sysdeps/unix/sysv/linux/getrandom.c
+-@@ -27,7 +27,8 @@
+- ssize_t
+- __getrandom (void *buffer, size_t length, unsigned int flags)
+- {
+--  return SYSCALL_CANCEL (getrandom, buffer, length, flags);
+-+  return SYSCALL_CANCEL (getrandom, buffer, SYSCALL_ULONG (length),
+-+			 flags);
+- }
+- #else
+- /* Always provide a definition, even if the kernel headers lack the
+-diff --git a/sysdeps/unix/sysv/linux/mlock2.c b/sysdeps/unix/sysv/linux/mlock2.c
+-index 7cea23d47c..aa20c87adc 100644
+---- a/sysdeps/unix/sysv/linux/mlock2.c
+-+++ b/sysdeps/unix/sysv/linux/mlock2.c
+-@@ -23,12 +23,14 @@ int
+- mlock2 (const void *addr, size_t length, unsigned int flags)
+- {
+- #ifdef __ASSUME_MLOCK2
+--  return INLINE_SYSCALL_CALL (mlock2, addr, length, flags);
+-+  return INLINE_SYSCALL_CALL (mlock2, addr, SYSCALL_ULONG (length),
+-+			      flags);
+- #else
+-   if (flags == 0)
+--    return INLINE_SYSCALL_CALL (mlock, addr, length);
+-+    return INLINE_SYSCALL_CALL (mlock, addr, SYSCALL_ULONG (length));
+- # ifdef __NR_mlock2
+--  int ret = INLINE_SYSCALL_CALL (mlock2, addr, length, flags);
+-+  int ret = INLINE_SYSCALL_CALL (mlock2, addr, SYSCALL_ULONG (length),
+-+				 flags);
+-   if (ret == 0 || errno != ENOSYS)
+-     return ret;
+- # endif /* __NR_mlock2 */
+-diff --git a/sysdeps/unix/sysv/linux/mmap64.c b/sysdeps/unix/sysv/linux/mmap64.c
+-index 8074deb466..7efe7f171d 100644
+---- a/sysdeps/unix/sysv/linux/mmap64.c
+-+++ b/sysdeps/unix/sysv/linux/mmap64.c
+-@@ -53,10 +53,11 @@ __mmap64 (void *addr, size_t len, int prot, int flags, int fd, off64_t offset)
+- 
+-   MMAP_PREPARE (addr, len, prot, flags, fd, offset);
+- #ifdef __NR_mmap2
+--  return (void *) MMAP_CALL (mmap2, addr, len, prot, flags, fd,
+--			     (off_t) (offset / MMAP2_PAGE_UNIT));
+-+  return (void *) MMAP_CALL (mmap2, addr, SYSCALL_ULONG (len), prot, flags,
+-+			     fd, (off_t) (offset / MMAP2_PAGE_UNIT));
+- #else
+--  return (void *) MMAP_CALL (mmap, addr, len, prot, flags, fd, offset);
+-+  return (void *) MMAP_CALL (mmap, addr, SYSCALL_ULONG (len), prot, flags,
+-+			     fd, offset);
+- #endif
+- }
+- weak_alias (__mmap64, mmap64)
+-diff --git a/sysdeps/unix/sysv/linux/mq_timedreceive.c b/sysdeps/unix/sysv/linux/mq_timedreceive.c
+-index 73a1d63e41..6ce4400f15 100644
+---- a/sysdeps/unix/sysv/linux/mq_timedreceive.c
+-+++ b/sysdeps/unix/sysv/linux/mq_timedreceive.c
+-@@ -26,8 +26,8 @@ __mq_timedreceive (mqd_t mqdes, char *__restrict msg_ptr, size_t msg_len,
+- 		   unsigned int *__restrict msg_prio,
+- 		   const struct timespec *__restrict abs_timeout)
+- {
+--  return SYSCALL_CANCEL (mq_timedreceive, mqdes, msg_ptr, msg_len, msg_prio,
+--			 abs_timeout);
+-+  return SYSCALL_CANCEL (mq_timedreceive, mqdes, msg_ptr,
+-+			 SYSCALL_ULONG (msg_len), msg_prio, abs_timeout);
+- }
+- hidden_def (__mq_timedreceive)
+- weak_alias (__mq_timedreceive, mq_timedreceive)
+-diff --git a/sysdeps/unix/sysv/linux/mq_timedsend.c b/sysdeps/unix/sysv/linux/mq_timedsend.c
+-index 888ec6744a..72ac53e6cc 100644
+---- a/sysdeps/unix/sysv/linux/mq_timedsend.c
+-+++ b/sysdeps/unix/sysv/linux/mq_timedsend.c
+-@@ -25,8 +25,8 @@ int
+- __mq_timedsend (mqd_t mqdes, const char *msg_ptr, size_t msg_len,
+- 		unsigned int msg_prio, const struct timespec *abs_timeout)
+- {
+--  return SYSCALL_CANCEL (mq_timedsend, mqdes, msg_ptr, msg_len, msg_prio,
+--			 abs_timeout);
+-+  return SYSCALL_CANCEL (mq_timedsend, mqdes, msg_ptr,
+-+			 SYSCALL_ULONG (msg_len), msg_prio, abs_timeout);
+- }
+- hidden_def (__mq_timedsend)
+- weak_alias (__mq_timedsend, mq_timedsend)
+-diff --git a/sysdeps/unix/sysv/linux/msgrcv.c b/sysdeps/unix/sysv/linux/msgrcv.c
+-index 95edc7a787..ecfa2df4fb 100644
+---- a/sysdeps/unix/sysv/linux/msgrcv.c
+-+++ b/sysdeps/unix/sysv/linux/msgrcv.c
+-@@ -25,10 +25,11 @@ __libc_msgrcv (int msqid, void *msgp, size_t msgsz, long int msgtyp,
+- 	       int msgflg)
+- {
+- #ifdef __ASSUME_DIRECT_SYSVIPC_SYSCALLS
+--  return SYSCALL_CANCEL (msgrcv, msqid, msgp, msgsz, msgtyp, msgflg);
+-+  return SYSCALL_CANCEL (msgrcv, msqid, msgp, SYSCALL_ULONG (msgsz),
+-+			 SYSCALL_LONG (msgtyp), msgflg);
+- #else
+--  return SYSCALL_CANCEL (ipc, IPCOP_msgrcv, msqid, msgsz, msgflg,
+--			 MSGRCV_ARGS (msgp, msgtyp));
+-+  return SYSCALL_CANCEL (ipc, IPCOP_msgrcv, msqid, SYSCALL_ULONG (msgsz),
+-+			 msgflg, MSGRCV_ARGS (msgp, SYSCALL_LONG (msgtyp)));
+- #endif
+- }
+- weak_alias (__libc_msgrcv, msgrcv)
+-diff --git a/sysdeps/unix/sysv/linux/msgsnd.c b/sysdeps/unix/sysv/linux/msgsnd.c
+-index 554516f2ca..9e329d8e72 100644
+---- a/sysdeps/unix/sysv/linux/msgsnd.c
+-+++ b/sysdeps/unix/sysv/linux/msgsnd.c
+-@@ -24,10 +24,11 @@ int
+- __libc_msgsnd (int msqid, const void *msgp, size_t msgsz, int msgflg)
+- {
+- #ifdef __ASSUME_DIRECT_SYSVIPC_SYSCALLS
+--  return SYSCALL_CANCEL (msgsnd, msqid, msgp, msgsz, msgflg);
+-+  return SYSCALL_CANCEL (msgsnd, msqid, msgp, SYSCALL_ULONG (msgsz),
+-+			 msgflg);
+- #else
+--  return SYSCALL_CANCEL (ipc, IPCOP_msgsnd, msqid, msgsz, msgflg,
+--			 msgp);
+-+  return SYSCALL_CANCEL (ipc, IPCOP_msgsnd, msqid, SYSCALL_ULONG (msgsz),
+-+			 msgflg, msgp);
+- #endif
+- }
+- weak_alias (__libc_msgsnd, msgsnd)
+-diff --git a/sysdeps/unix/sysv/linux/msync.c b/sysdeps/unix/sysv/linux/msync.c
+-index de1dd2ac5e..0ef48a1eaf 100644
+---- a/sysdeps/unix/sysv/linux/msync.c
+-+++ b/sysdeps/unix/sysv/linux/msync.c
+-@@ -22,5 +22,5 @@
+- int
+- msync (void *addr, size_t length, int flags)
+- {
+--  return SYSCALL_CANCEL (msync, addr, length, flags);
+-+  return SYSCALL_CANCEL (msync, addr, SYSCALL_ULONG (length), flags);
+- }
+-diff --git a/sysdeps/unix/sysv/linux/pkey_mprotect.c b/sysdeps/unix/sysv/linux/pkey_mprotect.c
+-index 5d372edfd5..dc1d154698 100644
+---- a/sysdeps/unix/sysv/linux/pkey_mprotect.c
+-+++ b/sysdeps/unix/sysv/linux/pkey_mprotect.c
+-@@ -29,7 +29,8 @@ pkey_mprotect (void *addr, size_t len, int prot, int pkey)
+-        mprotect.  */
+-     return __mprotect (addr, len, prot);
+- #ifdef __NR_pkey_mprotect
+--  return INLINE_SYSCALL_CALL (pkey_mprotect, addr, len, prot, pkey);
+-+  return INLINE_SYSCALL_CALL (pkey_mprotect, addr, SYSCALL_ULONG (len),
+-+			      prot, pkey);
+- #else
+-   __set_errno (ENOSYS);
+-   return -1;
+-diff --git a/sysdeps/unix/sysv/linux/pread.c b/sysdeps/unix/sysv/linux/pread.c
+-index 7a09affd34..46272b4c0b 100644
+---- a/sysdeps/unix/sysv/linux/pread.c
+-+++ b/sysdeps/unix/sysv/linux/pread.c
+-@@ -28,7 +28,8 @@
+- ssize_t
+- __libc_pread (int fd, void *buf, size_t count, off_t offset)
+- {
+--  return SYSCALL_CANCEL (pread, fd, buf, count, SYSCALL_LL_PRW (offset));
+-+  return SYSCALL_CANCEL (pread, fd, buf, SYSCALL_ULONG (count),
+-+			 SYSCALL_LL_PRW (offset));
+- }
+- 
+- strong_alias (__libc_pread, __pread)
+-diff --git a/sysdeps/unix/sysv/linux/pread64.c b/sysdeps/unix/sysv/linux/pread64.c
+-index a7f907186b..a73720ab78 100644
+---- a/sysdeps/unix/sysv/linux/pread64.c
+-+++ b/sysdeps/unix/sysv/linux/pread64.c
+-@@ -26,7 +26,8 @@
+- ssize_t
+- __libc_pread64 (int fd, void *buf, size_t count, off64_t offset)
+- {
+--  return SYSCALL_CANCEL (pread64, fd, buf, count, SYSCALL_LL64_PRW (offset));
+-+  return SYSCALL_CANCEL (pread64, fd, buf, SYSCALL_ULONG (count),
+-+			 SYSCALL_LL64_PRW (offset));
+- }
+- 
+- weak_alias (__libc_pread64, __pread64)
+-diff --git a/sysdeps/unix/sysv/linux/pread64_nocancel.c b/sysdeps/unix/sysv/linux/pread64_nocancel.c
+-index 2eb6873e66..d36efba6f0 100644
+---- a/sysdeps/unix/sysv/linux/pread64_nocancel.c
+-+++ b/sysdeps/unix/sysv/linux/pread64_nocancel.c
+-@@ -27,6 +27,7 @@
+- ssize_t
+- __pread64_nocancel (int fd, void *buf, size_t count, off64_t offset)
+- {
+--  return INLINE_SYSCALL_CALL (pread64, fd, buf, count, SYSCALL_LL64_PRW (offset));
+-+  return INLINE_SYSCALL_CALL (pread64, fd, buf, SYSCALL_ULONG (count),
+-+			      SYSCALL_LL64_PRW (offset));
+- }
+- hidden_def (__pread64_nocancel)
+-diff --git a/sysdeps/unix/sysv/linux/pwrite.c b/sysdeps/unix/sysv/linux/pwrite.c
+-index 5ef208e885..0513b70e65 100644
+---- a/sysdeps/unix/sysv/linux/pwrite.c
+-+++ b/sysdeps/unix/sysv/linux/pwrite.c
+-@@ -28,7 +28,8 @@
+- ssize_t
+- __libc_pwrite (int fd, const void *buf, size_t count, off_t offset)
+- {
+--  return SYSCALL_CANCEL (pwrite, fd, buf, count, SYSCALL_LL_PRW (offset));
+-+  return SYSCALL_CANCEL (pwrite, fd, buf, SYSCALL_ULONG (count),
+-+			 SYSCALL_LL_PRW (offset));
+- }
+- 
+- strong_alias (__libc_pwrite, __pwrite)
+-diff --git a/sysdeps/unix/sysv/linux/pwrite64.c b/sysdeps/unix/sysv/linux/pwrite64.c
+-index 632f001f5b..1a247bd9c2 100644
+---- a/sysdeps/unix/sysv/linux/pwrite64.c
+-+++ b/sysdeps/unix/sysv/linux/pwrite64.c
+-@@ -26,7 +26,8 @@
+- ssize_t
+- __libc_pwrite64 (int fd, const void *buf, size_t count, off64_t offset)
+- {
+--  return SYSCALL_CANCEL (pwrite64, fd, buf, count, SYSCALL_LL64_PRW (offset));
+-+  return SYSCALL_CANCEL (pwrite64, fd, buf, SYSCALL_ULONG (count),
+-+			 SYSCALL_LL64_PRW (offset));
+- }
+- 
+- weak_alias (__libc_pwrite64, __pwrite64)
+-diff --git a/sysdeps/unix/sysv/linux/read.c b/sysdeps/unix/sysv/linux/read.c
+-index 64f558a587..6c37b4fba9 100644
+---- a/sysdeps/unix/sysv/linux/read.c
+-+++ b/sysdeps/unix/sysv/linux/read.c
+-@@ -23,7 +23,7 @@
+- ssize_t
+- __libc_read (int fd, void *buf, size_t nbytes)
+- {
+--  return SYSCALL_CANCEL (read, fd, buf, nbytes);
+-+  return SYSCALL_CANCEL (read, fd, buf, SYSCALL_ULONG (nbytes));
+- }
+- libc_hidden_def (__libc_read)
+- 
+-diff --git a/sysdeps/unix/sysv/linux/read_nocancel.c b/sysdeps/unix/sysv/linux/read_nocancel.c
+-index f9d8a3b563..4a734e9d83 100644
+---- a/sysdeps/unix/sysv/linux/read_nocancel.c
+-+++ b/sysdeps/unix/sysv/linux/read_nocancel.c
+-@@ -23,6 +23,6 @@
+- ssize_t
+- __read_nocancel (int fd, void *buf, size_t nbytes)
+- {
+--  return INLINE_SYSCALL_CALL (read, fd, buf, nbytes);
+-+  return INLINE_SYSCALL_CALL (read, fd, buf, SYSCALL_ULONG (nbytes));
+- }
+- hidden_def (__read_nocancel)
+-diff --git a/sysdeps/unix/sysv/linux/readahead.c b/sysdeps/unix/sysv/linux/readahead.c
+-index a189c3ac79..46a98c000a 100644
+---- a/sysdeps/unix/sysv/linux/readahead.c
+-+++ b/sysdeps/unix/sysv/linux/readahead.c
+-@@ -25,6 +25,6 @@ __readahead (int fd, off64_t offset, size_t count)
+- {
+-   return INLINE_SYSCALL_CALL (readahead, fd,
+- 			      __ALIGNMENT_ARG SYSCALL_LL64 (offset),
+--			      count);
+-+			      SYSCALL_ULONG (count));
+- }
+- weak_alias (__readahead, readahead)
+-diff --git a/sysdeps/unix/sysv/linux/recv.c b/sysdeps/unix/sysv/linux/recv.c
+-index 79fb3c32d1..9ab079cc7c 100644
+---- a/sysdeps/unix/sysv/linux/recv.c
+-+++ b/sysdeps/unix/sysv/linux/recv.c
+-@@ -23,11 +23,12 @@ ssize_t
+- __libc_recv (int fd, void *buf, size_t len, int flags)
+- {
+- #ifdef __ASSUME_RECV_SYSCALL
+--  return SYSCALL_CANCEL (recv, fd, buf, len, flags);
+-+  return SYSCALL_CANCEL (recv, fd, buf, SYSCALL_ULONG (len), flags);
+- #elif defined __ASSUME_RECVFROM_SYSCALL
+--  return SYSCALL_CANCEL (recvfrom, fd, buf, len, flags, NULL, NULL);
+-+  return SYSCALL_CANCEL (recvfrom, fd, buf, SYSCALL_ULONG (len), flags,
+-+			 NULL, NULL);
+- #else
+--  return SOCKETCALL_CANCEL (recv, fd, buf, len, flags);
+-+  return SOCKETCALL_CANCEL (recv, fd, buf, SYSCALL_ULONG (len), flags);
+- #endif
+- }
+- weak_alias (__libc_recv, recv)
+-diff --git a/sysdeps/unix/sysv/linux/recvfrom.c b/sysdeps/unix/sysv/linux/recvfrom.c
+-index 70532529c9..caf3b66738 100644
+---- a/sysdeps/unix/sysv/linux/recvfrom.c
+-+++ b/sysdeps/unix/sysv/linux/recvfrom.c
+-@@ -24,11 +24,11 @@ __libc_recvfrom (int fd, void *buf, size_t len, int flags,
+- 		 __SOCKADDR_ARG addr, socklen_t *addrlen)
+- {
+- #ifdef __ASSUME_RECVFROM_SYSCALL
+--  return SYSCALL_CANCEL (recvfrom, fd, buf, len, flags, addr.__sockaddr__,
+--                         addrlen);
+-+  return SYSCALL_CANCEL (recvfrom, fd, buf, SYSCALL_ULONG (len), flags,
+-+			 addr.__sockaddr__, addrlen);
+- #else
+--  return SOCKETCALL_CANCEL (recvfrom, fd, buf, len, flags, addr.__sockaddr__,
+--			    addrlen);
+-+  return SOCKETCALL_CANCEL (recvfrom, fd, buf, SYSCALL_ULONG (len),
+-+			    flags, addr.__sockaddr__, addrlen);
+- #endif
+- }
+- weak_alias (__libc_recvfrom, recvfrom)
+-diff --git a/sysdeps/unix/sysv/linux/sched_setaffinity.c b/sysdeps/unix/sysv/linux/sched_setaffinity.c
+-index bc0c42ce52..f5d5496d67 100644
+---- a/sysdeps/unix/sysv/linux/sched_setaffinity.c
+-+++ b/sysdeps/unix/sysv/linux/sched_setaffinity.c
+-@@ -32,7 +32,8 @@ libc_hidden_proto (__sched_setaffinity_new)
+- int
+- __sched_setaffinity_new (pid_t pid, size_t cpusetsize, const cpu_set_t *cpuset)
+- {
+--  int result = INLINE_SYSCALL (sched_setaffinity, 3, pid, cpusetsize, cpuset);
+-+  int result = INLINE_SYSCALL (sched_setaffinity, 3, pid,
+-+			       SYSCALL_ULONG (cpusetsize), cpuset);
+- 
+- #ifdef RESET_VGETCPU_CACHE
+-   if (result != -1)
+-diff --git a/sysdeps/unix/sysv/linux/semtimedop.c b/sysdeps/unix/sysv/linux/semtimedop.c
+-index 6fdde09bad..f3b240ca9b 100644
+---- a/sysdeps/unix/sysv/linux/semtimedop.c
+-+++ b/sysdeps/unix/sysv/linux/semtimedop.c
+-@@ -30,10 +30,12 @@ __semtimedop (int semid, struct sembuf *sops, size_t nsops,
+-   /* semtimedop wire-up syscall is not exported for 32-bit ABIs (they have
+-      semtimedop_time64 instead with uses a 64-bit time_t).  */
+- #if defined __ASSUME_DIRECT_SYSVIPC_SYSCALLS && defined __NR_semtimedop
+--  return INLINE_SYSCALL_CALL (semtimedop, semid, sops, nsops, timeout);
+-+  return INLINE_SYSCALL_CALL (semtimedop, semid, sops,
+-+			      SYSCALL_ULONG (nsops), timeout);
+- #else
+-   return INLINE_SYSCALL_CALL (ipc, IPCOP_semtimedop, semid,
+--			      SEMTIMEDOP_IPC_ARGS (nsops, sops, timeout));
+-+			      SEMTIMEDOP_IPC_ARGS (SYSCALL_ULONG (nsops),
+-+						   sops, timeout));
+- #endif
+- }
+- weak_alias (__semtimedop, semtimedop)
+-diff --git a/sysdeps/unix/sysv/linux/send.c b/sysdeps/unix/sysv/linux/send.c
+-index aed7d06585..cd8725d05b 100644
+---- a/sysdeps/unix/sysv/linux/send.c
+-+++ b/sysdeps/unix/sysv/linux/send.c
+-@@ -23,11 +23,12 @@ ssize_t
+- __libc_send (int fd, const void *buf, size_t len, int flags)
+- {
+- #ifdef __ASSUME_SEND_SYSCALL
+--  return SYSCALL_CANCEL (send, fd, buf, len, flags);
+-+  return SYSCALL_CANCEL (send, fd, buf, SYSCALL_ULONG (len), flags);
+- #elif defined __ASSUME_SENDTO_SYSCALL
+--  return SYSCALL_CANCEL (sendto, fd, buf, len, flags, NULL, 0);
+-+  return SYSCALL_CANCEL (sendto, fd, buf, SYSCALL_ULONG (len), flags,
+-+			 NULL, 0);
+- #else
+--  return SOCKETCALL_CANCEL (send, fd, buf, len, flags);
+-+  return SOCKETCALL_CANCEL (send, fd, buf, SYSCALL_ULONG (len), flags);
+- #endif
+- }
+- weak_alias (__libc_send, send)
+-diff --git a/sysdeps/unix/sysv/linux/sendto.c b/sysdeps/unix/sysv/linux/sendto.c
+-index 670d0679ea..ceb61305af 100644
+---- a/sysdeps/unix/sysv/linux/sendto.c
+-+++ b/sysdeps/unix/sysv/linux/sendto.c
+-@@ -24,11 +24,11 @@ __libc_sendto (int fd, const void *buf, size_t len, int flags,
+- 	       __CONST_SOCKADDR_ARG addr, socklen_t addrlen)
+- {
+- #ifdef __ASSUME_SENDTO_SYSCALL
+--  return SYSCALL_CANCEL (sendto, fd, buf, len, flags, addr.__sockaddr__,
+--                         addrlen);
+-+  return SYSCALL_CANCEL (sendto, fd, buf, SYSCALL_ULONG (len), flags,
+-+			 addr.__sockaddr__, addrlen);
+- #else
+--  return SOCKETCALL_CANCEL (sendto, fd, buf, len, flags, addr.__sockaddr__,
+--			    addrlen);
+-+  return SOCKETCALL_CANCEL (sendto, fd, buf, SYSCALL_ULONG (len), flags,
+-+			    addr.__sockaddr__, addrlen);
+- #endif
+- }
+- weak_alias (__libc_sendto, sendto)
+-diff --git a/sysdeps/unix/sysv/linux/shmget.c b/sysdeps/unix/sysv/linux/shmget.c
+-index 6f7ce8c057..1032142170 100644
+---- a/sysdeps/unix/sysv/linux/shmget.c
+-+++ b/sysdeps/unix/sysv/linux/shmget.c
+-@@ -28,8 +28,10 @@ int
+- shmget (key_t key, size_t size, int shmflg)
+- {
+- #ifdef __ASSUME_DIRECT_SYSVIPC_SYSCALLS
+--  return INLINE_SYSCALL_CALL (shmget, key, size, shmflg, NULL);
+-+  return INLINE_SYSCALL_CALL (shmget, key, SYSCALL_ULONG (size),
+-+			      shmflg, NULL);
+- #else
+--  return INLINE_SYSCALL_CALL (ipc, IPCOP_shmget, key, size, shmflg, NULL);
+-+  return INLINE_SYSCALL_CALL (ipc, IPCOP_shmget, key,
+-+			      SYSCALL_ULONG (size), shmflg, NULL);
+- #endif
+- }
+-diff --git a/sysdeps/unix/sysv/linux/splice.c b/sysdeps/unix/sysv/linux/splice.c
+-index fe21cf1988..199608fffa 100644
+---- a/sysdeps/unix/sysv/linux/splice.c
+-+++ b/sysdeps/unix/sysv/linux/splice.c
+-@@ -23,5 +23,6 @@ ssize_t
+- splice (int fd_in, loff_t *off_in, int fd_out, loff_t *off_out, size_t len,
+- 	unsigned int flags)
+- {
+--  return SYSCALL_CANCEL (splice, fd_in, off_in, fd_out, off_out, len, flags);
+-+  return SYSCALL_CANCEL (splice, fd_in, off_in, fd_out, off_out,
+-+			 SYSCALL_ULONG (len), flags);
+- }
+-diff --git a/sysdeps/unix/sysv/linux/sysdep.h b/sysdeps/unix/sysv/linux/sysdep.h
+-index c7f3e54d37..18a58725d4 100644
+---- a/sysdeps/unix/sysv/linux/sysdep.h
+-+++ b/sysdeps/unix/sysv/linux/sysdep.h
+-@@ -63,6 +63,11 @@
+-  (long) (val), \
+-  (long) (((uint64_t) (val)) >> 32)
+- 
+-+/* Provide common macros to pass long/unsigned long (ssize_t/size_t)
+-+   values on syscalls.  */
+-+#define SYSCALL_LONG(val) (val)
+-+#define SYSCALL_ULONG(val) (val)
+-+
+- /* Exports the __send symbol on send.c linux implementation (some ABI have
+-    it missing due the usage of a old generic version without it).  */
+- #define HAVE_INTERNAL_SEND_SYMBOL	1
+-diff --git a/sysdeps/unix/sysv/linux/tee.c b/sysdeps/unix/sysv/linux/tee.c
+-index 0e62c226dd..f404768ef6 100644
+---- a/sysdeps/unix/sysv/linux/tee.c
+-+++ b/sysdeps/unix/sysv/linux/tee.c
+-@@ -22,5 +22,5 @@
+- ssize_t
+- tee (int src, int dest, size_t len, unsigned int flags)
+- {
+--  return SYSCALL_CANCEL (tee, src, dest, len, flags);
+-+  return SYSCALL_CANCEL (tee, src, dest, SYSCALL_ULONG (len), flags);
+- }
+-diff --git a/sysdeps/unix/sysv/linux/vmsplice.c b/sysdeps/unix/sysv/linux/vmsplice.c
+-index 17cc7bf8e7..e338a73944 100644
+---- a/sysdeps/unix/sysv/linux/vmsplice.c
+-+++ b/sysdeps/unix/sysv/linux/vmsplice.c
+-@@ -23,5 +23,5 @@
+- ssize_t
+- vmsplice (int fd, const struct iovec *iov, size_t count, unsigned int flags)
+- {
+--  return SYSCALL_CANCEL (vmsplice, fd, iov, count, flags);
+-+  return SYSCALL_CANCEL (vmsplice, fd, iov, SYSCALL_ULONG (count), flags);
+- }
+-diff --git a/sysdeps/unix/sysv/linux/write.c b/sysdeps/unix/sysv/linux/write.c
+-index 7848f7de27..2176572425 100644
+---- a/sysdeps/unix/sysv/linux/write.c
+-+++ b/sysdeps/unix/sysv/linux/write.c
+-@@ -23,7 +23,7 @@
+- ssize_t
+- __libc_write (int fd, const void *buf, size_t nbytes)
+- {
+--  return SYSCALL_CANCEL (write, fd, buf, nbytes);
+-+  return SYSCALL_CANCEL (write, fd, buf, SYSCALL_ULONG (nbytes));
+- }
+- libc_hidden_def (__libc_write)
+- 
+-diff --git a/sysdeps/unix/sysv/linux/write_nocancel.c b/sysdeps/unix/sysv/linux/write_nocancel.c
+-index 36d406cf74..17aa7d4797 100644
+---- a/sysdeps/unix/sysv/linux/write_nocancel.c
+-+++ b/sysdeps/unix/sysv/linux/write_nocancel.c
+-@@ -23,6 +23,6 @@
+- ssize_t
+- __write_nocancel (int fd, const void *buf, size_t nbytes)
+- {
+--  return INLINE_SYSCALL_CALL (write, fd, buf, nbytes);
+-+  return INLINE_SYSCALL_CALL (write, fd, buf, SYSCALL_ULONG (nbytes));
+- }
+- hidden_def (__write_nocancel)
+-diff --git a/sysdeps/unix/sysv/linux/x86_64/sysdep.h b/sysdeps/unix/sysv/linux/x86_64/sysdep.h
+-index c2eb37e575..bc9be1f21d 100644
+---- a/sysdeps/unix/sysv/linux/x86_64/sysdep.h
+-+++ b/sysdeps/unix/sysv/linux/x86_64/sysdep.h
+-@@ -61,13 +61,27 @@
+- #  define SYSCALL_ERROR_LABEL syscall_error
+- # endif
+- 
+-+# ifndef SYSCALL_ULONG_ARG_1
+-+#  define SYSCALL_ULONG_ARG_1 0
+-+#  define SYSCALL_ULONG_ARG_2 0
+-+# endif
+-+
+- # undef	PSEUDO
+--# define PSEUDO(name, syscall_name, args)				      \
+--  .text;								      \
+--  ENTRY (name)								      \
+--    DO_CALL (syscall_name, args);					      \
+--    cmpq $-4095, %rax;							      \
+-+# if SYSCALL_ULONG_ARG_1
+-+#  define PSEUDO(name, syscall_name, args, long_arg_1, long_arg_2) \
+-+  .text;							      \
+-+  ENTRY (name)							      \
+-+    DO_CALL (syscall_name, args, long_arg_1, long_arg_2);	      \
+-+    cmpq $-4095, %rax;						      \
+-     jae SYSCALL_ERROR_LABEL
+-+# else
+-+#  define PSEUDO(name, syscall_name, args) \
+-+  .text;							      \
+-+  ENTRY (name)							      \
+-+    DO_CALL (syscall_name, args, 0, 0);				      \
+-+    cmpq $-4095, %rax;						      \
+-+    jae SYSCALL_ERROR_LABEL
+-+# endif
+- 
+- # undef	PSEUDO_END
+- # define PSEUDO_END(name)						      \
+-@@ -75,10 +89,17 @@
+-   END (name)
+- 
+- # undef	PSEUDO_NOERRNO
+--# define PSEUDO_NOERRNO(name, syscall_name, args) \
+--  .text;								      \
+--  ENTRY (name)								      \
+--    DO_CALL (syscall_name, args)
+-+# if SYSCALL_ULONG_ARG_1
+-+#  define PSEUDO_NOERRNO(name, syscall_name, args, long_arg_1, long_arg_2) \
+-+  .text;							      \
+-+  ENTRY (name)							      \
+-+    DO_CALL (syscall_name, args, long_arg_1, long_arg_2)
+-+# else
+-+#  define PSEUDO_NOERRNO(name, syscall_name, args) \
+-+  .text;							      \
+-+  ENTRY (name)							      \
+-+    DO_CALL (syscall_name, args, 0, 0)
+-+# endif
+- 
+- # undef	PSEUDO_END_NOERRNO
+- # define PSEUDO_END_NOERRNO(name) \
+-@@ -87,11 +108,19 @@
+- # define ret_NOERRNO ret
+- 
+- # undef	PSEUDO_ERRVAL
+--# define PSEUDO_ERRVAL(name, syscall_name, args) \
+--  .text;								      \
+--  ENTRY (name)								      \
+--    DO_CALL (syscall_name, args);					      \
+-+# if SYSCALL_ULONG_ARG_1
+-+#  define PSEUDO_ERRVAL(name, syscall_name, args, long_arg_1, long_arg_2) \
+-+  .text;							\
+-+  ENTRY (name)							\
+-+    DO_CALL (syscall_name, args, long_arg_1, long_arg_2);	\
+-     negq %rax
+-+# else
+-+#  define PSEUDO_ERRVAL(name, syscall_name, args) \
+-+  .text;							\
+-+  ENTRY (name)							\
+-+    DO_CALL (syscall_name, args, 0, 0);				\
+-+    negq %rax
+-+# endif
+- 
+- # undef	PSEUDO_END_ERRVAL
+- # define PSEUDO_END_ERRVAL(name) \
+-@@ -163,7 +192,7 @@
+-     Syscalls of more than 6 arguments are not supported.  */
+- 
+- # undef	DO_CALL
+--# define DO_CALL(syscall_name, args)		\
+-+# define DO_CALL(syscall_name, args, long_arg_1, long_arg_2) \
+-     DOARGS_##args				\
+-     movl $SYS_ify (syscall_name), %eax;		\
+-     syscall;
+-diff --git a/sysdeps/unix/sysv/linux/x86_64/x32/syscalls.list b/sysdeps/unix/sysv/linux/x86_64/x32/syscalls.list
+-index 58ea31d1fd..dfc551d402 100644
+---- a/sysdeps/unix/sysv/linux/x86_64/x32/syscalls.list
+-+++ b/sysdeps/unix/sysv/linux/x86_64/x32/syscalls.list
+-@@ -1,4 +1,14 @@
+- # File name	Caller	Syscall name	# args	Strong name	Weak names
+- 
+-+madvise		-	madvise		i:pUi	__madvise	madvise
+-+mincore		-	mincore		i:aUV	mincore
+-+mprotect	-	mprotect	i:aUi	__mprotect	mprotect
+-+mlock		-	mlock		i:bU	mlock
+-+mount		EXTRA	mount		i:sssUp	__mount	mount
+-+mremap		EXTRA	mremap		b:aUUip	__mremap	mremap
+-+munlock		-	munlock		i:aU	munlock
+-+munmap		-	munmap		i:aU	__munmap	munmap
+- personality	EXTRA	personality	Ei:i	__personality	personality
+- posix_fadvise64	-	fadvise64	Vi:iiii	posix_fadvise	posix_fadvise64
+-+remap_file_pages -	remap_file_pages i:pUiUi	__remap_file_pages remap_file_pages
+-+sendfile	-	sendfile	i:iipU	sendfile	sendfile64
+-diff --git a/sysdeps/unix/sysv/linux/x86_64/x32/sysdep.h b/sysdeps/unix/sysv/linux/x86_64/x32/sysdep.h
+-index 5bf9eed80b..d6898eb080 100644
+---- a/sysdeps/unix/sysv/linux/x86_64/x32/sysdep.h
+-+++ b/sysdeps/unix/sysv/linux/x86_64/x32/sysdep.h
+-@@ -26,4 +26,34 @@
+- #undef LO_HI_LONG
+- #define LO_HI_LONG(val) (val)
+- 
+-+/* How to pass  pass long/unsigned long (ssize_t/size_t) on syscalls. */
+-+#undef SYSCALL_LONG
+-+#define SYSCALL_LONG(val) ((int64_t) (val))
+-+#undef SYSCALL_ULONG
+-+#define SYSCALL_ULONG(val) ((uint64_t) (val))
+-+
+-+#ifdef __ASSEMBLER__
+-+# undef	DO_CALL
+-+# define DO_CALL(syscall_name, args, long_arg_1, long_arg_2)	\
+-+  DOARGS_##args							\
+-+  ZERO_EXTEND_##long_arg_1					\
+-+  ZERO_EXTEND_##long_arg_2					\
+-+  movl $SYS_ify (syscall_name), %eax;				\
+-+  syscall;
+-+
+-+# define ZERO_EXTEND_0 /* nothing */
+-+# define ZERO_EXTEND_1 movl %edi, %edi;
+-+# define ZERO_EXTEND_2 movl %esi, %esi;
+-+# define ZERO_EXTEND_3 movl %edx, %edx;
+-+# define ZERO_EXTEND_4 movl %r10d, %r10d;
+-+# define ZERO_EXTEND_5 movl %r8d, %r8d;
+-+# define ZERO_EXTEND_6 movl %r9d, %r9d;
+-+
+-+# if SYSCALL_ULONG_ARG_1 == 4 || SYSCALL_ULONG_ARG_2 == 4
+-+#  undef ZERO_EXTEND_4
+-+#  define ZERO_EXTEND_4 /* nothing */
+-+#  define DOARGS_4 movl %ecx, %r10d;
+-+# endif
+-+#endif	/* __ASSEMBLER__ */
+-+
+- #endif /* linux/x86_64/x32/sysdep.h */
+--- 
+-2.26.0
+-
+diff --git a/glibc.spec b/glibc.spec
+index 4c97c9f..ad93586 100644
+--- a/glibc.spec
++++ b/glibc.spec
+@@ -5,7 +5,6 @@ Patch200003: 0003-i386-mcount.S-Add-_CET_ENDBR-to-_mcount-and-__fentry.patch
+ Patch200004: 0004-i386-Use-ENTRY-END-in-assembly-codes.patch
+ Patch200005: 0005-i386-Remove-_exit.S.patch
+ Patch200006: 0006-i386-Enable-CET-support-in-ucontext-functions.patch
+-Patch300000: 0001-Add-SYSCALL_LONG-SYSCALL_ULONG-to-pass-long-to-sysca.patch
+ 
+ %define glibcsrcdir glibc-2.31-17-gab029a2801
+ %define glibcversion 2.31
+-- 
+2.26.0
+
