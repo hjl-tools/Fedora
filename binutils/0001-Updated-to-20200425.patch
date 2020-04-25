@@ -1,0 +1,36 @@
+From ee5a7b37650ebe8bf5338245280a818b1d253acf Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Sat, 25 Apr 2020 08:45:26 -0700
+Subject: [PATCH] Updated to 20200425
+
+---
+ binutils.spec | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/binutils.spec b/binutils.spec
+index 0454167..4986b36 100644
+--- a/binutils.spec
++++ b/binutils.spec
+@@ -106,8 +106,8 @@ URL: https://sourceware.org/binutils
+ # too many controversial patches so we stick with the official FSF version
+ # instead.
+ 
+-%global DATE 20200421
+-Epoch: 259
++%global DATE 20200425
++Epoch: 260
+ Source: binutils-%{version}-%{DATE}.tar.bz2
+ #Source: https://ftp.gnu.org/gnu/binutils/binutils-%{version}.tar.xz
+ 
+@@ -373,7 +373,7 @@ Conflicts: gcc-c++ < 4.0.0
+ %patch14 -p1
+ %patch15 -p1
+ #%patch16 -p1
+-%patch17 -p1
++#%patch17 -p1
+ 
+ # We cannot run autotools as there is an exact requirement of autoconf-2.59.
+ # FIXME - this is no longer true.  Maybe try reinstating autotool use ?
+-- 
+2.26.1
+
