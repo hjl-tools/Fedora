@@ -1,0 +1,25 @@
+From c3b2b9c1de1d76e0bce68beafc8c67455f5bedab Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Wed, 29 Apr 2020 10:40:12 -0700
+Subject: [PATCH] Define buildid to .5.cet
+
+---
+ kernel.spec | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/kernel.spec b/kernel.spec
+index 71d7ebdbe..5642c3b60 100644
+--- a/kernel.spec
++++ b/kernel.spec
+@@ -109,7 +109,7 @@ Summary: The Linux kernel
+ %global zipsed -e 's/\.ko$/\.ko.xz/'
+ %endif
+ 
+-%define buildid .3.cet
++%define buildid .5.cet
+ 
+ 
+ %if 0%{?fedora}
+-- 
+2.25.4
+
