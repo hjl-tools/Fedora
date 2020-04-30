@@ -1,0 +1,493 @@
+From 35e707c9802423aa4c08dce5db820e1bb74567a8 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Thu, 30 Apr 2020 12:43:17 -0700
+Subject: [PATCH 1/2] Update Apply x32: Properly pass long to syscall [BZ
+ #25810]
+
+Mark unsigned long arguments with U in more syscalls [BZ #25810]
+Add C wrappers for process_vm_readv/process_vm_writev [BZ #25810]
+Add a C wrapper for prctl [BZ #25896]
+---
+ ...operly-pass-long-to-syscall-BZ-25810.patch |   8 +-
+ ...G_ARG_-12-to-pass-long-to-syscall-BZ.patch |  10 +-
+ 0003-Add-a-syscall-test-for-BZ-25810.patch    |   8 +-
+ ...ng-arguments-with-U-in-more-syscalls.patch | 110 +++++++++++++++
+ ...or-process_vm_readv-process_vm_write.patch | 126 ++++++++++++++++++
+ 0006-Add-a-C-wrapper-for-prctl-BZ-25896.patch | 111 +++++++++++++++
+ glibc.spec                                    |   3 +
+ 7 files changed, 366 insertions(+), 10 deletions(-)
+ create mode 100644 0004-Mark-unsigned-long-arguments-with-U-in-more-syscalls.patch
+ create mode 100644 0005-Add-C-wrappers-for-process_vm_readv-process_vm_write.patch
+ create mode 100644 0006-Add-a-C-wrapper-for-prctl-BZ-25896.patch
+
+diff --git a/0001-x32-Properly-pass-long-to-syscall-BZ-25810.patch b/0001-x32-Properly-pass-long-to-syscall-BZ-25810.patch
+index ff37b98..a5ebb09 100644
+--- a/0001-x32-Properly-pass-long-to-syscall-BZ-25810.patch
++++ b/0001-x32-Properly-pass-long-to-syscall-BZ-25810.patch
+@@ -1,7 +1,7 @@
+-From fce6a6738ac4e08ee7b8f1ee14e9c40fe0cada8c Mon Sep 17 00:00:00 2001
++From 1e11a182923310c75d730dc3836978af5ce1d399 Mon Sep 17 00:00:00 2001
+ From: "H.J. Lu" <hjl.tools@gmail.com>
+ Date: Mon, 13 Apr 2020 10:31:26 -0700
+-Subject: [PATCH 1/3] x32: Properly pass long to syscall [BZ #25810]
++Subject: [PATCH 1/6] x32: Properly pass long to syscall [BZ #25810]
+ 
+ X32 has 32-bit long and pointer with 64-bit off_t.  Since x32 psABI
+ requires that pointers passed in registers must be zero-extended to
+@@ -45,6 +45,8 @@ For int arguments, since kernel uses only the lower 32 bits and ignores
+ the upper 32 bits in 64-bit registers, these work correctly.
+ 
+ Tested on x86-64 and x32.  There are no code changes on x86-64.
++
++(cherry picked from commit df76ff3a446a787a95cf74cb15c285464d73a93d)
+ ---
+  sysdeps/unix/sysv/linux/x86_64/sysdep.h     | 15 +++++++++------
+  sysdeps/unix/sysv/linux/x86_64/x32/sysdep.h | 16 ++++++++++++++++
+@@ -102,5 +104,5 @@ index 5bf9eed80b..a37d520f86 100644
+ +
+  #endif /* linux/x86_64/x32/sysdep.h */
+ -- 
+-2.26.0
++2.26.2
+ 
+diff --git a/0002-Add-SYSCALL_ULONG_ARG_-12-to-pass-long-to-syscall-BZ.patch b/0002-Add-SYSCALL_ULONG_ARG_-12-to-pass-long-to-syscall-BZ.patch
+index 61dfec7..6a4f8d4 100644
+--- a/0002-Add-SYSCALL_ULONG_ARG_-12-to-pass-long-to-syscall-BZ.patch
++++ b/0002-Add-SYSCALL_ULONG_ARG_-12-to-pass-long-to-syscall-BZ.patch
+@@ -1,7 +1,7 @@
+-From 26cc1cf15f30e61209d1a9ab76f5f68b69461130 Mon Sep 17 00:00:00 2001
++From 9309ec634db5ccd1bf3922473146ac72543ed119 Mon Sep 17 00:00:00 2001
+ From: "H.J. Lu" <hjl.tools@gmail.com>
+-Date: Fri, 10 Apr 2020 05:46:45 -0700
+-Subject: [PATCH 2/3] Add SYSCALL_ULONG_ARG_[12] to pass long to syscall [BZ
++Date: Wed, 29 Apr 2020 05:35:34 -0700
++Subject: [PATCH 2/6] Add SYSCALL_ULONG_ARG_[12] to pass long to syscall [BZ
+  #25810]
+ 
+ X32 has 32-bit long and pointer with 64-bit off_t.  Since x32 psABI
+@@ -20,6 +20,8 @@ arguments if PSEUDOS_HAVE_ULONG_INDICES is defined.  They are used by
+ x32 to zero-extend 32-bit arguments to 64 bits.
+ 
+ Tested on i386, x86-64 and x32 as well as with build-many-glibcs.py.
++
++(cherry picked from commit 2ad5d0845d80589d0adf86593bd36a7c71a521f8)
+ ---
+  sysdeps/unix/make-syscalls.sh               | 24 +++++++
+  sysdeps/unix/syscall-template.S             | 49 +++++++++++++-
+@@ -390,5 +392,5 @@ index a37d520f86..62e6f8fe11 100644
+  /* Enforce zero-extension for pointers and array system call arguments.
+     For integer types, extend to int64_t (the full register) using a
+ -- 
+-2.26.0
++2.26.2
+ 
+diff --git a/0003-Add-a-syscall-test-for-BZ-25810.patch b/0003-Add-a-syscall-test-for-BZ-25810.patch
+index daf8368..18ae11b 100644
+--- a/0003-Add-a-syscall-test-for-BZ-25810.patch
++++ b/0003-Add-a-syscall-test-for-BZ-25810.patch
+@@ -1,12 +1,14 @@
+-From 5a99366631cae9aae5a04c1b06b64d8f2401f714 Mon Sep 17 00:00:00 2001
++From 6a5a2ce911ae6ba4d0a6915348cf8f58e72d5a30 Mon Sep 17 00:00:00 2001
+ From: "H.J. Lu" <hjl.tools@gmail.com>
+ Date: Wed, 22 Apr 2020 09:48:10 -0700
+-Subject: [PATCH 3/3] Add a syscall test for [BZ #25810]
++Subject: [PATCH 3/6] Add a syscall test for [BZ #25810]
+ 
+ Add a test to pass 64-bit long arguments to syscall with undefined upper
+ 32 bits on x32.
+ 
+ Tested on i386, x86-64 and x32 as well as with build-many-glibcs.py.
++
++(cherry picked from commit 781dacc4f41332098e3a272514b20a490a7ebc8c)
+ ---
+  misc/Makefile       |   2 +-
+  misc/tst-syscalls.c | 167 ++++++++++++++++++++++++++++++++++++++++++++
+@@ -200,5 +202,5 @@ index 0000000000..cfcd382320
+ +
+ +#include <support/test-driver.c>
+ -- 
+-2.26.0
++2.26.2
+ 
+diff --git a/0004-Mark-unsigned-long-arguments-with-U-in-more-syscalls.patch b/0004-Mark-unsigned-long-arguments-with-U-in-more-syscalls.patch
+new file mode 100644
+index 0000000..02a248f
+--- /dev/null
++++ b/0004-Mark-unsigned-long-arguments-with-U-in-more-syscalls.patch
+@@ -0,0 +1,110 @@
++From 65840d613e874b6970910c8b30aba14d33a9895c Mon Sep 17 00:00:00 2001
++From: "H.J. Lu" <hjl.tools@gmail.com>
++Date: Wed, 29 Apr 2020 08:08:40 -0700
++Subject: [PATCH 4/6] Mark unsigned long arguments with U in more syscalls [BZ
++ #25810]
++
++Mark unsigned long arguments in mmap, read, recv, recvfrom, send, sendto,
++write, ioperm, sendfile64, setxattr, lsetxattr, fsetxattr, getxattr,
++lgetxattr, fgetxattr, listxattr, llistxattr and flistxattr with U in
++syscalls.list files.
++
++(cherry picked from commit 86f4f2263bf21ff7f80905b3062c16213b016fe6)
++---
++ sysdeps/unix/syscalls.list            | 14 +++++++-------
++ sysdeps/unix/sysv/linux/syscalls.list | 22 +++++++++++-----------
++ 2 files changed, 18 insertions(+), 18 deletions(-)
++
++diff --git a/sysdeps/unix/syscalls.list b/sysdeps/unix/syscalls.list
++index 5ca991acbf..6b22b2cb45 100644
++--- a/sysdeps/unix/syscalls.list
+++++ b/sysdeps/unix/syscalls.list
++@@ -41,25 +41,25 @@ listen		-	listen		i:ii	__listen	listen
++ lseek		-	lseek		i:iii	__libc_lseek	__lseek lseek
++ madvise		-	madvise		i:pUi	__madvise	madvise
++ mkdir		-	mkdir		i:si	__mkdir		mkdir
++-mmap		-	mmap		b:aniiii __mmap		mmap
+++mmap		-	mmap		b:aUiiii __mmap		mmap
++ mprotect	-	mprotect	i:aUi	__mprotect	mprotect
++ munmap		-	munmap		i:aU	__munmap	munmap
++ open		-	open		Ci:siv	__libc_open __open open
++ profil		-	profil		i:piii	__profil	profil
++ ptrace		-	ptrace		i:iiii	ptrace
++-read		-	read		Ci:ibn	__libc_read	__read read
+++read		-	read		Ci:ibU	__libc_read	__read read
++ readlink	-	readlink	i:spU	__readlink	readlink
++ readv		-	readv		Ci:ipi	__readv		readv
++ reboot		-	reboot		i:i	reboot
++-recv		-	recv		Ci:ibni	__libc_recv	recv
++-recvfrom	-	recvfrom	Ci:ibniBN	__libc_recvfrom __recvfrom recvfrom
+++recv		-	recv		Ci:ibUi	__libc_recv	recv
+++recvfrom	-	recvfrom	Ci:ibUiBN	__libc_recvfrom __recvfrom recvfrom
++ recvmsg		-	recvmsg		Ci:ipi	__libc_recvmsg	__recvmsg recvmsg
++ rename		-	rename		i:ss	rename
++ rmdir		-	rmdir		i:s	__rmdir		rmdir
++ select		-	select		Ci:iPPPP	__select	__libc_select select
++-send		-	send		Ci:ibni	__libc_send	__send send
+++send		-	send		Ci:ibUi	__libc_send	__send send
++ sendmsg		-	sendmsg		Ci:ipi	__libc_sendmsg	__sendmsg sendmsg
++-sendto		-	sendto		Ci:ibnibn	__libc_sendto	__sendto sendto
+++sendto		-	sendto		Ci:ibUibn	__libc_sendto	__sendto sendto
++ setdomain	-	setdomainname	i:si	setdomainname
++ setegid		-	setegid		i:i	__setegid	setegid
++ seteuid		-	seteuid		i:i	__seteuid	seteuid
++@@ -94,5 +94,5 @@ uname		-	uname		i:p	__uname		uname
++ unlink		-	unlink		i:s	__unlink	unlink
++ utimes		-	utimes		i:sp	__utimes	utimes
++ vhangup		-	vhangup		i:i	vhangup
++-write		-	write		Ci:ibn	__libc_write	__write write
+++write		-	write		Ci:ibU	__libc_write	__write write
++ writev		-	writev		Ci:ipi	__writev	writev
++diff --git a/sysdeps/unix/sysv/linux/syscalls.list b/sysdeps/unix/sysv/linux/syscalls.list
++index e8d55c8ce0..76dd308d82 100644
++--- a/sysdeps/unix/sysv/linux/syscalls.list
+++++ b/sysdeps/unix/sysv/linux/syscalls.list
++@@ -28,7 +28,7 @@ inotify_add_watch	EXTRA	inotify_add_watch	i:isi	inotify_add_watch
++ inotify_init	EXTRA	inotify_init	i:	inotify_init
++ inotify_init1	EXTRA	inotify_init1	i:I	inotify_init1
++ inotify_rm_watch	EXTRA	inotify_rm_watch	i:ii	inotify_rm_watch
++-ioperm		-	ioperm		i:iii	ioperm
+++ioperm		-	ioperm		i:UUi	ioperm
++ iopl		-	iopl		i:i	iopl
++ klogctl		EXTRA	syslog		i:isi	klogctl
++ lchown		-	lchown		i:sii	__lchown	lchown
++@@ -56,7 +56,7 @@ sched_setp	-	sched_setparam	i:ip	__sched_setparam	sched_setparam
++ sched_sets	-	sched_setscheduler	i:iip	__sched_setscheduler	sched_setscheduler
++ sched_yield	-	sched_yield	i:	__sched_yield	sched_yield
++ sendfile	-	sendfile	i:iipU	sendfile
++-sendfile64	-	sendfile64	i:iipi	sendfile64
+++sendfile64	-	sendfile64	i:iipU	sendfile64
++ setfsgid	EXTRA	setfsgid	i:i	setfsgid
++ setfsuid	EXTRA	setfsuid	i:i	setfsuid
++ setpgid		-	setpgid		i:ii	__setpgid	setpgid
++@@ -77,15 +77,15 @@ readlinkat	-	readlinkat	i:issU	readlinkat
++ symlinkat	-	symlinkat	i:sis	symlinkat
++ unlinkat	-	unlinkat	i:isi	unlinkat
++ 
++-setxattr	-	setxattr	i:sspii	setxattr
++-lsetxattr	-	lsetxattr	i:sspii	lsetxattr
++-fsetxattr	-	fsetxattr	i:ispii	fsetxattr
++-getxattr	-	getxattr	i:sspi	getxattr
++-lgetxattr	-	lgetxattr	i:sspi	lgetxattr
++-fgetxattr	-	fgetxattr	i:ispi	fgetxattr
++-listxattr	-	listxattr	i:ssi	listxattr
++-llistxattr	-	llistxattr	i:ssi	llistxattr
++-flistxattr	-	flistxattr	i:isi	flistxattr
+++setxattr	-	setxattr	i:sspUi	setxattr
+++lsetxattr	-	lsetxattr	i:sspUi	lsetxattr
+++fsetxattr	-	fsetxattr	i:ispUi	fsetxattr
+++getxattr	-	getxattr	i:sspU	getxattr
+++lgetxattr	-	lgetxattr	i:sspU	lgetxattr
+++fgetxattr	-	fgetxattr	i:ispU	fgetxattr
+++listxattr	-	listxattr	i:ssU	listxattr
+++llistxattr	-	llistxattr	i:ssU	llistxattr
+++flistxattr	-	flistxattr	i:isU	flistxattr
++ removexattr	-	removexattr	i:ss	removexattr
++ lremovexattr	-	lremovexattr	i:ss	lremovexattr
++ fremovexattr	-	fremovexattr	i:is	fremovexattr
++-- 
++2.26.2
++
+diff --git a/0005-Add-C-wrappers-for-process_vm_readv-process_vm_write.patch b/0005-Add-C-wrappers-for-process_vm_readv-process_vm_write.patch
+new file mode 100644
+index 0000000..d359308
+--- /dev/null
++++ b/0005-Add-C-wrappers-for-process_vm_readv-process_vm_write.patch
+@@ -0,0 +1,126 @@
++From 3d158e18de8ac92950f0a800cfe07e05dc7c7f5c Mon Sep 17 00:00:00 2001
++From: "H.J. Lu" <hjl.tools@gmail.com>
++Date: Wed, 29 Apr 2020 13:20:27 -0700
++Subject: [PATCH 5/6] Add C wrappers for process_vm_readv/process_vm_writev [BZ
++ #25810]
++
++Since the the U marker can only be applied to 2 unsigned long arguments
++in syscalls.list files, add a C wrapper for process_vm_readv and
++process_vm_writev syscals which have more than 2 unsigned long arguments.
++
++(cherry picked from commit ad9fd65d716f1ccd757b6b2feeee826d0f187ed4)
++---
++ sysdeps/unix/sysv/linux/Makefile            |  3 +-
++ sysdeps/unix/sysv/linux/process_vm_readv.c  | 32 +++++++++++++++++++++
++ sysdeps/unix/sysv/linux/process_vm_writev.c | 32 +++++++++++++++++++++
++ sysdeps/unix/sysv/linux/syscalls.list       |  2 --
++ 4 files changed, 66 insertions(+), 3 deletions(-)
++ create mode 100644 sysdeps/unix/sysv/linux/process_vm_readv.c
++ create mode 100644 sysdeps/unix/sysv/linux/process_vm_writev.c
++
++diff --git a/sysdeps/unix/sysv/linux/Makefile b/sysdeps/unix/sysv/linux/Makefile
++index f12b7b1a2d..62f1642732 100644
++--- a/sysdeps/unix/sysv/linux/Makefile
+++++ b/sysdeps/unix/sysv/linux/Makefile
++@@ -60,7 +60,8 @@ sysdep_routines += adjtimex clone umount umount2 readahead \
++ 		   setfsuid setfsgid epoll_pwait signalfd \
++ 		   eventfd eventfd_read eventfd_write prlimit \
++ 		   personality epoll_wait tee vmsplice splice \
++-		   open_by_handle_at mlock2 pkey_mprotect pkey_set pkey_get
+++		   open_by_handle_at mlock2 pkey_mprotect pkey_set pkey_get \
+++		   process_vm_readv process_vm_writev
++ 
++ CFLAGS-gethostid.c = -fexceptions
++ CFLAGS-tee.c = -fexceptions -fasynchronous-unwind-tables
++diff --git a/sysdeps/unix/sysv/linux/process_vm_readv.c b/sysdeps/unix/sysv/linux/process_vm_readv.c
++new file mode 100644
++index 0000000000..e1377f7e50
++--- /dev/null
+++++ b/sysdeps/unix/sysv/linux/process_vm_readv.c
++@@ -0,0 +1,32 @@
+++/* process_vm_readv - Linux specific syscall.
+++   Copyright (C) 2020 Free Software Foundation, Inc.
+++   This file is part of the GNU C Library.
+++
+++   The GNU C Library is free software; you can redistribute it and/or
+++   modify it under the terms of the GNU Lesser General Public
+++   License as published by the Free Software Foundation; either
+++   version 2.1 of the License, or (at your option) any later version.
+++
+++   The GNU C Library is distributed in the hope that it will be useful,
+++   but WITHOUT ANY WARRANTY; without even the implied warranty of
+++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+++   Lesser General Public License for more details.
+++
+++   You should have received a copy of the GNU Lesser General Public
+++   License along with the GNU C Library; if not, see
+++   <https://www.gnu.org/licenses/>.  */
+++
+++#include <unistd.h>
+++#include <sysdep.h>
+++#include <errno.h>
+++#include <sys/uio.h>
+++
+++ssize_t
+++process_vm_readv (pid_t pid, const struct iovec *local_iov,
+++		  unsigned long int liovcnt,
+++		  const struct iovec *remote_iov,
+++		  unsigned long int riovcnt, unsigned long int flags)
+++{
+++  return INLINE_SYSCALL_CALL (process_vm_readv, pid, local_iov,
+++			      liovcnt, remote_iov, riovcnt, flags);
+++}
++diff --git a/sysdeps/unix/sysv/linux/process_vm_writev.c b/sysdeps/unix/sysv/linux/process_vm_writev.c
++new file mode 100644
++index 0000000000..944ab9b7f1
++--- /dev/null
+++++ b/sysdeps/unix/sysv/linux/process_vm_writev.c
++@@ -0,0 +1,32 @@
+++/* process_vm_writev - Linux specific syscall.
+++   Copyright (C) 2020 Free Software Foundation, Inc.
+++   This file is part of the GNU C Library.
+++
+++   The GNU C Library is free software; you can redistribute it and/or
+++   modify it under the terms of the GNU Lesser General Public
+++   License as published by the Free Software Foundation; either
+++   version 2.1 of the License, or (at your option) any later version.
+++
+++   The GNU C Library is distributed in the hope that it will be useful,
+++   but WITHOUT ANY WARRANTY; without even the implied warranty of
+++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+++   Lesser General Public License for more details.
+++
+++   You should have received a copy of the GNU Lesser General Public
+++   License along with the GNU C Library; if not, see
+++   <https://www.gnu.org/licenses/>.  */
+++
+++#include <unistd.h>
+++#include <sysdep.h>
+++#include <errno.h>
+++#include <sys/uio.h>
+++
+++ssize_t
+++process_vm_writev (pid_t pid, const struct iovec *local_iov,
+++		   unsigned long int liovcnt,
+++		   const struct iovec *remote_iov,
+++		   unsigned long int riovcnt, unsigned long int flags)
+++{
+++  return INLINE_SYSCALL_CALL (process_vm_writev, pid, local_iov,
+++			      liovcnt, remote_iov, riovcnt, flags);
+++}
++diff --git a/sysdeps/unix/sysv/linux/syscalls.list b/sysdeps/unix/sysv/linux/syscalls.list
++index 76dd308d82..5bb66d5481 100644
++--- a/sysdeps/unix/sysv/linux/syscalls.list
+++++ b/sysdeps/unix/sysv/linux/syscalls.list
++@@ -102,8 +102,6 @@ name_to_handle_at EXTRA	name_to_handle_at i:isppi name_to_handle_at
++ 
++ setns		EXTRA	setns		i:ii	setns
++ 
++-process_vm_readv EXTRA	process_vm_readv i:ipipii process_vm_readv
++-process_vm_writev EXTRA	process_vm_writev i:ipipii process_vm_writev
++ memfd_create    EXTRA	memfd_create	i:si    memfd_create
++ pkey_alloc	EXTRA	pkey_alloc	i:ii	pkey_alloc
++ pkey_free	EXTRA	pkey_free	i:i	pkey_free
++-- 
++2.26.2
++
+diff --git a/0006-Add-a-C-wrapper-for-prctl-BZ-25896.patch b/0006-Add-a-C-wrapper-for-prctl-BZ-25896.patch
+new file mode 100644
+index 0000000..939749c
+--- /dev/null
++++ b/0006-Add-a-C-wrapper-for-prctl-BZ-25896.patch
+@@ -0,0 +1,111 @@
++From f87ff4e762db3c311db9e6c5325e9c8c72648873 Mon Sep 17 00:00:00 2001
++From: "H.J. Lu" <hjl.tools@gmail.com>
++Date: Thu, 30 Apr 2020 10:42:43 -0700
++Subject: [PATCH 6/6] Add a C wrapper for prctl [BZ #25896]
++
++Add a C wrapper to pass arguments in
++
++/* Control process execution.  */
++extern int prctl (int __option, ...) __THROW;
++
++to prctl syscall:
++
++extern int prctl (int, unsigned long int, unsigned long int,
++		  unsigned long int, unsigned long int);
++
++(cherry picked from commit ff026950e280bc3e9487b41b460fb31bc5b57721)
++---
++ include/sys/prctl.h                   |  1 +
++ sysdeps/unix/sysv/linux/Makefile      |  1 +
++ sysdeps/unix/sysv/linux/prctl.c       | 42 +++++++++++++++++++++++++++
++ sysdeps/unix/sysv/linux/syscalls.list |  1 -
++ 4 files changed, 44 insertions(+), 1 deletion(-)
++ create mode 100644 sysdeps/unix/sysv/linux/prctl.c
++
++diff --git a/include/sys/prctl.h b/include/sys/prctl.h
++index 0920ed642b..d33f3a290e 100644
++--- a/include/sys/prctl.h
+++++ b/include/sys/prctl.h
++@@ -4,6 +4,7 @@
++ # ifndef _ISOMAC
++ 
++ extern int __prctl (int __option, ...);
+++libc_hidden_proto (__prctl)
++ 
++ # endif /* !_ISOMAC */
++ #endif
++diff --git a/sysdeps/unix/sysv/linux/Makefile b/sysdeps/unix/sysv/linux/Makefile
++index 62f1642732..5fbde369c3 100644
++--- a/sysdeps/unix/sysv/linux/Makefile
+++++ b/sysdeps/unix/sysv/linux/Makefile
++@@ -61,6 +61,7 @@ sysdep_routines += adjtimex clone umount umount2 readahead \
++ 		   eventfd eventfd_read eventfd_write prlimit \
++ 		   personality epoll_wait tee vmsplice splice \
++ 		   open_by_handle_at mlock2 pkey_mprotect pkey_set pkey_get \
+++		   prctl \
++ 		   process_vm_readv process_vm_writev
++ 
++ CFLAGS-gethostid.c = -fexceptions
++diff --git a/sysdeps/unix/sysv/linux/prctl.c b/sysdeps/unix/sysv/linux/prctl.c
++new file mode 100644
++index 0000000000..d5725f14cf
++--- /dev/null
+++++ b/sysdeps/unix/sysv/linux/prctl.c
++@@ -0,0 +1,42 @@
+++/* prctl - Linux specific syscall.
+++   Copyright (C) 2020 Free Software Foundation, Inc.
+++   This file is part of the GNU C Library.
+++
+++   The GNU C Library is free software; you can redistribute it and/or
+++   modify it under the terms of the GNU Lesser General Public
+++   License as published by the Free Software Foundation; either
+++   version 2.1 of the License, or (at your option) any later version.
+++
+++   The GNU C Library is distributed in the hope that it will be useful,
+++   but WITHOUT ANY WARRANTY; without even the implied warranty of
+++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+++   Lesser General Public License for more details.
+++
+++   You should have received a copy of the GNU Lesser General Public
+++   License along with the GNU C Library; if not, see
+++   <https://www.gnu.org/licenses/>.  */
+++
+++#include <sysdep.h>
+++#include <stdarg.h>
+++#include <sys/prctl.h>
+++
+++/* Unconditionally read all potential arguments.  This may pass
+++   garbage values to the kernel, but avoids the need for teaching
+++   glibc the argument counts of individual options (including ones
+++   that are added to the kernel in the future).  */
+++
+++int
+++__prctl (int option, ...)
+++{
+++  va_list arg;
+++  va_start (arg, option);
+++  unsigned long int arg2 = va_arg (arg, unsigned long int);
+++  unsigned long int arg3 = va_arg (arg, unsigned long int);
+++  unsigned long int arg4 = va_arg (arg, unsigned long int);
+++  unsigned long int arg5 = va_arg (arg, unsigned long int);
+++  va_end (arg);
+++  return INLINE_SYSCALL_CALL (prctl, option, arg2, arg3, arg4, arg5);
+++}
+++
+++libc_hidden_def (__prctl)
+++weak_alias (__prctl, prctl)
++diff --git a/sysdeps/unix/sysv/linux/syscalls.list b/sysdeps/unix/sysv/linux/syscalls.list
++index 5bb66d5481..52e6dafc86 100644
++--- a/sysdeps/unix/sysv/linux/syscalls.list
+++++ b/sysdeps/unix/sysv/linux/syscalls.list
++@@ -43,7 +43,6 @@ nfsservctl	EXTRA	nfsservctl	i:ipp	__compat_nfsservctl	nfsservctl@GLIBC_2.0:GLIBC
++ pipe		-	pipe		i:f	__pipe		pipe
++ pipe2		-	pipe2		i:fi	__pipe2		pipe2
++ pivot_root	EXTRA	pivot_root	i:ss	pivot_root
++-prctl		EXTRA	prctl		i:iiiii	__prctl		prctl
++ query_module	EXTRA	query_module	i:sipip	__compat_query_module	query_module@GLIBC_2.0:GLIBC_2.23
++ quotactl	EXTRA	quotactl	i:isip	quotactl
++ remap_file_pages -	remap_file_pages i:pUiUi	__remap_file_pages remap_file_pages
++-- 
++2.26.2
++
+diff --git a/glibc.spec b/glibc.spec
+index 7961708..54d974c 100644
+--- a/glibc.spec
++++ b/glibc.spec
+@@ -8,6 +8,9 @@ Patch200006: 0006-i386-Enable-CET-support-in-ucontext-functions.patch
+ Patch300001: 0001-x32-Properly-pass-long-to-syscall-BZ-25810.patch
+ Patch300002: 0002-Add-SYSCALL_ULONG_ARG_-12-to-pass-long-to-syscall-BZ.patch
+ Patch300003: 0003-Add-a-syscall-test-for-BZ-25810.patch
++Patch300004: 0004-Mark-unsigned-long-arguments-with-U-in-more-syscalls.patch
++Patch300005: 0005-Add-C-wrappers-for-process_vm_readv-process_vm_write.patch
++Patch300006: 0006-Add-a-C-wrapper-for-prctl-BZ-25896.patch
+ 
+ %define glibcsrcdir glibc-2.31-17-gab029a2801
+ %define glibcversion 2.31
+-- 
+2.26.2
+
