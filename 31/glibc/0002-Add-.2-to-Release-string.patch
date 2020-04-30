@@ -1,0 +1,25 @@
+From 9094974c14a88b4cdc4976f63011614847221b42 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Thu, 30 Apr 2020 12:45:41 -0700
+Subject: [PATCH 2/2] Add .2 to Release string
+
+---
+ glibc.spec | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/glibc.spec b/glibc.spec
+index 341eb50..4ca4ac6 100644
+--- a/glibc.spec
++++ b/glibc.spec
+@@ -100,7 +100,7 @@ Patch300006: 0006-Add-a-C-wrapper-for-prctl-BZ-25896.patch
+ Summary: The GNU libc libraries
+ Name: glibc
+ Version: %{glibcversion}
+-Release: 11.1%{?dist}
++Release: 11.2%{?dist}
+ 
+ # In general, GPLv2+ is used by programs, LGPLv2+ is used for
+ # libraries.
+-- 
+2.26.2
+
