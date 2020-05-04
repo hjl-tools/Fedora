@@ -1,0 +1,855 @@
+From 78159c6b1eab2249677e9ff811e8be2a44cb8a02 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Mon, 4 May 2020 12:46:59 -0700
+Subject: [PATCH] Update Intel CET patches for Linux kernel 5.7-rc4
+
+---
+ ...ename-validate_xstate_header-to-vali.patch |  2 +-
+ ...efine-new-macros-for-supervisor-and-.patch |  2 +-
+ ...eparate-user-and-supervisor-xfeature.patch |  2 +-
+ ...e-Introduce-XSAVES-supervisor-states.patch |  2 +-
+ ...efine-new-functions-for-clearing-fpr.patch | 74 ++++++++++---------
+ ...pdate-sanitize_restored_xstate-for-s.patch |  2 +-
+ ...pdate-copy_kernel_to_xregs_err-for-X.patch |  2 +-
+ ...-Introduce-copy_supervisor_to_kernel.patch |  2 +-
+ ...reserve-supervisor-states-for-slow-p.patch |  2 +-
+ ...estore-supervisor-states-for-signal-.patch |  2 +-
+ ...ocumentation-x86-Add-CET-description.patch |  2 +-
+ ...Add-CET-CPU-feature-flags-for-Contro.patch |  2 +-
+ ...ntroduce-CET-MSR-XSAVES-supervisor-s.patch |  2 +-
+ ...Add-control-protection-fault-handler.patch |  2 +-
+ ...d-Kconfig-option-for-user-mode-Shado.patch |  2 +-
+ ...Change-_PAGE_DIRTY-to-_PAGE_DIRTY_HW.patch |  2 +-
+ ...-_PAGE_DIRTY_HW-from-kernel-RO-pages.patch |  2 +-
+ 0018-x86-mm-Introduce-_PAGE_COW.patch         | 42 +++++------
+ ...ange-_PAGE_DIRTY-to-_PAGE_DIRTY_BITS.patch |  2 +-
+ ...6-mm-Update-pte_modify-for-_PAGE_COW.patch |  8 +-
+ ...ep_set_wrprotect-and-pmdp_set_wrprot.patch |  8 +-
+ ...uce-VM_SHSTK-for-shadow-stack-memory.patch |  2 +-
+ ...adow-Stack-page-fault-error-checking.patch |  2 +-
+ ...pdate-maybe_mkwrite-for-shadow-stack.patch |  2 +-
+ ...laces-that-call-pte_mkwrite-directly.patch |  2 +-
+ ...dd-guard-pages-around-a-shadow-stack.patch |  2 +-
+ ...dow-stack-pages-to-memory-accounting.patch |  2 +-
+ ...an_follow_write_pte-for-shadow-stack.patch |  4 +-
+ ...shstk-User-mode-shadow-stack-support.patch |  2 +-
+ ...hstk-Handle-signals-for-shadow-stack.patch |  6 +-
+ ...nfig-additions-for-ELF-program-prope.patch |  2 +-
+ ...ELF-program-property-parsing-support.patch |  2 +-
+ ...LF-Introduce-arch_setup_elf_property.patch |  2 +-
+ ...-ELF-header-parsing-for-shadow-stack.patch |  2 +-
+ ...cet-shstk-Handle-thread-shadow-stack.patch |  2 +-
+ ...d-arch_prctl-functions-for-shadow-st.patch |  2 +-
+ ...Kconfig-option-for-user-mode-Indirec.patch |  2 +-
+ ...-mode-Indirect-Branch-Tracking-suppo.patch |  2 +-
+ ...le-signals-for-Indirect-Branch-Track.patch |  2 +-
+ ...header-parsing-for-Indirect-Branch-T.patch |  2 +-
+ ...arch_prctl-functions-for-Indirect-Br.patch |  2 +-
+ ...x86-cet-Add-PTRACE-interface-for-CET.patch |  2 +-
+ ...ENDBR32-to-__kernel_vsyscall-entry-p.patch |  2 +-
+ ...-vdso-Insert-endbr32-endbr64-to-vDSO.patch |  2 +-
+ ...yscall-emulation-when-CET-is-enabled.patch |  2 +-
+ ...la-sections-when-CONFIG_RELOCATABLE-.patch |  2 +-
+ ...u.property-sections-in-generic-NOTES.patch |  2 +-
+ 47 files changed, 112 insertions(+), 112 deletions(-)
+
+diff --git a/0001-x86-fpu-xstate-Rename-validate_xstate_header-to-vali.patch b/0001-x86-fpu-xstate-Rename-validate_xstate_header-to-vali.patch
+index d4e837e14..8ab660bcb 100644
+--- a/0001-x86-fpu-xstate-Rename-validate_xstate_header-to-vali.patch
++++ b/0001-x86-fpu-xstate-Rename-validate_xstate_header-to-vali.patch
+@@ -1,4 +1,4 @@
+-From f553a0ef0d589641cfb9a441eb82d41ae0f4a5c4 Mon Sep 17 00:00:00 2001
++From 53033cf39d5bc4d46b0069f303b2cf4f671493af Mon Sep 17 00:00:00 2001
+ From: Fenghua Yu <fenghua.yu@intel.com>
+ Date: Wed, 13 Dec 2017 16:08:28 -0800
+ Subject: [PATCH 01/47] x86/fpu/xstate: Rename validate_xstate_header() to
+diff --git a/0002-x86-fpu-xstate-Define-new-macros-for-supervisor-and-.patch b/0002-x86-fpu-xstate-Define-new-macros-for-supervisor-and-.patch
+index 5648394ba..d0a3534e2 100644
+--- a/0002-x86-fpu-xstate-Define-new-macros-for-supervisor-and-.patch
++++ b/0002-x86-fpu-xstate-Define-new-macros-for-supervisor-and-.patch
+@@ -1,4 +1,4 @@
+-From fd5e637da4fac8991d16b2e654c1921444e05e36 Mon Sep 17 00:00:00 2001
++From 6e49b2a5fecd0b461bc06251fc06856742a5cff0 Mon Sep 17 00:00:00 2001
+ From: Fenghua Yu <fenghua.yu@intel.com>
+ Date: Thu, 10 Nov 2016 10:13:56 -0800
+ Subject: [PATCH 02/47] x86/fpu/xstate: Define new macros for supervisor and
+diff --git a/0003-x86-fpu-xstate-Separate-user-and-supervisor-xfeature.patch b/0003-x86-fpu-xstate-Separate-user-and-supervisor-xfeature.patch
+index 41419455f..527d2409f 100644
+--- a/0003-x86-fpu-xstate-Separate-user-and-supervisor-xfeature.patch
++++ b/0003-x86-fpu-xstate-Separate-user-and-supervisor-xfeature.patch
+@@ -1,4 +1,4 @@
+-From ae1c4634f360e27999c347af6b18eaa835ffe5a1 Mon Sep 17 00:00:00 2001
++From 8d40e5f28aec1df0989f26ce6da18a5909dad103 Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Wed, 13 Dec 2017 16:08:28 -0800
+ Subject: [PATCH 03/47] x86/fpu/xstate: Separate user and supervisor xfeatures
+diff --git a/0004-x86-fpu-xstate-Introduce-XSAVES-supervisor-states.patch b/0004-x86-fpu-xstate-Introduce-XSAVES-supervisor-states.patch
+index e9dda37e7..717b114d9 100644
+--- a/0004-x86-fpu-xstate-Introduce-XSAVES-supervisor-states.patch
++++ b/0004-x86-fpu-xstate-Introduce-XSAVES-supervisor-states.patch
+@@ -1,4 +1,4 @@
+-From 38a61047cc8404c72f9e18a0e24b7c8aeecf714f Mon Sep 17 00:00:00 2001
++From aad049e88941e5d2039fc238b93f37a9548dcc9a Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Thu, 10 Nov 2016 10:13:56 -0800
+ Subject: [PATCH 04/47] x86/fpu/xstate: Introduce XSAVES supervisor states
+diff --git a/0005-x86-fpu-xstate-Define-new-functions-for-clearing-fpr.patch b/0005-x86-fpu-xstate-Define-new-functions-for-clearing-fpr.patch
+index f28e6d34a..641416e96 100644
+--- a/0005-x86-fpu-xstate-Define-new-functions-for-clearing-fpr.patch
++++ b/0005-x86-fpu-xstate-Define-new-functions-for-clearing-fpr.patch
+@@ -1,4 +1,4 @@
+-From 9b9e9bbbf5db49a9c1c514da05d58d4374409718 Mon Sep 17 00:00:00 2001
++From 6863a15c861cc904610e0f2f7a39dc1c2b2b5b32 Mon Sep 17 00:00:00 2001
+ From: Fenghua Yu <fenghua.yu@intel.com>
+ Date: Thu, 10 Nov 2016 10:13:56 -0800
+ Subject: [PATCH 05/47] x86/fpu/xstate: Define new functions for clearing
+@@ -15,19 +15,21 @@ must remain active for signals; It is necessary to have separate functions:
+ Also modify copy_init_fpstate_to_fpregs() to take a mask from above two
+ functions.
+ 
+-v3:
+-- Put common code into a static function fpu__clear(), with a parameter
+-  clear_user_only.
+-
+-v2:
+-- Fixed an issue where fpu__clear_user_states() drops supervisor xstates.
+-- Revise commit log.
++Remove obvious side-comment in fpu__clear(), while at it.
+ 
+ Signed-off-by: Fenghua Yu <fenghua.yu@intel.com>
+ Co-developed-by: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Signed-off-by: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Reviewed-by: Dave Hansen <dave.hansen@linux.intel.com>
+ Reviewed-by: Tony Luck <tony.luck@intel.com>
++
++v3:
++- Put common code into a static function fpu__clear(), with a parameter
++  user_only.
++
++v2:
++- Fixed an issue where fpu__clear_user_states() drops supervisor xstates.
++- Revise commit log.
+ ---
+  arch/x86/include/asm/fpu/internal.h |  3 +-
+  arch/x86/kernel/fpu/core.c          | 49 +++++++++++++++++++----------
+@@ -51,7 +53,7 @@ index ccb1bb32ad7d..a42fcb4b690d 100644
+  extern int  dump_fpu(struct pt_regs *ptregs, struct user_i387_struct *fpstate);
+  
+ diff --git a/arch/x86/kernel/fpu/core.c b/arch/x86/kernel/fpu/core.c
+-index 12c70840980e..6ba3a8b78bf9 100644
++index 12c70840980e..7fddd5d60443 100644
+ --- a/arch/x86/kernel/fpu/core.c
+ +++ b/arch/x86/kernel/fpu/core.c
+ @@ -294,12 +294,10 @@ void fpu__drop(struct fpu *fpu)
+@@ -84,37 +86,17 @@ index 12c70840980e..6ba3a8b78bf9 100644
+   * error paths.
+   */
+ -void fpu__clear(struct fpu *fpu)
+-+static void fpu__clear(struct fpu *fpu, int clear_user_only)
+++static void fpu__clear(struct fpu *fpu, int user_only)
+  {
+ -	WARN_ON_FPU(fpu != &current->thread.fpu); /* Almost certainly an anomaly */
+-+	if (static_cpu_has(X86_FEATURE_FPU)) {
+-+		fpregs_lock();
+-+
+-+		if (clear_user_only) {
+-+			if (!fpregs_state_valid(fpu, smp_processor_id()) &&
+-+			    xfeatures_mask_supervisor())
+-+				copy_kernel_to_xregs(&fpu->state.xsave,
+-+						     xfeatures_mask_supervisor());
+-+			copy_init_fpstate_to_fpregs(xfeatures_mask_user());
+-+		} else {
+-+			copy_init_fpstate_to_fpregs(xfeatures_mask_all);
+-+		}
+-+
+-+		fpregs_mark_activate();
+-+		fpregs_unlock();
+-+		return;
+-+	} else {
+++	WARN_ON_FPU(fpu != &current->thread.fpu);
++ 
++-	fpu__drop(fpu);
+++	if (!static_cpu_has(X86_FEATURE_FPU)) {
+ +		fpu__drop(fpu);
+ +		fpu__initialize(fpu);
+++		return;
+ +	}
+-+}
+- 
+--	fpu__drop(fpu);
+-+void fpu__clear_user_states(struct fpu *fpu)
+-+{
+-+	WARN_ON_FPU(fpu != &current->thread.fpu);
+-+	fpu__clear(fpu, 1);
+-+}
+  
+ -	/*
+ -	 * Make sure fpstate is cleared and initialized.
+@@ -122,9 +104,29 @@ index 12c70840980e..6ba3a8b78bf9 100644
+ -	fpu__initialize(fpu);
+ -	if (static_cpu_has(X86_FEATURE_FPU))
+ -		copy_init_fpstate_to_fpregs();
+++	fpregs_lock();
+++
+++	if (user_only) {
+++		if (!fpregs_state_valid(fpu, smp_processor_id()) &&
+++		    xfeatures_mask_supervisor())
+++			copy_kernel_to_xregs(&fpu->state.xsave,
+++					     xfeatures_mask_supervisor());
+++		copy_init_fpstate_to_fpregs(xfeatures_mask_user());
+++	} else {
+++		copy_init_fpstate_to_fpregs(xfeatures_mask_all);
+++	}
+++
+++	fpregs_mark_activate();
+++	fpregs_unlock();
+++}
+++
+++void fpu__clear_user_states(struct fpu *fpu)
+++{
+++	fpu__clear(fpu, 1);
+++}
+++
+ +void fpu__clear_all(struct fpu *fpu)
+ +{
+-+	WARN_ON_FPU(fpu != &current->thread.fpu);
+ +	fpu__clear(fpu, 0);
+  }
+  
+diff --git a/0006-x86-fpu-xstate-Update-sanitize_restored_xstate-for-s.patch b/0006-x86-fpu-xstate-Update-sanitize_restored_xstate-for-s.patch
+index 11a52ec99..a267e244c 100644
+--- a/0006-x86-fpu-xstate-Update-sanitize_restored_xstate-for-s.patch
++++ b/0006-x86-fpu-xstate-Update-sanitize_restored_xstate-for-s.patch
+@@ -1,4 +1,4 @@
+-From 0b85cfbf2c48b351243bbbcc266bcbccea8e3b81 Mon Sep 17 00:00:00 2001
++From 0515f131aee679479a8e4460f5aa66c1e9b98917 Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Tue, 12 Nov 2019 09:09:10 -0800
+ Subject: [PATCH 06/47] x86/fpu/xstate: Update sanitize_restored_xstate() for
+diff --git a/0007-x86-fpu-xstate-Update-copy_kernel_to_xregs_err-for-X.patch b/0007-x86-fpu-xstate-Update-copy_kernel_to_xregs_err-for-X.patch
+index 16b5d3c22..c85a0c21a 100644
+--- a/0007-x86-fpu-xstate-Update-copy_kernel_to_xregs_err-for-X.patch
++++ b/0007-x86-fpu-xstate-Update-copy_kernel_to_xregs_err-for-X.patch
+@@ -1,4 +1,4 @@
+-From c101a20b303a6958624c6e2830308fc3bcd1e1a3 Mon Sep 17 00:00:00 2001
++From 2343173bba5b204d6feb836ea1ce163b2f1a1e8a Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Tue, 29 Oct 2019 12:42:06 -0700
+ Subject: [PATCH 07/47] x86/fpu/xstate: Update copy_kernel_to_xregs_err() for
+diff --git a/0008-x86-fpu-Introduce-copy_supervisor_to_kernel.patch b/0008-x86-fpu-Introduce-copy_supervisor_to_kernel.patch
+index fac0a6efa..13524da6b 100644
+--- a/0008-x86-fpu-Introduce-copy_supervisor_to_kernel.patch
++++ b/0008-x86-fpu-Introduce-copy_supervisor_to_kernel.patch
+@@ -1,4 +1,4 @@
+-From 2c61ab4deb08a35437041ddb5d69b79c04695b62 Mon Sep 17 00:00:00 2001
++From 74473f94682473d3b80b42439275c8027ff69f82 Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Mon, 16 Mar 2020 10:29:12 -0700
+ Subject: [PATCH 08/47] x86/fpu: Introduce copy_supervisor_to_kernel()
+diff --git a/0009-x86-fpu-xstate-Preserve-supervisor-states-for-slow-p.patch b/0009-x86-fpu-xstate-Preserve-supervisor-states-for-slow-p.patch
+index b2d5e65f7..803464dd0 100644
+--- a/0009-x86-fpu-xstate-Preserve-supervisor-states-for-slow-p.patch
++++ b/0009-x86-fpu-xstate-Preserve-supervisor-states-for-slow-p.patch
+@@ -1,4 +1,4 @@
+-From c57db4a5052c27e4ec86232e35470edbf0905d80 Mon Sep 17 00:00:00 2001
++From b80f8b90fa69e5462129516318ba8c3f533ae403 Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Tue, 29 Oct 2019 13:03:10 -0700
+ Subject: [PATCH 09/47] x86/fpu/xstate: Preserve supervisor states for slow
+diff --git a/0010-x86-fpu-xstate-Restore-supervisor-states-for-signal-.patch b/0010-x86-fpu-xstate-Restore-supervisor-states-for-signal-.patch
+index 7726e107f..1e2436d90 100644
+--- a/0010-x86-fpu-xstate-Restore-supervisor-states-for-signal-.patch
++++ b/0010-x86-fpu-xstate-Restore-supervisor-states-for-signal-.patch
+@@ -1,4 +1,4 @@
+-From 7eb433524e29ddb7143ed2d397e6d45233af68da Mon Sep 17 00:00:00 2001
++From 5ce6496026f9c33637ed74342c401e8ba359dc28 Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Fri, 27 Mar 2020 09:42:02 -0700
+ Subject: [PATCH 10/47] x86/fpu/xstate: Restore supervisor states for signal
+diff --git a/0011-Documentation-x86-Add-CET-description.patch b/0011-Documentation-x86-Add-CET-description.patch
+index adf447d6d..b83bdd8db 100644
+--- a/0011-Documentation-x86-Add-CET-description.patch
++++ b/0011-Documentation-x86-Add-CET-description.patch
+@@ -1,4 +1,4 @@
+-From 9ddde2fd720f3c6128bc02cbc50fcfacdd38b13b Mon Sep 17 00:00:00 2001
++From c72e7d5caa51eeb3e55069a6ecb4baaf529fc381 Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Sun, 17 Dec 2017 09:09:23 -0800
+ Subject: [PATCH 11/47] Documentation/x86: Add CET description
+diff --git a/0012-x86-cpufeatures-Add-CET-CPU-feature-flags-for-Contro.patch b/0012-x86-cpufeatures-Add-CET-CPU-feature-flags-for-Contro.patch
+index 6cd528c38..520496606 100644
+--- a/0012-x86-cpufeatures-Add-CET-CPU-feature-flags-for-Contro.patch
++++ b/0012-x86-cpufeatures-Add-CET-CPU-feature-flags-for-Contro.patch
+@@ -1,4 +1,4 @@
+-From cf3f9d0a44b599c3ee997db579daaae2676d2a9c Mon Sep 17 00:00:00 2001
++From 8cfbc446f98bda8038a9949a575eabe223583c85 Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Wed, 9 Nov 2016 16:26:37 -0800
+ Subject: [PATCH 12/47] x86/cpufeatures: Add CET CPU feature flags for
+diff --git a/0013-x86-fpu-xstate-Introduce-CET-MSR-XSAVES-supervisor-s.patch b/0013-x86-fpu-xstate-Introduce-CET-MSR-XSAVES-supervisor-s.patch
+index 4c6a80819..b26062648 100644
+--- a/0013-x86-fpu-xstate-Introduce-CET-MSR-XSAVES-supervisor-s.patch
++++ b/0013-x86-fpu-xstate-Introduce-CET-MSR-XSAVES-supervisor-s.patch
+@@ -1,4 +1,4 @@
+-From 5af647a00c24ddeed4f9d4f95d9dfeabd206a7d7 Mon Sep 17 00:00:00 2001
++From 69f135eabfcae1cd3413403c5304c281f324c880 Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Thu, 10 Nov 2016 10:13:56 -0800
+ Subject: [PATCH 13/47] x86/fpu/xstate: Introduce CET MSR XSAVES supervisor
+diff --git a/0014-x86-cet-Add-control-protection-fault-handler.patch b/0014-x86-cet-Add-control-protection-fault-handler.patch
+index da20ba782..23933126c 100644
+--- a/0014-x86-cet-Add-control-protection-fault-handler.patch
++++ b/0014-x86-cet-Add-control-protection-fault-handler.patch
+@@ -1,4 +1,4 @@
+-From 3ba6585c450076b395252edbc4bf40172b9d801f Mon Sep 17 00:00:00 2001
++From e3d5dd9441d50b07009d61145a0691443b5f6156 Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Thu, 10 Nov 2016 13:17:46 -0800
+ Subject: [PATCH 14/47] x86/cet: Add control-protection fault handler
+diff --git a/0015-x86-cet-shstk-Add-Kconfig-option-for-user-mode-Shado.patch b/0015-x86-cet-shstk-Add-Kconfig-option-for-user-mode-Shado.patch
+index 9c07edc14..14dc2c865 100644
+--- a/0015-x86-cet-shstk-Add-Kconfig-option-for-user-mode-Shado.patch
++++ b/0015-x86-cet-shstk-Add-Kconfig-option-for-user-mode-Shado.patch
+@@ -1,4 +1,4 @@
+-From fd6f0a0a21ef88571c92dbc2a0a4d7b5eca2f8fb Mon Sep 17 00:00:00 2001
++From a74b69f88ad8b5675c4dc2fd8a60a77d1d8168a8 Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Tue, 3 Oct 2017 12:55:03 -0700
+ Subject: [PATCH 15/47] x86/cet/shstk: Add Kconfig option for user-mode Shadow
+diff --git a/0016-x86-mm-Change-_PAGE_DIRTY-to-_PAGE_DIRTY_HW.patch b/0016-x86-mm-Change-_PAGE_DIRTY-to-_PAGE_DIRTY_HW.patch
+index 21778a23f..85895b25c 100644
+--- a/0016-x86-mm-Change-_PAGE_DIRTY-to-_PAGE_DIRTY_HW.patch
++++ b/0016-x86-mm-Change-_PAGE_DIRTY-to-_PAGE_DIRTY_HW.patch
+@@ -1,4 +1,4 @@
+-From caf3659fd970ce24ecc98984b7b31847d761e5e6 Mon Sep 17 00:00:00 2001
++From addec26bd71d944f1d6081079b63fa98a2061cc5 Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Thu, 12 Apr 2018 09:32:59 -0700
+ Subject: [PATCH 16/47] x86/mm: Change _PAGE_DIRTY to _PAGE_DIRTY_HW
+diff --git a/0017-x86-mm-Remove-_PAGE_DIRTY_HW-from-kernel-RO-pages.patch b/0017-x86-mm-Remove-_PAGE_DIRTY_HW-from-kernel-RO-pages.patch
+index 12aa656d9..ac6abb057 100644
+--- a/0017-x86-mm-Remove-_PAGE_DIRTY_HW-from-kernel-RO-pages.patch
++++ b/0017-x86-mm-Remove-_PAGE_DIRTY_HW-from-kernel-RO-pages.patch
+@@ -1,4 +1,4 @@
+-From 4b55d512cf545ccf2a3593d9de87f56691b74784 Mon Sep 17 00:00:00 2001
++From 0dae423395a60445a16e62d632eed06e0ecdf26e Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Tue, 14 Apr 2020 14:48:14 -0700
+ Subject: [PATCH 17/47] x86/mm: Remove _PAGE_DIRTY_HW from kernel RO pages
+diff --git a/0018-x86-mm-Introduce-_PAGE_COW.patch b/0018-x86-mm-Introduce-_PAGE_COW.patch
+index e8487b23a..6dd088e48 100644
+--- a/0018-x86-mm-Introduce-_PAGE_COW.patch
++++ b/0018-x86-mm-Introduce-_PAGE_COW.patch
+@@ -1,4 +1,4 @@
+-From 93d1d825020671c51454524726b2fb2799ca2d96 Mon Sep 17 00:00:00 2001
++From 593de1e61e9c21f9e41a9748cfd09075710c0b33 Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Wed, 24 Jan 2018 10:27:13 -0800
+ Subject: [PATCH 18/47] x86/mm: Introduce _PAGE_COW
+@@ -48,7 +48,8 @@ v10:
+ - Change _PAGE_BIT_DIRTY_SW to _PAGE_BIT_COW, as it is used for copy-on-
+   write PTEs.
+ - Update pte_write() and treat shadow stack as writable.
+-- Change *_mkdirty_shstk() to *_mkwrite_shstk().
++- Change *_mkdirty_shstk() to *_mkwrite_shstk() as these make shadow stack
++  pages writable.
+ - Use bit test & shift to move _PAGE_BIT_DIRTY_HW to _PAGE_BIT_COW.
+ - Change static_cpu_has() to cpu_feature_enabled().
+ - Revise commit log.
+@@ -60,15 +61,15 @@ v9:
+ - Split out pte_modify()/pmd_modify() to a new patch.
+ - Update comments.
+ ---
+- arch/x86/include/asm/pgtable.h       | 121 ++++++++++++++++++++++++---
++ arch/x86/include/asm/pgtable.h       | 120 ++++++++++++++++++++++++---
+  arch/x86/include/asm/pgtable_types.h |  41 ++++++++-
+- 2 files changed, 150 insertions(+), 12 deletions(-)
++ 2 files changed, 150 insertions(+), 11 deletions(-)
+ 
+ diff --git a/arch/x86/include/asm/pgtable.h b/arch/x86/include/asm/pgtable.h
+-index 90f9a73881ad..11bd5f223ff3 100644
++index 90f9a73881ad..5f89035d1e60 100644
+ --- a/arch/x86/include/asm/pgtable.h
+ +++ b/arch/x86/include/asm/pgtable.h
+-@@ -122,12 +122,11 @@ extern pmdval_t early_pmd_flags;
++@@ -122,9 +122,9 @@ extern pmdval_t early_pmd_flags;
+   * The following only work if pte_present() is true.
+   * Undefined behaviour if not..
+   */
+@@ -79,11 +80,8 @@ index 90f9a73881ad..11bd5f223ff3 100644
+ +	return pte_flags(pte) & _PAGE_DIRTY_BITS;
+  }
+  
+--
+- static inline u32 read_pkru(void)
+- {
+- 	if (boot_cpu_has(X86_FEATURE_OSPKE))
+-@@ -161,9 +160,9 @@ static inline int pte_young(pte_t pte)
++ 
++@@ -161,9 +161,9 @@ static inline int pte_young(pte_t pte)
+  	return pte_flags(pte) & _PAGE_ACCESSED;
+  }
+  
+@@ -95,7 +93,7 @@ index 90f9a73881ad..11bd5f223ff3 100644
+  }
+  
+  static inline int pmd_young(pmd_t pmd)
+-@@ -171,9 +170,9 @@ static inline int pmd_young(pmd_t pmd)
++@@ -171,9 +171,9 @@ static inline int pmd_young(pmd_t pmd)
+  	return pmd_flags(pmd) & _PAGE_ACCESSED;
+  }
+  
+@@ -107,7 +105,7 @@ index 90f9a73881ad..11bd5f223ff3 100644
+  }
+  
+  static inline int pud_young(pud_t pud)
+-@@ -183,6 +182,12 @@ static inline int pud_young(pud_t pud)
++@@ -183,6 +183,12 @@ static inline int pud_young(pud_t pud)
+  
+  static inline int pte_write(pte_t pte)
+  {
+@@ -120,7 +118,7 @@ index 90f9a73881ad..11bd5f223ff3 100644
+  	return pte_flags(pte) & _PAGE_RW;
+  }
+  
+-@@ -333,7 +338,7 @@ static inline pte_t pte_clear_uffd_wp(pte_t pte)
++@@ -333,7 +339,7 @@ static inline pte_t pte_clear_uffd_wp(pte_t pte)
+  
+  static inline pte_t pte_mkclean(pte_t pte)
+  {
+@@ -129,7 +127,7 @@ index 90f9a73881ad..11bd5f223ff3 100644
+  }
+  
+  static inline pte_t pte_mkold(pte_t pte)
+-@@ -343,6 +348,17 @@ static inline pte_t pte_mkold(pte_t pte)
++@@ -343,6 +349,17 @@ static inline pte_t pte_mkold(pte_t pte)
+  
+  static inline pte_t pte_wrprotect(pte_t pte)
+  {
+@@ -147,7 +145,7 @@ index 90f9a73881ad..11bd5f223ff3 100644
+  	return pte_clear_flags(pte, _PAGE_RW);
+  }
+  
+-@@ -353,6 +369,18 @@ static inline pte_t pte_mkexec(pte_t pte)
++@@ -353,6 +370,18 @@ static inline pte_t pte_mkexec(pte_t pte)
+  
+  static inline pte_t pte_mkdirty(pte_t pte)
+  {
+@@ -166,7 +164,7 @@ index 90f9a73881ad..11bd5f223ff3 100644
+  	return pte_set_flags(pte, _PAGE_DIRTY_HW | _PAGE_SOFT_DIRTY);
+  }
+  
+-@@ -363,6 +391,13 @@ static inline pte_t pte_mkyoung(pte_t pte)
++@@ -363,6 +392,13 @@ static inline pte_t pte_mkyoung(pte_t pte)
+  
+  static inline pte_t pte_mkwrite(pte_t pte)
+  {
+@@ -180,7 +178,7 @@ index 90f9a73881ad..11bd5f223ff3 100644
+  	return pte_set_flags(pte, _PAGE_RW);
+  }
+  
+-@@ -434,16 +469,41 @@ static inline pmd_t pmd_mkold(pmd_t pmd)
++@@ -434,16 +470,41 @@ static inline pmd_t pmd_mkold(pmd_t pmd)
+  
+  static inline pmd_t pmd_mkclean(pmd_t pmd)
+  {
+@@ -223,7 +221,7 @@ index 90f9a73881ad..11bd5f223ff3 100644
+  	return pmd_set_flags(pmd, _PAGE_DIRTY_HW | _PAGE_SOFT_DIRTY);
+  }
+  
+-@@ -464,6 +524,13 @@ static inline pmd_t pmd_mkyoung(pmd_t pmd)
++@@ -464,6 +525,13 @@ static inline pmd_t pmd_mkyoung(pmd_t pmd)
+  
+  static inline pmd_t pmd_mkwrite(pmd_t pmd)
+  {
+@@ -237,7 +235,7 @@ index 90f9a73881ad..11bd5f223ff3 100644
+  	return pmd_set_flags(pmd, _PAGE_RW);
+  }
+  
+-@@ -488,17 +555,36 @@ static inline pud_t pud_mkold(pud_t pud)
++@@ -488,17 +556,36 @@ static inline pud_t pud_mkold(pud_t pud)
+  
+  static inline pud_t pud_mkclean(pud_t pud)
+  {
+@@ -276,7 +274,7 @@ index 90f9a73881ad..11bd5f223ff3 100644
+  }
+  
+  static inline pud_t pud_mkdevmap(pud_t pud)
+-@@ -518,6 +604,13 @@ static inline pud_t pud_mkyoung(pud_t pud)
++@@ -518,6 +605,13 @@ static inline pud_t pud_mkyoung(pud_t pud)
+  
+  static inline pud_t pud_mkwrite(pud_t pud)
+  {
+@@ -290,7 +288,7 @@ index 90f9a73881ad..11bd5f223ff3 100644
+  	return pud_set_flags(pud, _PAGE_RW);
+  }
+  
+-@@ -1218,6 +1311,12 @@ extern int pmdp_clear_flush_young(struct vm_area_struct *vma,
++@@ -1218,6 +1312,12 @@ extern int pmdp_clear_flush_young(struct vm_area_struct *vma,
+  #define pmd_write pmd_write
+  static inline int pmd_write(pmd_t pmd)
+  {
+diff --git a/0019-drm-i915-gvt-Change-_PAGE_DIRTY-to-_PAGE_DIRTY_BITS.patch b/0019-drm-i915-gvt-Change-_PAGE_DIRTY-to-_PAGE_DIRTY_BITS.patch
+index 60b8de0c1..82015de97 100644
+--- a/0019-drm-i915-gvt-Change-_PAGE_DIRTY-to-_PAGE_DIRTY_BITS.patch
++++ b/0019-drm-i915-gvt-Change-_PAGE_DIRTY-to-_PAGE_DIRTY_BITS.patch
+@@ -1,4 +1,4 @@
+-From 88427bff1167889913116f2144ddcdd272997c27 Mon Sep 17 00:00:00 2001
++From 6978d74999513535e2c541048930f2784e3559b6 Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Tue, 28 Aug 2018 13:01:49 -0700
+ Subject: [PATCH 19/47] drm/i915/gvt: Change _PAGE_DIRTY to _PAGE_DIRTY_BITS
+diff --git a/0020-x86-mm-Update-pte_modify-for-_PAGE_COW.patch b/0020-x86-mm-Update-pte_modify-for-_PAGE_COW.patch
+index 5db1f749d..a6d67039c 100644
+--- a/0020-x86-mm-Update-pte_modify-for-_PAGE_COW.patch
++++ b/0020-x86-mm-Update-pte_modify-for-_PAGE_COW.patch
+@@ -1,4 +1,4 @@
+-From 92a167472789becb0b80014b326c674a2f9d495c Mon Sep 17 00:00:00 2001
++From 8dd1a58bd6df2049cb664897f0e46ba7d7a4aae4 Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Thu, 29 Aug 2019 09:24:13 -0700
+ Subject: [PATCH 20/47] x86/mm: Update pte_modify for _PAGE_COW
+@@ -19,10 +19,10 @@ v10:
+  1 file changed, 33 insertions(+)
+ 
+ diff --git a/arch/x86/include/asm/pgtable.h b/arch/x86/include/asm/pgtable.h
+-index 11bd5f223ff3..931e7ff53ae3 100644
++index 5f89035d1e60..f4870cd040de 100644
+ --- a/arch/x86/include/asm/pgtable.h
+ +++ b/arch/x86/include/asm/pgtable.h
+-@@ -725,6 +725,21 @@ static inline pmd_t pmd_mknotpresent(pmd_t pmd)
++@@ -726,6 +726,21 @@ static inline pmd_t pmd_mknotpresent(pmd_t pmd)
+  
+  static inline u64 flip_protnone_guard(u64 oldval, u64 val, u64 mask);
+  
+@@ -44,7 +44,7 @@ index 11bd5f223ff3..931e7ff53ae3 100644
+  static inline pte_t pte_modify(pte_t pte, pgprot_t newprot)
+  {
+  	pteval_t val = pte_val(pte), oldval = val;
+-@@ -735,16 +750,34 @@ static inline pte_t pte_modify(pte_t pte, pgprot_t newprot)
++@@ -736,16 +751,34 @@ static inline pte_t pte_modify(pte_t pte, pgprot_t newprot)
+  	 */
+  	val &= _PAGE_CHG_MASK;
+  	val |= check_pgprot(newprot) & ~_PAGE_CHG_MASK;
+diff --git a/0021-x86-mm-Update-ptep_set_wrprotect-and-pmdp_set_wrprot.patch b/0021-x86-mm-Update-ptep_set_wrprotect-and-pmdp_set_wrprot.patch
+index 242e57683..9e35c17be 100644
+--- a/0021-x86-mm-Update-ptep_set_wrprotect-and-pmdp_set_wrprot.patch
++++ b/0021-x86-mm-Update-ptep_set_wrprotect-and-pmdp_set_wrprot.patch
+@@ -1,4 +1,4 @@
+-From 3309b285e36e78e729a4e544b0155f0294efff3f Mon Sep 17 00:00:00 2001
++From c71fe76beeb68737017d5c46f37ac8cec83e42fc Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Fri, 15 Jun 2018 09:33:40 -0700
+ Subject: [PATCH 21/47] x86/mm: Update ptep_set_wrprotect() and
+@@ -43,10 +43,10 @@ v4:
+  1 file changed, 52 insertions(+)
+ 
+ diff --git a/arch/x86/include/asm/pgtable.h b/arch/x86/include/asm/pgtable.h
+-index 931e7ff53ae3..30adef6a354b 100644
++index f4870cd040de..eaa38adb1038 100644
+ --- a/arch/x86/include/asm/pgtable.h
+ +++ b/arch/x86/include/asm/pgtable.h
+-@@ -1315,6 +1315,32 @@ static inline pte_t ptep_get_and_clear_full(struct mm_struct *mm,
++@@ -1316,6 +1316,32 @@ static inline pte_t ptep_get_and_clear_full(struct mm_struct *mm,
+  static inline void ptep_set_wrprotect(struct mm_struct *mm,
+  				      unsigned long addr, pte_t *ptep)
+  {
+@@ -79,7 +79,7 @@ index 931e7ff53ae3..30adef6a354b 100644
+  	clear_bit(_PAGE_BIT_RW, (unsigned long *)&ptep->pte);
+  }
+  
+-@@ -1371,6 +1397,32 @@ static inline pud_t pudp_huge_get_and_clear(struct mm_struct *mm,
++@@ -1372,6 +1398,32 @@ static inline pud_t pudp_huge_get_and_clear(struct mm_struct *mm,
+  static inline void pmdp_set_wrprotect(struct mm_struct *mm,
+  				      unsigned long addr, pmd_t *pmdp)
+  {
+diff --git a/0022-mm-Introduce-VM_SHSTK-for-shadow-stack-memory.patch b/0022-mm-Introduce-VM_SHSTK-for-shadow-stack-memory.patch
+index 7ec03bb24..e1ff1ebb0 100644
+--- a/0022-mm-Introduce-VM_SHSTK-for-shadow-stack-memory.patch
++++ b/0022-mm-Introduce-VM_SHSTK-for-shadow-stack-memory.patch
+@@ -1,4 +1,4 @@
+-From 41a0c9d094b064ff51d9b778675caddcf8878472 Mon Sep 17 00:00:00 2001
++From 0239a60efa34b7d8c7d4a9a5b013120c31c8ef27 Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Fri, 12 Jan 2018 15:04:54 -0800
+ Subject: [PATCH 22/47] mm: Introduce VM_SHSTK for shadow stack memory
+diff --git a/0023-x86-mm-Shadow-Stack-page-fault-error-checking.patch b/0023-x86-mm-Shadow-Stack-page-fault-error-checking.patch
+index 835a3ad7f..d73569797 100644
+--- a/0023-x86-mm-Shadow-Stack-page-fault-error-checking.patch
++++ b/0023-x86-mm-Shadow-Stack-page-fault-error-checking.patch
+@@ -1,4 +1,4 @@
+-From c4005a84cd3d7f71943e00b349922b12363854f1 Mon Sep 17 00:00:00 2001
++From c0a16afd2f8d71996fabe4b069efdeb9d3b237ff Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Tue, 28 Nov 2017 13:01:18 -0800
+ Subject: [PATCH 23/47] x86/mm: Shadow Stack page fault error checking
+diff --git a/0024-x86-mm-Update-maybe_mkwrite-for-shadow-stack.patch b/0024-x86-mm-Update-maybe_mkwrite-for-shadow-stack.patch
+index c7c716306..dc190ff6b 100644
+--- a/0024-x86-mm-Update-maybe_mkwrite-for-shadow-stack.patch
++++ b/0024-x86-mm-Update-maybe_mkwrite-for-shadow-stack.patch
+@@ -1,4 +1,4 @@
+-From 98e15e185a48e9d4022151314a7c7bf512b75d6c Mon Sep 17 00:00:00 2001
++From 63a7b1ea4b165674badb552aa8a321c45b343163 Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Tue, 7 Apr 2020 16:03:36 -0700
+ Subject: [PATCH 24/47] x86/mm: Update maybe_mkwrite() for shadow stack
+diff --git a/0025-mm-Fixup-places-that-call-pte_mkwrite-directly.patch b/0025-mm-Fixup-places-that-call-pte_mkwrite-directly.patch
+index af5062ade..cdeda4bd9 100644
+--- a/0025-mm-Fixup-places-that-call-pte_mkwrite-directly.patch
++++ b/0025-mm-Fixup-places-that-call-pte_mkwrite-directly.patch
+@@ -1,4 +1,4 @@
+-From d526800ea9f4f74941b11886b8cc97419b33b3ec Mon Sep 17 00:00:00 2001
++From b666144ee7794cfc694718e425c3ed831419b77b Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Mon, 13 Apr 2020 13:21:22 -0700
+ Subject: [PATCH 25/47] mm: Fixup places that call pte_mkwrite() directly
+diff --git a/0026-mm-Add-guard-pages-around-a-shadow-stack.patch b/0026-mm-Add-guard-pages-around-a-shadow-stack.patch
+index 0dc246a1d..049c7a137 100644
+--- a/0026-mm-Add-guard-pages-around-a-shadow-stack.patch
++++ b/0026-mm-Add-guard-pages-around-a-shadow-stack.patch
+@@ -1,4 +1,4 @@
+-From 7b909123c0b5ccd9aa93292058e34515f86fe547 Mon Sep 17 00:00:00 2001
++From fe6a6da680cf6def6515123476e53f32a70b5442 Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Fri, 4 Oct 2019 14:00:58 -0700
+ Subject: [PATCH 26/47] mm: Add guard pages around a shadow stack.
+diff --git a/0027-mm-mmap-Add-shadow-stack-pages-to-memory-accounting.patch b/0027-mm-mmap-Add-shadow-stack-pages-to-memory-accounting.patch
+index f4bc33a1c..a70cb6d43 100644
+--- a/0027-mm-mmap-Add-shadow-stack-pages-to-memory-accounting.patch
++++ b/0027-mm-mmap-Add-shadow-stack-pages-to-memory-accounting.patch
+@@ -1,4 +1,4 @@
+-From c32cabbeda526d7a64ed6f82f1a67a036e261c2b Mon Sep 17 00:00:00 2001
++From 6123324d6ad64c7f5a5dcda2525c36eb3f31a4e9 Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Thu, 13 Sep 2018 12:36:48 -0700
+ Subject: [PATCH 27/47] mm/mmap: Add shadow stack pages to memory accounting
+diff --git a/0028-mm-Update-can_follow_write_pte-for-shadow-stack.patch b/0028-mm-Update-can_follow_write_pte-for-shadow-stack.patch
+index 34e2cc7cc..aa4487109 100644
+--- a/0028-mm-Update-can_follow_write_pte-for-shadow-stack.patch
++++ b/0028-mm-Update-can_follow_write_pte-for-shadow-stack.patch
+@@ -1,4 +1,4 @@
+-From f81911cf4ecc4d82816b9131a0a807f5205414d5 Mon Sep 17 00:00:00 2001
++From bb7ee31681f7c0a8c50f4ca0273d327a36b7bdea Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Tue, 3 Jul 2018 13:07:12 -0700
+ Subject: [PATCH 28/47] mm: Update can_follow_write_pte() for shadow stack
+@@ -9,7 +9,7 @@ FOLL_COW flag, and uses pte_dirty() to validate the flag is still valid.
+ Like a writable data page, a shadow stack page is writable, and becomes
+ read-only during copy-on-write, but it is always dirty.  Thus, in the
+ can_follow_write_pte() check, it belongs to the writable page case and
+-should be exclueded from the read-only page pte_dirty() check.  Apply
++should be excluded from the read-only page pte_dirty() check.  Apply
+ the same changes to can_follow_write_pmd().
+ 
+ Signed-off-by: Yu-cheng Yu <yu-cheng.yu@intel.com>
+diff --git a/0029-x86-cet-shstk-User-mode-shadow-stack-support.patch b/0029-x86-cet-shstk-User-mode-shadow-stack-support.patch
+index 5447038e9..7b236f5a7 100644
+--- a/0029-x86-cet-shstk-User-mode-shadow-stack-support.patch
++++ b/0029-x86-cet-shstk-User-mode-shadow-stack-support.patch
+@@ -1,4 +1,4 @@
+-From aa77162fb0c7c08cc2aa8728136ada1edc7deb78 Mon Sep 17 00:00:00 2001
++From eb4fd03088956f71dd73ced19412a7a3a4a672df Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Thu, 22 Aug 2019 10:06:11 -0700
+ Subject: [PATCH 29/47] x86/cet/shstk: User-mode shadow stack support
+diff --git a/0030-x86-cet-shstk-Handle-signals-for-shadow-stack.patch b/0030-x86-cet-shstk-Handle-signals-for-shadow-stack.patch
+index 3320b2c08..c7bea1602 100644
+--- a/0030-x86-cet-shstk-Handle-signals-for-shadow-stack.patch
++++ b/0030-x86-cet-shstk-Handle-signals-for-shadow-stack.patch
+@@ -1,4 +1,4 @@
+-From c1d73346e6a4683987764f84a6f151da8bc62cdc Mon Sep 17 00:00:00 2001
++From 0386f433ef50037f451bc28bf2d2e29fba9de578 Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Thu, 5 Jan 2017 13:48:31 -0800
+ Subject: [PATCH 30/47] x86/cet/shstk: Handle signals for shadow stack
+@@ -118,7 +118,7 @@ index caac0687c8e4..56fe08eebae6 100644
+  
+  #endif /* __ASSEMBLY__ */
+ diff --git a/arch/x86/include/asm/fpu/internal.h b/arch/x86/include/asm/fpu/internal.h
+-index 42159f45bf9c..9dda2935c738 100644
++index 42159f45bf9c..b569ac929ccc 100644
+ --- a/arch/x86/include/asm/fpu/internal.h
+ +++ b/arch/x86/include/asm/fpu/internal.h
+ @@ -476,6 +476,16 @@ static inline void copy_kernel_to_fpregs(union fpregs_state *fpstate)
+@@ -130,7 +130,7 @@ index 42159f45bf9c..9dda2935c738 100644
+ +				unsigned long restorer);
+ +#else
+ +static inline int save_cet_to_sigframe(int ia32, void __user *fp,
+-+				unsigned long restorer);
+++				unsigned long restorer)
+ +{
+ +	return 0;
+ +}
+diff --git a/0031-ELF-UAPI-and-Kconfig-additions-for-ELF-program-prope.patch b/0031-ELF-UAPI-and-Kconfig-additions-for-ELF-program-prope.patch
+index 4b0ea8446..df04875a5 100644
+--- a/0031-ELF-UAPI-and-Kconfig-additions-for-ELF-program-prope.patch
++++ b/0031-ELF-UAPI-and-Kconfig-additions-for-ELF-program-prope.patch
+@@ -1,4 +1,4 @@
+-From d40a5c912271c278da622a4fdb04cc076a76e93d Mon Sep 17 00:00:00 2001
++From 48890ab3f159bc0257491271c14c965aa469d8d2 Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Fri, 18 Oct 2019 18:25:34 +0100
+ Subject: [PATCH 31/47] ELF: UAPI and Kconfig additions for ELF program
+diff --git a/0032-ELF-Add-ELF-program-property-parsing-support.patch b/0032-ELF-Add-ELF-program-property-parsing-support.patch
+index 3679b2f3d..4ee3814f8 100644
+--- a/0032-ELF-Add-ELF-program-property-parsing-support.patch
++++ b/0032-ELF-Add-ELF-program-property-parsing-support.patch
+@@ -1,4 +1,4 @@
+-From 3fd39c16bc91e36ee8aa93195460f41c34f575d7 Mon Sep 17 00:00:00 2001
++From 452945792ab8e5f24869b174076253fbeb6c2c4a Mon Sep 17 00:00:00 2001
+ From: Dave Martin <Dave.Martin@arm.com>
+ Date: Mon, 16 Mar 2020 16:50:44 +0000
+ Subject: [PATCH 32/47] ELF: Add ELF program property parsing support
+diff --git a/0033-ELF-Introduce-arch_setup_elf_property.patch b/0033-ELF-Introduce-arch_setup_elf_property.patch
+index fc1103c48..6d9f7fe4f 100644
+--- a/0033-ELF-Introduce-arch_setup_elf_property.patch
++++ b/0033-ELF-Introduce-arch_setup_elf_property.patch
+@@ -1,4 +1,4 @@
+-From abf3f7efe6bb775056682297d179512fea3d0bdb Mon Sep 17 00:00:00 2001
++From 67b7b912acb1b5b0196dd68446c2e9a1dabe0a6c Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Tue, 20 Aug 2019 13:20:37 -0700
+ Subject: [PATCH 33/47] ELF: Introduce arch_setup_elf_property()
+diff --git a/0034-x86-cet-shstk-ELF-header-parsing-for-shadow-stack.patch b/0034-x86-cet-shstk-ELF-header-parsing-for-shadow-stack.patch
+index 5ec732955..75f415440 100644
+--- a/0034-x86-cet-shstk-ELF-header-parsing-for-shadow-stack.patch
++++ b/0034-x86-cet-shstk-ELF-header-parsing-for-shadow-stack.patch
+@@ -1,4 +1,4 @@
+-From 768ac125b0a38111e1e40311fc98734e81f06043 Mon Sep 17 00:00:00 2001
++From 562ff88b416adeacf5ec8b61a5fd9d9119bfb6eb Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Tue, 3 Oct 2017 16:07:12 -0700
+ Subject: [PATCH 34/47] x86/cet/shstk: ELF header parsing for shadow stack
+diff --git a/0035-x86-cet-shstk-Handle-thread-shadow-stack.patch b/0035-x86-cet-shstk-Handle-thread-shadow-stack.patch
+index 964c3057c..f79fb7dfa 100644
+--- a/0035-x86-cet-shstk-Handle-thread-shadow-stack.patch
++++ b/0035-x86-cet-shstk-Handle-thread-shadow-stack.patch
+@@ -1,4 +1,4 @@
+-From 1f9b310566a6b1d0f1c981af209df6695b98e9a9 Mon Sep 17 00:00:00 2001
++From a6991af04d26e213e229a4e1032ca20a0e142081 Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Thu, 3 May 2018 12:40:57 -0700
+ Subject: [PATCH 35/47] x86/cet/shstk: Handle thread shadow stack
+diff --git a/0036-x86-cet-shstk-Add-arch_prctl-functions-for-shadow-st.patch b/0036-x86-cet-shstk-Add-arch_prctl-functions-for-shadow-st.patch
+index 39c306d56..3338ba5ac 100644
+--- a/0036-x86-cet-shstk-Add-arch_prctl-functions-for-shadow-st.patch
++++ b/0036-x86-cet-shstk-Add-arch_prctl-functions-for-shadow-st.patch
+@@ -1,4 +1,4 @@
+-From fa9c172f816639766372c888270c296916f8c48d Mon Sep 17 00:00:00 2001
++From 0fc3d0d509ef7f9254bb2a72831ea5855c04c172 Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Thu, 3 May 2018 13:04:29 -0700
+ Subject: [PATCH 36/47] x86/cet/shstk: Add arch_prctl functions for shadow
+diff --git a/0037-x86-cet-ibt-Add-Kconfig-option-for-user-mode-Indirec.patch b/0037-x86-cet-ibt-Add-Kconfig-option-for-user-mode-Indirec.patch
+index 56dfaf8bd..18de7ac4c 100644
+--- a/0037-x86-cet-ibt-Add-Kconfig-option-for-user-mode-Indirec.patch
++++ b/0037-x86-cet-ibt-Add-Kconfig-option-for-user-mode-Indirec.patch
+@@ -1,4 +1,4 @@
+-From 3128d65d8795f9513b1cd63822cc3eb3a0cc85dc Mon Sep 17 00:00:00 2001
++From b6729eeb85678e8cdf0d90b8a70e879de188071d Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Wed, 4 Oct 2017 12:35:32 -0700
+ Subject: [PATCH 37/47] x86/cet/ibt: Add Kconfig option for user-mode Indirect
+diff --git a/0038-x86-cet-ibt-User-mode-Indirect-Branch-Tracking-suppo.patch b/0038-x86-cet-ibt-User-mode-Indirect-Branch-Tracking-suppo.patch
+index 9244cdee1..044116ff8 100644
+--- a/0038-x86-cet-ibt-User-mode-Indirect-Branch-Tracking-suppo.patch
++++ b/0038-x86-cet-ibt-User-mode-Indirect-Branch-Tracking-suppo.patch
+@@ -1,4 +1,4 @@
+-From 618fb42db1a4274e3b522ab16e383c29b5486caf Mon Sep 17 00:00:00 2001
++From fcf570fac1c0c8e134ec73118c34456d0bc2a885 Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Thu, 3 May 2018 13:30:56 -0700
+ Subject: [PATCH 38/47] x86/cet/ibt: User-mode Indirect Branch Tracking support
+diff --git a/0039-x86-cet-ibt-Handle-signals-for-Indirect-Branch-Track.patch b/0039-x86-cet-ibt-Handle-signals-for-Indirect-Branch-Track.patch
+index ad2156da8..0b5767c8b 100644
+--- a/0039-x86-cet-ibt-Handle-signals-for-Indirect-Branch-Track.patch
++++ b/0039-x86-cet-ibt-Handle-signals-for-Indirect-Branch-Track.patch
+@@ -1,4 +1,4 @@
+-From c34135cf7596c5bf22455a6281f3eaf45f549b52 Mon Sep 17 00:00:00 2001
++From a56456424e7566e21092ddf9fcc5a1ac40c317fc Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Tue, 28 May 2019 12:29:14 -0700
+ Subject: [PATCH 39/47] x86/cet/ibt: Handle signals for Indirect Branch
+diff --git a/0040-x86-cet-ibt-ELF-header-parsing-for-Indirect-Branch-T.patch b/0040-x86-cet-ibt-ELF-header-parsing-for-Indirect-Branch-T.patch
+index 8f70193f9..8bc3394d2 100644
+--- a/0040-x86-cet-ibt-ELF-header-parsing-for-Indirect-Branch-T.patch
++++ b/0040-x86-cet-ibt-ELF-header-parsing-for-Indirect-Branch-T.patch
+@@ -1,4 +1,4 @@
+-From b3b1e0792fdb15d5d2aafee0aed105aebbc7d377 Mon Sep 17 00:00:00 2001
++From 965cddc8387f1ec285de366d8104ad9b163ac451 Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Tue, 30 Apr 2019 15:16:22 -0700
+ Subject: [PATCH 40/47] x86/cet/ibt: ELF header parsing for Indirect Branch
+diff --git a/0041-x86-cet-ibt-Add-arch_prctl-functions-for-Indirect-Br.patch b/0041-x86-cet-ibt-Add-arch_prctl-functions-for-Indirect-Br.patch
+index 552943948..4dbaa77b6 100644
+--- a/0041-x86-cet-ibt-Add-arch_prctl-functions-for-Indirect-Br.patch
++++ b/0041-x86-cet-ibt-Add-arch_prctl-functions-for-Indirect-Br.patch
+@@ -1,4 +1,4 @@
+-From a7482b9bac2cb5857679330b3a561d75018fdc35 Mon Sep 17 00:00:00 2001
++From b8232805edc40b732d6db1c3d6a03d14dcacac35 Mon Sep 17 00:00:00 2001
+ From: "H.J. Lu" <hjl.tools@gmail.com>
+ Date: Tue, 21 Aug 2018 14:13:05 -0700
+ Subject: [PATCH 41/47] x86/cet/ibt: Add arch_prctl functions for Indirect
+diff --git a/0042-x86-cet-Add-PTRACE-interface-for-CET.patch b/0042-x86-cet-Add-PTRACE-interface-for-CET.patch
+index cc60750e1..ab2b12022 100644
+--- a/0042-x86-cet-Add-PTRACE-interface-for-CET.patch
++++ b/0042-x86-cet-Add-PTRACE-interface-for-CET.patch
+@@ -1,4 +1,4 @@
+-From 0e216686d24cd1eb195e46f69c413d69d1dbd4d5 Mon Sep 17 00:00:00 2001
++From 18c3761d3dc1cba0fe9a627c4de504cbda8e2cde Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Mon, 23 Apr 2018 12:55:13 -0700
+ Subject: [PATCH 42/47] x86/cet: Add PTRACE interface for CET
+diff --git a/0043-x86-vdso-32-Add-ENDBR32-to-__kernel_vsyscall-entry-p.patch b/0043-x86-vdso-32-Add-ENDBR32-to-__kernel_vsyscall-entry-p.patch
+index b91b73848..dffe017e6 100644
+--- a/0043-x86-vdso-32-Add-ENDBR32-to-__kernel_vsyscall-entry-p.patch
++++ b/0043-x86-vdso-32-Add-ENDBR32-to-__kernel_vsyscall-entry-p.patch
+@@ -1,4 +1,4 @@
+-From 10486539dac89628be1de5efeda613c6a5f5c554 Mon Sep 17 00:00:00 2001
++From f410a63b37b73dea0e7b0057a9b7f8c4c34badcb Mon Sep 17 00:00:00 2001
+ From: "H.J. Lu" <hjl.tools@gmail.com>
+ Date: Fri, 28 Sep 2018 06:21:50 -0700
+ Subject: [PATCH 43/47] x86/vdso/32: Add ENDBR32 to __kernel_vsyscall entry
+diff --git a/0044-x86-vdso-Insert-endbr32-endbr64-to-vDSO.patch b/0044-x86-vdso-Insert-endbr32-endbr64-to-vDSO.patch
+index fe6e9c08b..32563fff3 100644
+--- a/0044-x86-vdso-Insert-endbr32-endbr64-to-vDSO.patch
++++ b/0044-x86-vdso-Insert-endbr32-endbr64-to-vDSO.patch
+@@ -1,4 +1,4 @@
+-From 0ecedbdfed4227515c63bfa3ea99d81cfef99cd7 Mon Sep 17 00:00:00 2001
++From a12c4159f06c519e8edc087b52b7f2b623e1f2e4 Mon Sep 17 00:00:00 2001
+ From: "H.J. Lu" <hjl.tools@gmail.com>
+ Date: Fri, 16 Mar 2018 04:18:48 -0700
+ Subject: [PATCH 44/47] x86/vdso: Insert endbr32/endbr64 to vDSO
+diff --git a/0045-x86-Disallow-vsyscall-emulation-when-CET-is-enabled.patch b/0045-x86-Disallow-vsyscall-emulation-when-CET-is-enabled.patch
+index 744de00c2..0cc7be273 100644
+--- a/0045-x86-Disallow-vsyscall-emulation-when-CET-is-enabled.patch
++++ b/0045-x86-Disallow-vsyscall-emulation-when-CET-is-enabled.patch
+@@ -1,4 +1,4 @@
+-From e9ee6e6b4a877122a190e5927f78b40aa31cb26a Mon Sep 17 00:00:00 2001
++From df0c0b50402a20d69caadaea0240a190ac4a09b9 Mon Sep 17 00:00:00 2001
+ From: "H.J. Lu" <hjl.tools@gmail.com>
+ Date: Wed, 29 Jan 2020 08:44:11 -0800
+ Subject: [PATCH 45/47] x86: Disallow vsyscall emulation when CET is enabled
+diff --git a/0046-powerpc-Keep-.rela-sections-when-CONFIG_RELOCATABLE-.patch b/0046-powerpc-Keep-.rela-sections-when-CONFIG_RELOCATABLE-.patch
+index 7b598817d..8eff37a46 100644
+--- a/0046-powerpc-Keep-.rela-sections-when-CONFIG_RELOCATABLE-.patch
++++ b/0046-powerpc-Keep-.rela-sections-when-CONFIG_RELOCATABLE-.patch
+@@ -1,4 +1,4 @@
+-From fddad324894961199f98da7f9d964ee918e3af4d Mon Sep 17 00:00:00 2001
++From 8343b3ca6d7a4614b4e768feab29f2f26cdf3ac7 Mon Sep 17 00:00:00 2001
+ From: "H.J. Lu" <hjl.tools@gmail.com>
+ Date: Mon, 27 Apr 2020 14:04:48 -0700
+ Subject: [PATCH 46/47] powerpc: Keep .rela* sections when CONFIG_RELOCATABLE
+diff --git a/0047-Discard-.note.gnu.property-sections-in-generic-NOTES.patch b/0047-Discard-.note.gnu.property-sections-in-generic-NOTES.patch
+index 3cf69a074..2227b4d85 100644
+--- a/0047-Discard-.note.gnu.property-sections-in-generic-NOTES.patch
++++ b/0047-Discard-.note.gnu.property-sections-in-generic-NOTES.patch
+@@ -1,4 +1,4 @@
+-From 4d25a79fb639bfcd424a00d87dab6b53825f864a Mon Sep 17 00:00:00 2001
++From 2047a19f21575bb7bced3c7aa89f13d193d834f6 Mon Sep 17 00:00:00 2001
+ From: "H.J. Lu" <hjl.tools@gmail.com>
+ Date: Thu, 30 Jan 2020 12:39:09 -0800
+ Subject: [PATCH 47/47] Discard .note.gnu.property sections in generic NOTES
+-- 
+2.26.2
+
