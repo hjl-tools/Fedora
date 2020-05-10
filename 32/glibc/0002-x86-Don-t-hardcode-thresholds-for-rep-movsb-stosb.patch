@@ -1,0 +1,249 @@
+From 3d4c70dc6fe8285cf9dec2a9edc86746746bc727 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Sat, 9 May 2020 13:18:18 -0700
+Subject: [PATCH 2/3] x86: Don't hardcode thresholds for "rep movsb/stosb"
+
+---
+ ...dcode-thresholds-for-rep-movsb-stosb.patch | 217 ++++++++++++++++++
+ glibc.spec                                    |   1 +
+ 2 files changed, 218 insertions(+)
+ create mode 100644 0001-x86-Don-t-hardcode-thresholds-for-rep-movsb-stosb.patch
+
+diff --git a/0001-x86-Don-t-hardcode-thresholds-for-rep-movsb-stosb.patch b/0001-x86-Don-t-hardcode-thresholds-for-rep-movsb-stosb.patch
+new file mode 100644
+index 0000000..46c7fc5
+--- /dev/null
++++ b/0001-x86-Don-t-hardcode-thresholds-for-rep-movsb-stosb.patch
+@@ -0,0 +1,217 @@
++From 2d3b0ef50a2ccbc6677ab6e9677d0fdd365678fd Mon Sep 17 00:00:00 2001
++From: "H.J. Lu" <hjl.tools@gmail.com>
++Date: Sat, 9 May 2020 11:13:57 -0700
++Subject: [PATCH] x86: Don't hardcode thresholds for "rep movsb/stosb"
++
++Add x86_rep_movsb_threshold and x86_rep_stosb_threshold to tunables
++to update thresholds for "rep movsb" and "rep stosb" at run-time.
++---
++ manual/tunables.texi                          | 14 ++++++++
++ sysdeps/x86/cacheinfo.c                       | 36 +++++++++++++++++++
++ sysdeps/x86/cpu-features.c                    |  4 +++
++ sysdeps/x86/cpu-features.h                    |  4 +++
++ sysdeps/x86/dl-tunables.list                  |  6 ++++
++ .../multiarch/memmove-vec-unaligned-erms.S    | 16 +--------
++ .../multiarch/memset-vec-unaligned-erms.S     | 12 +------
++ 7 files changed, 66 insertions(+), 26 deletions(-)
++
++diff --git a/manual/tunables.texi b/manual/tunables.texi
++index ec18b10834..61edd62425 100644
++--- a/manual/tunables.texi
+++++ b/manual/tunables.texi
++@@ -396,6 +396,20 @@ to set threshold in bytes for non temporal store.
++ This tunable is specific to i386 and x86-64.
++ @end deftp
++ 
+++@deftp Tunable glibc.cpu.x86_rep_movsb_threshold
+++The @code{glibc.cpu.x86_rep_movsb_threshold} tunable allows the user
+++to set threshold in bytes to start using "rep movsb".
+++
+++This tunable is specific to i386 and x86-64.
+++@end deftp
+++
+++@deftp Tunable glibc.cpu.x86_rep_stosb_threshold
+++The @code{glibc.cpu.x86_rep_stosb_threshold} tunable allows the user
+++to set threshold in bytes to start using "rep stosb".
+++
+++This tunable is specific to i386 and x86-64.
+++@end deftp
+++
++ @deftp Tunable glibc.cpu.x86_ibt
++ The @code{glibc.cpu.x86_ibt} tunable allows the user to control how
++ indirect branch tracking (IBT) should be enabled.  Accepted values are
++diff --git a/sysdeps/x86/cacheinfo.c b/sysdeps/x86/cacheinfo.c
++index e3e8ef27bb..f7aacc5665 100644
++--- a/sysdeps/x86/cacheinfo.c
+++++ b/sysdeps/x86/cacheinfo.c
++@@ -476,6 +476,23 @@ long int __x86_raw_shared_cache_size attribute_hidden = 1024 * 1024;
++ /* Threshold to use non temporal store.  */
++ long int __x86_shared_non_temporal_threshold attribute_hidden;
++ 
+++/* Threshold to use Enhanced REP MOVSB.  Since there is overhead to set
+++   up REP MOVSB operation, REP MOVSB isn't faster on short data.  The
+++   memcpy micro benchmark in glibc shows that 2KB is the approximate
+++   value above which REP MOVSB becomes faster than SSE2 optimization
+++   on processors with Enhanced REP MOVSB.  Since larger register size
+++   can move more data with a single load and store, the threshold is
+++   higher with larger register size.  */
+++long int __x86_rep_movsb_threshold attribute_hidden = 2048;
+++
+++/* Threshold to use Enhanced REP STOSB.  Since there is overhead to set
+++   up REP STOSB operation, REP STOSB isn't faster on short data.  The
+++   memset micro benchmark in glibc shows that 2KB is the approximate
+++   value above which REP STOSB becomes faster on processors with
+++   Enhanced REP STOSB.  Since the stored value is fixed, larger register
+++   size has minimal impact on threshold.  */
+++long int __x86_rep_stosb_threshold attribute_hidden = 2048;
+++
++ #ifndef DISABLE_PREFETCHW
++ /* PREFETCHW support flag for use in memory and string routines.  */
++ int __x86_prefetchw attribute_hidden;
++@@ -786,6 +803,25 @@ intel_bug_no_cache_info:
++     = (cpu_features->non_temporal_threshold != 0
++        ? cpu_features->non_temporal_threshold
++        : __x86_shared_cache_size * threads * 3 / 4);
+++
+++  if (cpu_features->rep_movsb_threshold)
+++    __x86_rep_movsb_threshold = cpu_features->rep_movsb_threshold;
+++  else
+++    {
+++      unsigned int rep_movsb_threshold;
+++      if (CPU_FEATURES_ARCH_P (cpu_features, AVX512F_Usable)
+++	  && !CPU_FEATURES_ARCH_P (cpu_features, Prefer_No_AVX512))
+++	rep_movsb_threshold = 2048 * 4;
+++      else if (CPU_FEATURES_ARCH_P (cpu_features,
+++				    AVX_Fast_Unaligned_Load))
+++	rep_movsb_threshold = 2048 * 2;
+++      else
+++	rep_movsb_threshold = 2048;
+++      __x86_rep_movsb_threshold = rep_movsb_threshold;
+++    }
+++
+++  if (cpu_features->rep_stosb_threshold)
+++    __x86_rep_stosb_threshold = cpu_features->rep_stosb_threshold;
++ }
++ 
++ #endif
++diff --git a/sysdeps/x86/cpu-features.c b/sysdeps/x86/cpu-features.c
++index 81a170a819..6213d9b7c0 100644
++--- a/sysdeps/x86/cpu-features.c
+++++ b/sysdeps/x86/cpu-features.c
++@@ -493,6 +493,10 @@ no_cpuid:
++   TUNABLE_GET (hwcaps, tunable_val_t *, TUNABLE_CALLBACK (set_hwcaps));
++   cpu_features->non_temporal_threshold
++     = TUNABLE_GET (x86_non_temporal_threshold, long int, NULL);
+++  cpu_features->rep_movsb_threshold
+++    = TUNABLE_GET (x86_rep_movsb_threshold, long int, NULL);
+++  cpu_features->rep_stosb_threshold
+++    = TUNABLE_GET (x86_rep_stosb_threshold, long int, NULL);
++   cpu_features->data_cache_size
++     = TUNABLE_GET (x86_data_cache_size, long int, NULL);
++   cpu_features->shared_cache_size
++diff --git a/sysdeps/x86/cpu-features.h b/sysdeps/x86/cpu-features.h
++index aea83e6e31..082c21baa7 100644
++--- a/sysdeps/x86/cpu-features.h
+++++ b/sysdeps/x86/cpu-features.h
++@@ -90,6 +90,10 @@ struct cpu_features
++   unsigned long int shared_cache_size;
++   /* Threshold to use non temporal store.  */
++   unsigned long int non_temporal_threshold;
+++  /* Threshold to use "rep movsb".  */
+++  unsigned long int rep_movsb_threshold;
+++  /* Threshold to use "rep stosb".  */
+++  unsigned long int rep_stosb_threshold;
++ };
++ 
++ /* Used from outside of glibc to get access to the CPU features
++diff --git a/sysdeps/x86/dl-tunables.list b/sysdeps/x86/dl-tunables.list
++index 251b926ce4..43bf6c2389 100644
++--- a/sysdeps/x86/dl-tunables.list
+++++ b/sysdeps/x86/dl-tunables.list
++@@ -30,6 +30,12 @@ glibc {
++     x86_non_temporal_threshold {
++       type: SIZE_T
++     }
+++    x86_rep_movsb_threshold {
+++      type: SIZE_T
+++    }
+++    x86_rep_stosb_threshold {
+++      type: SIZE_T
+++    }
++     x86_data_cache_size {
++       type: SIZE_T
++     }
++diff --git a/sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S b/sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S
++index 74953245aa..bd5dc1a3f3 100644
++--- a/sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S
+++++ b/sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S
++@@ -56,17 +56,6 @@
++ # endif
++ #endif
++ 
++-/* Threshold to use Enhanced REP MOVSB.  Since there is overhead to set
++-   up REP MOVSB operation, REP MOVSB isn't faster on short data.  The
++-   memcpy micro benchmark in glibc shows that 2KB is the approximate
++-   value above which REP MOVSB becomes faster than SSE2 optimization
++-   on processors with Enhanced REP MOVSB.  Since larger register size
++-   can move more data with a single load and store, the threshold is
++-   higher with larger register size.  */
++-#ifndef REP_MOVSB_THRESHOLD
++-# define REP_MOVSB_THRESHOLD	(2048 * (VEC_SIZE / 16))
++-#endif
++-
++ #ifndef PREFETCH
++ # define PREFETCH(addr) prefetcht0 addr
++ #endif
++@@ -253,9 +242,6 @@ L(movsb):
++ 	leaq	(%rsi,%rdx), %r9
++ 	cmpq	%r9, %rdi
++ 	/* Avoid slow backward REP MOVSB.  */
++-# if REP_MOVSB_THRESHOLD <= (VEC_SIZE * 8)
++-#  error Unsupported REP_MOVSB_THRESHOLD and VEC_SIZE!
++-# endif
++ 	jb	L(more_8x_vec_backward)
++ 1:
++ 	mov	%RDX_LP, %RCX_LP
++@@ -331,7 +317,7 @@ L(between_2_3):
++ 
++ #if defined USE_MULTIARCH && IS_IN (libc)
++ L(movsb_more_2x_vec):
++-	cmpq	$REP_MOVSB_THRESHOLD, %rdx
+++	cmp	__x86_rep_movsb_threshold(%rip), %RDX_LP
++ 	ja	L(movsb)
++ #endif
++ L(more_2x_vec):
++diff --git a/sysdeps/x86_64/multiarch/memset-vec-unaligned-erms.S b/sysdeps/x86_64/multiarch/memset-vec-unaligned-erms.S
++index af2299709c..2bfc95de05 100644
++--- a/sysdeps/x86_64/multiarch/memset-vec-unaligned-erms.S
+++++ b/sysdeps/x86_64/multiarch/memset-vec-unaligned-erms.S
++@@ -58,16 +58,6 @@
++ # endif
++ #endif
++ 
++-/* Threshold to use Enhanced REP STOSB.  Since there is overhead to set
++-   up REP STOSB operation, REP STOSB isn't faster on short data.  The
++-   memset micro benchmark in glibc shows that 2KB is the approximate
++-   value above which REP STOSB becomes faster on processors with
++-   Enhanced REP STOSB.  Since the stored value is fixed, larger register
++-   size has minimal impact on threshold.  */
++-#ifndef REP_STOSB_THRESHOLD
++-# define REP_STOSB_THRESHOLD		2048
++-#endif
++-
++ #ifndef SECTION
++ # error SECTION is not defined!
++ #endif
++@@ -181,7 +171,7 @@ ENTRY (MEMSET_SYMBOL (__memset, unaligned_erms))
++ 	ret
++ 
++ L(stosb_more_2x_vec):
++-	cmpq	$REP_STOSB_THRESHOLD, %rdx
+++	cmp	__x86_rep_stosb_threshold(%rip), %RDX_LP
++ 	ja	L(stosb)
++ #endif
++ L(more_2x_vec):
++-- 
++2.26.2
++
+diff --git a/glibc.spec b/glibc.spec
+index fde4854..ba6dd48 100644
+--- a/glibc.spec
++++ b/glibc.spec
+@@ -12,6 +12,7 @@ Patch300004: 0004-Mark-unsigned-long-arguments-with-U-in-more-syscalls.patch
+ Patch300005: 0005-Add-C-wrappers-for-process_vm_readv-process_vm_write.patch
+ Patch300006: 0006-Add-a-C-wrapper-for-prctl-BZ-25896.patch
+ Patch400001: 0001-x86-64-Use-RDX_LP-on-__x86_shared_non_temporal_thres.patch
++Patch400002: 0001-x86-Don-t-hardcode-thresholds-for-rep-movsb-stosb.patch
+ 
+ %define glibcsrcdir glibc-2.31-17-gab029a2801
+ %define glibcversion 2.31
+-- 
+2.26.2
+

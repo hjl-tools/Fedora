@@ -1,0 +1,84 @@
+From 513f063f87413fef8e994557c98b9830fb5d97a7 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Sat, 9 May 2020 13:16:26 -0700
+Subject: [PATCH 1/3] Apply [BZ #25966] fix
+
+---
+ ...P-on-__x86_shared_non_temporal_thres.patch | 52 +++++++++++++++++++
+ glibc.spec                                    |  1 +
+ 2 files changed, 53 insertions(+)
+ create mode 100644 0001-x86-64-Use-RDX_LP-on-__x86_shared_non_temporal_thres.patch
+
+diff --git a/0001-x86-64-Use-RDX_LP-on-__x86_shared_non_temporal_thres.patch b/0001-x86-64-Use-RDX_LP-on-__x86_shared_non_temporal_thres.patch
+new file mode 100644
+index 0000000..f1c135b
+--- /dev/null
++++ b/0001-x86-64-Use-RDX_LP-on-__x86_shared_non_temporal_thres.patch
+@@ -0,0 +1,52 @@
++From 4c833bbebe366ac5baec87dd68ec0a4962ee86ae Mon Sep 17 00:00:00 2001
++From: "H.J. Lu" <hjl.tools@gmail.com>
++Date: Sat, 9 May 2020 12:04:23 -0700
++Subject: [PATCH] x86-64: Use RDX_LP on __x86_shared_non_temporal_threshold [BZ
++ #25966]
++
++Since __x86_shared_non_temporal_threshold is defined as
++
++long int __x86_shared_non_temporal_threshold;
++
++and long int is 4 bytes for x32, use RDX_LP to compare against
++__x86_shared_non_temporal_threshold in assembly code.
++
++(cherry picked from commit 55c7bcc71b84123d5d4bd2814366a6b05fcf8ebd)
++---
++ sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S | 6 +++---
++ 1 file changed, 3 insertions(+), 3 deletions(-)
++
++diff --git a/sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S b/sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S
++index c763b7d871..74953245aa 100644
++--- a/sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S
+++++ b/sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S
++@@ -244,7 +244,7 @@ L(return):
++ 	ret
++ 
++ L(movsb):
++-	cmpq	__x86_shared_non_temporal_threshold(%rip), %rdx
+++	cmp	__x86_shared_non_temporal_threshold(%rip), %RDX_LP
++ 	jae	L(more_8x_vec)
++ 	cmpq	%rsi, %rdi
++ 	jb	1f
++@@ -402,7 +402,7 @@ L(more_8x_vec):
++ 	addq	%r8, %rdx
++ #if (defined USE_MULTIARCH || VEC_SIZE == 16) && IS_IN (libc)
++ 	/* Check non-temporal store threshold.  */
++-	cmpq	__x86_shared_non_temporal_threshold(%rip), %rdx
+++	cmp	__x86_shared_non_temporal_threshold(%rip), %RDX_LP
++ 	ja	L(large_forward)
++ #endif
++ L(loop_4x_vec_forward):
++@@ -454,7 +454,7 @@ L(more_8x_vec_backward):
++ 	subq	%r8, %rdx
++ #if (defined USE_MULTIARCH || VEC_SIZE == 16) && IS_IN (libc)
++ 	/* Check non-temporal store threshold.  */
++-	cmpq	__x86_shared_non_temporal_threshold(%rip), %rdx
+++	cmp	__x86_shared_non_temporal_threshold(%rip), %RDX_LP
++ 	ja	L(large_backward)
++ #endif
++ L(loop_4x_vec_backward):
++-- 
++2.26.2
++
+diff --git a/glibc.spec b/glibc.spec
+index 3a435a7..fde4854 100644
+--- a/glibc.spec
++++ b/glibc.spec
+@@ -11,6 +11,7 @@ Patch300003: 0003-Add-a-syscall-test-for-BZ-25810.patch
+ Patch300004: 0004-Mark-unsigned-long-arguments-with-U-in-more-syscalls.patch
+ Patch300005: 0005-Add-C-wrappers-for-process_vm_readv-process_vm_write.patch
+ Patch300006: 0006-Add-a-C-wrapper-for-prctl-BZ-25896.patch
++Patch400001: 0001-x86-64-Use-RDX_LP-on-__x86_shared_non_temporal_thres.patch
+ 
+ %define glibcsrcdir glibc-2.31-17-gab029a2801
+ %define glibcversion 2.31
+-- 
+2.26.2
+
