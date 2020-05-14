@@ -1,0 +1,145 @@
+From 8a4c0db0be740f87763d954bbdbb3d9c76a1b4a1 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Thu, 14 May 2020 05:38:54 -0700
+Subject: [PATCH] Update x86: Don't hardcode thresholds for "rep movsb/stosb"
+
+Ignore the user specified threshold for "rep movsb" smaller than the
+minimum threshold.
+---
+ ...olds-for-rep-movsb-stosb-to-tunables.patch | 69 +++++++++++--------
+ glibc.spec                                    |  2 +-
+ 2 files changed, 43 insertions(+), 28 deletions(-)
+ rename 0001-x86-Don-t-hardcode-thresholds-for-rep-movsb-stosb.patch => 0001-x86-Add-thresholds-for-rep-movsb-stosb-to-tunables.patch (78%)
+
+diff --git a/0001-x86-Don-t-hardcode-thresholds-for-rep-movsb-stosb.patch b/0001-x86-Add-thresholds-for-rep-movsb-stosb-to-tunables.patch
+similarity index 78%
+rename from 0001-x86-Don-t-hardcode-thresholds-for-rep-movsb-stosb.patch
+rename to 0001-x86-Add-thresholds-for-rep-movsb-stosb-to-tunables.patch
+index 46c7fc5..5f5b76e 100644
+--- a/0001-x86-Don-t-hardcode-thresholds-for-rep-movsb-stosb.patch
++++ b/0001-x86-Add-thresholds-for-rep-movsb-stosb-to-tunables.patch
+@@ -1,31 +1,36 @@
+-From 2d3b0ef50a2ccbc6677ab6e9677d0fdd365678fd Mon Sep 17 00:00:00 2001
++From 243400ef095a78c15d6ec4d0665f94f16b94a006 Mon Sep 17 00:00:00 2001
+ From: "H.J. Lu" <hjl.tools@gmail.com>
+ Date: Sat, 9 May 2020 11:13:57 -0700
+-Subject: [PATCH] x86: Don't hardcode thresholds for "rep movsb/stosb"
++Subject: [PATCH] x86: Add thresholds for "rep movsb/stosb" to tunables
+ 
+ Add x86_rep_movsb_threshold and x86_rep_stosb_threshold to tunables
+ to update thresholds for "rep movsb" and "rep stosb" at run-time.
++
++Note that the user specified threshold for "rep movsb" smaller than
++the minimum threshold will be ignored.
+ ---
+- manual/tunables.texi                          | 14 ++++++++
+- sysdeps/x86/cacheinfo.c                       | 36 +++++++++++++++++++
+- sysdeps/x86/cpu-features.c                    |  4 +++
+- sysdeps/x86/cpu-features.h                    |  4 +++
+- sysdeps/x86/dl-tunables.list                  |  6 ++++
+- .../multiarch/memmove-vec-unaligned-erms.S    | 16 +--------
+- .../multiarch/memset-vec-unaligned-erms.S     | 12 +------
+- 7 files changed, 66 insertions(+), 26 deletions(-)
++ manual/tunables.texi                          | 16 +++++++
++ sysdeps/x86/cacheinfo.c                       | 46 +++++++++++++++++++
++ sysdeps/x86/cpu-features.c                    |  4 ++
++ sysdeps/x86/cpu-features.h                    |  4 ++
++ sysdeps/x86/dl-tunables.list                  |  6 +++
++ .../multiarch/memmove-vec-unaligned-erms.S    | 16 +------
++ .../multiarch/memset-vec-unaligned-erms.S     | 12 +----
++ 7 files changed, 78 insertions(+), 26 deletions(-)
+ 
+ diff --git a/manual/tunables.texi b/manual/tunables.texi
+-index ec18b10834..61edd62425 100644
++index ec18b10834..8054f79be0 100644
+ --- a/manual/tunables.texi
+ +++ b/manual/tunables.texi
+-@@ -396,6 +396,20 @@ to set threshold in bytes for non temporal store.
++@@ -396,6 +396,22 @@ to set threshold in bytes for non temporal store.
+  This tunable is specific to i386 and x86-64.
+  @end deftp
+  
+ +@deftp Tunable glibc.cpu.x86_rep_movsb_threshold
+ +The @code{glibc.cpu.x86_rep_movsb_threshold} tunable allows the user
+-+to set threshold in bytes to start using "rep movsb".
+++to set threshold in bytes to start using "rep movsb".  Note that the
+++user specified threshold smaller than the minimum threshold will be
+++ignored.
+ +
+ +This tunable is specific to i386 and x86-64.
+ +@end deftp
+@@ -41,7 +46,7 @@ index ec18b10834..61edd62425 100644
+  The @code{glibc.cpu.x86_ibt} tunable allows the user to control how
+  indirect branch tracking (IBT) should be enabled.  Accepted values are
+ diff --git a/sysdeps/x86/cacheinfo.c b/sysdeps/x86/cacheinfo.c
+-index e3e8ef27bb..f7aacc5665 100644
++index e3e8ef27bb..47fc5c3844 100644
+ --- a/sysdeps/x86/cacheinfo.c
+ +++ b/sysdeps/x86/cacheinfo.c
+ @@ -476,6 +476,23 @@ long int __x86_raw_shared_cache_size attribute_hidden = 1024 * 1024;
+@@ -68,26 +73,36 @@ index e3e8ef27bb..f7aacc5665 100644
+  #ifndef DISABLE_PREFETCHW
+  /* PREFETCHW support flag for use in memory and string routines.  */
+  int __x86_prefetchw attribute_hidden;
+-@@ -786,6 +803,25 @@ intel_bug_no_cache_info:
++@@ -786,6 +803,35 @@ intel_bug_no_cache_info:
+      = (cpu_features->non_temporal_threshold != 0
+         ? cpu_features->non_temporal_threshold
+         : __x86_shared_cache_size * threads * 3 / 4);
+ +
+-+  if (cpu_features->rep_movsb_threshold)
+-+    __x86_rep_movsb_threshold = cpu_features->rep_movsb_threshold;
+++  /* NB: The REP MOVSB threshold must be greater than VEC_SIZE * 8.  */
+++  unsigned int minimum_rep_movsb_threshold;
+++  /* NB: The default REP MOVSB threshold is 2048 * (VEC_SIZE / 16).  */
+++  unsigned int rep_movsb_threshold;
+++  if (CPU_FEATURES_ARCH_P (cpu_features, AVX512F_Usable)
+++      && !CPU_FEATURES_ARCH_P (cpu_features, Prefer_No_AVX512))
+++    {
+++      rep_movsb_threshold = 2048 * (64 / 16);
+++      minimum_rep_movsb_threshold = 64 * 8;
+++    }
+++  else if (CPU_FEATURES_ARCH_P (cpu_features,
+++				AVX_Fast_Unaligned_Load))
+++    {
+++      rep_movsb_threshold = 2048 * (32 / 16);
+++      minimum_rep_movsb_threshold = 32 * 8;
+++    }
+ +  else
+ +    {
+-+      unsigned int rep_movsb_threshold;
+-+      if (CPU_FEATURES_ARCH_P (cpu_features, AVX512F_Usable)
+-+	  && !CPU_FEATURES_ARCH_P (cpu_features, Prefer_No_AVX512))
+-+	rep_movsb_threshold = 2048 * 4;
+-+      else if (CPU_FEATURES_ARCH_P (cpu_features,
+-+				    AVX_Fast_Unaligned_Load))
+-+	rep_movsb_threshold = 2048 * 2;
+-+      else
+-+	rep_movsb_threshold = 2048;
+-+      __x86_rep_movsb_threshold = rep_movsb_threshold;
+++      rep_movsb_threshold = 2048 * (16 / 16);
+++      minimum_rep_movsb_threshold = 16 * 8;
+ +    }
+++  if (cpu_features->rep_movsb_threshold > minimum_rep_movsb_threshold)
+++    __x86_rep_movsb_threshold = cpu_features->rep_movsb_threshold;
+++  else
+++    __x86_rep_movsb_threshold = rep_movsb_threshold;
+ +
+ +  if (cpu_features->rep_stosb_threshold)
+ +    __x86_rep_stosb_threshold = cpu_features->rep_stosb_threshold;
+diff --git a/glibc.spec b/glibc.spec
+index d46c55e..f76eeb6 100644
+--- a/glibc.spec
++++ b/glibc.spec
+@@ -12,7 +12,7 @@ Patch300004: 0004-Mark-unsigned-long-arguments-with-U-in-more-syscalls.patch
+ Patch300005: 0005-Add-C-wrappers-for-process_vm_readv-process_vm_write.patch
+ Patch300006: 0006-Add-a-C-wrapper-for-prctl-BZ-25896.patch
+ Patch400001: 0001-x86-64-Use-RDX_LP-on-__x86_shared_non_temporal_thres.patch
+-Patch400002: 0001-x86-Don-t-hardcode-thresholds-for-rep-movsb-stosb.patch
++Patch400002: 0001-x86-Add-thresholds-for-rep-movsb-stosb-to-tunables.patch
+ 
+ %define glibcsrcdir glibc-2.31-17-gab029a2801
+ %define glibcversion 2.31
+-- 
+2.26.2
+
