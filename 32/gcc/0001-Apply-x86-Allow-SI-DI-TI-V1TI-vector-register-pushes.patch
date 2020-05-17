@@ -1,0 +1,732 @@
+From 570216a1c351fe03b313ae7895a3bfc8b9310a27 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Sun, 17 May 2020 11:11:20 -0700
+Subject: [PATCH 1/2] Apply x86: Allow SI/DI/TI/V1TI vector register pushes
+
+---
+ ...-and-TImode-pushes-from-XMM-register.patch | 175 ++++++
+ ...86-Allow-V1TI-vector-register-pushes.patch | 508 ++++++++++++++++++
+ gcc.spec                                      |   6 +
+ 3 files changed, 689 insertions(+)
+ create mode 100644 0001-i386-Allow-SI-DI-and-TImode-pushes-from-XMM-register.patch
+ create mode 100644 0002-x86-Allow-V1TI-vector-register-pushes.patch
+
+diff --git a/0001-i386-Allow-SI-DI-and-TImode-pushes-from-XMM-register.patch b/0001-i386-Allow-SI-DI-and-TImode-pushes-from-XMM-register.patch
+new file mode 100644
+index 0000000..d0f825d
+--- /dev/null
++++ b/0001-i386-Allow-SI-DI-and-TImode-pushes-from-XMM-register.patch
+@@ -0,0 +1,175 @@
++From 155d2e5b441d992948e1a2f45e08144c15f63272 Mon Sep 17 00:00:00 2001
++From: Uros Bizjak <ubizjak@gmail.com>
++Date: Fri, 15 May 2020 16:22:19 +0200
++Subject: [PATCH 1/2] i386: Allow SI, DI and TImode pushes from XMM registers
++MIME-Version: 1.0
++Content-Type: text/plain; charset=UTF-8
++Content-Transfer-Encoding: 8bit
++
++Also change XMM register constraint from "x" to "v" in FP push insns.
++
++gcc/ChangeLog:
++
++2020-05-15  Uroš Bizjak  <ubizjak@gmail.com>
++
++	* config/i386/i386.md (SWI48DWI): New mode iterator.
++	(*push<mode>2): Allow XMM registers.
++	(*pushdi2_rex64): Ditto.
++	(*pushsi2_rex64): Ditto.
++	(*pushsi2): Ditto.
++	(push XMM reg splitter): New splitter
++
++	(*pushdf) Change "x" operand constraint to "v".
++	(*pushsf_rex64): Ditto.
++	(*pushsf): Ditto.
++
++(cherry picked from commit 75514d157e9e28616c6de4e8c2740d8c87b6857d)
++---
++ gcc/config/i386/i386.md | 75 +++++++++++++++++++++++++++--------------
++ 1 file changed, 49 insertions(+), 26 deletions(-)
++
++diff --git a/gcc/config/i386/i386.md b/gcc/config/i386/i386.md
++index b426c21d3dd..acf3382fae5 100644
++--- a/gcc/config/i386/i386.md
+++++ b/gcc/config/i386/i386.md
++@@ -1039,6 +1039,9 @@
++ ;; SWI and DWI together.
++ (define_mode_iterator SWIDWI [QI HI SI DI (TI "TARGET_64BIT")])
++ 
+++;; SWI48 and DWI together.
+++(define_mode_iterator SWI48DWI [SI DI (TI "TARGET_64BIT")])
+++
++ ;; GET_MODE_SIZE for selected modes.  As GET_MODE_SIZE is not
++ ;; compile time constant, it is faster to use <MODE_SIZE> than
++ ;; GET_MODE_SIZE (<MODE>mode).  For XFmode which depends on
++@@ -1660,8 +1663,8 @@
++ ;; Push/pop instructions.
++ 
++ (define_insn "*push<mode>2"
++-  [(set (match_operand:DWI 0 "push_operand" "=<")
++-	(match_operand:DWI 1 "general_no_elim_operand" "riF*o"))]
+++  [(set (match_operand:DWI 0 "push_operand" "=<,<")
+++	(match_operand:DWI 1 "general_no_elim_operand" "riF*o,*v"))]
++   ""
++   "#"
++   [(set_attr "type" "multi")
++@@ -1675,13 +1678,14 @@
++   "ix86_split_long_move (operands); DONE;")
++ 
++ (define_insn "*pushdi2_rex64"
++-  [(set (match_operand:DI 0 "push_operand" "=<,!<")
++-	(match_operand:DI 1 "general_no_elim_operand" "re*m,n"))]
+++  [(set (match_operand:DI 0 "push_operand" "=<,<,!<")
+++	(match_operand:DI 1 "general_no_elim_operand" "re*m,*v,n"))]
++   "TARGET_64BIT"
++   "@
++    push{q}\t%1
+++   #
++    #"
++-  [(set_attr "type" "push,multi")
+++  [(set_attr "type" "push,multi,multi")
++    (set_attr "mode" "DI")])
++ 
++ ;; Convert impossible pushes of immediate to existing instructions.
++@@ -1715,34 +1719,53 @@
++ 						   GEN_INT (4)));
++ })
++ 
+++;; For TARGET_64BIT we always round up to 8 bytes.
+++(define_insn "*pushsi2_rex64"
+++  [(set (match_operand:SI 0 "push_operand" "=X,X")
+++	(match_operand:SI 1 "nonmemory_no_elim_operand" "ri,*v"))]
+++  "TARGET_64BIT"
+++  "@
+++   push{q}\t%q1
+++   #"
+++  [(set_attr "type" "push,multi")
+++   (set_attr "mode" "DI")])
+++
++ (define_insn "*pushsi2"
++-  [(set (match_operand:SI 0 "push_operand" "=<")
++-	(match_operand:SI 1 "general_no_elim_operand" "ri*m"))]
+++  [(set (match_operand:SI 0 "push_operand" "=<,<")
+++	(match_operand:SI 1 "general_no_elim_operand" "ri*m,*v"))]
++   "!TARGET_64BIT"
++-  "push{l}\t%1"
++-  [(set_attr "type" "push")
+++  "@
+++   push{l}\t%1
+++   #"
+++  [(set_attr "type" "push,multi")
++    (set_attr "mode" "SI")])
++ 
++-;; emit_push_insn when it calls move_by_pieces requires an insn to
++-;; "push a byte/word".  But actually we use pushl, which has the effect
++-;; of rounding the amount pushed up to a word.
+++(define_split
+++  [(set (match_operand:SWI48DWI 0 "push_operand")
+++	(match_operand:SWI48DWI 1 "sse_reg_operand"))]
+++  "TARGET_SSE && reload_completed"
+++  [(set (reg:P SP_REG) (plus:P (reg:P SP_REG) (match_dup 2)))
+++    (set (match_dup 0) (match_dup 1))]
+++{
+++  operands[2] = GEN_INT (-PUSH_ROUNDING (GET_MODE_SIZE (<SWI48DWI:MODE>mode)));
+++  /* Preserve memory attributes. */
+++  operands[0] = replace_equiv_address (operands[0], stack_pointer_rtx);
+++})
++ 
++-;; For TARGET_64BIT we always round up to 8 bytes.
++-(define_insn "*push<mode>2_rex64"
++-  [(set (match_operand:SWI124 0 "push_operand" "=X")
++-	(match_operand:SWI124 1 "nonmemory_no_elim_operand" "r<i>"))]
++-  "TARGET_64BIT"
++-  "push{q}\t%q1"
++-  [(set_attr "type" "push")
++-   (set_attr "mode" "DI")])
+++;; emit_push_insn when it calls move_by_pieces requires an insn to
+++;; "push a byte/word".  But actually we use push{l,q}, which has
+++;; the effect of rounding the amount pushed up to a word.
++ 
++ (define_insn "*push<mode>2"
++   [(set (match_operand:SWI12 0 "push_operand" "=X")
++ 	(match_operand:SWI12 1 "nonmemory_no_elim_operand" "rn"))]
++-  "!TARGET_64BIT"
++-  "push{l}\t%k1"
+++  ""
+++  "* return TARGET_64BIT ? \"push{q}\t%q1\" : \"push{l}\t%k1\";"
++   [(set_attr "type" "push")
++-   (set_attr "mode" "SI")])
+++   (set (attr "mode")
+++	(if_then_else (match_test "TARGET_64BIT")
+++	  (const_string "DI")
+++	  (const_string "SI")))])
++ 
++ (define_insn "*push<mode>2_prologue"
++   [(set (match_operand:W 0 "push_operand" "=<")
++@@ -3019,7 +3042,7 @@
++ 
++ (define_insn "*pushdf"
++   [(set (match_operand:DF 0 "push_operand" "=<,<,<,<,<,<")
++-	(match_operand:DF 1 "general_no_elim_operand" "f,r,*r,oF,rmC,x"))]
+++	(match_operand:DF 1 "general_no_elim_operand" "f,r,*r,oF,rmC,v"))]
++   ""
++ {
++   /* This insn should be already split before reg-stack.  */
++@@ -3052,7 +3075,7 @@
++ 
++ (define_insn "*pushsf_rex64"
++   [(set (match_operand:SF 0 "push_operand" "=X,X,X")
++-	(match_operand:SF 1 "nonmemory_no_elim_operand" "f,rF,x"))]
+++	(match_operand:SF 1 "nonmemory_no_elim_operand" "f,rF,v"))]
++   "TARGET_64BIT"
++ {
++   /* Anything else should be already split before reg-stack.  */
++@@ -3066,7 +3089,7 @@
++ 
++ (define_insn "*pushsf"
++   [(set (match_operand:SF 0 "push_operand" "=<,<,<")
++-	(match_operand:SF 1 "general_no_elim_operand" "f,rmF,x"))]
+++	(match_operand:SF 1 "general_no_elim_operand" "f,rmF,v"))]
++   "!TARGET_64BIT"
++ {
++   /* Anything else should be already split before reg-stack.  */
++-- 
++2.26.2
++
+diff --git a/0002-x86-Allow-V1TI-vector-register-pushes.patch b/0002-x86-Allow-V1TI-vector-register-pushes.patch
+new file mode 100644
+index 0000000..7cc230e
+--- /dev/null
++++ b/0002-x86-Allow-V1TI-vector-register-pushes.patch
+@@ -0,0 +1,508 @@
++From a16ae08d960927d12c073d4d1f53c9b38f71bd86 Mon Sep 17 00:00:00 2001
++From: "H.J. Lu" <hjl.tools@gmail.com>
++Date: Tue, 12 May 2020 11:30:29 -0700
++Subject: [PATCH 2/2] x86: Allow V1TI vector register pushes
++
++Add V1TI vector register push and split it after reload to a sequence
++of:
++
++(set (reg:P SP_REG) (plus:P SP_REG) (const_int -8)))
++(set (match_dup 0) (match_dup 1))
++
++so that STV pass can convert TI mode integer push to V1TI vector register
++push.  Rename has_non_address_hard_reg to pseudo_reg_set, combine calls
++of single_set and has_non_address_hard_reg to pseudo_reg_set, to ignore
++pseudo register push.
++
++Remove c-c++-common/dfp/func-vararg-mixed-2.c since it is compiled with
++-mpreferred-stack-boundary=2 and leads to segfault:
++
++Dump of assembler code for function __bid_nesd2:
++   0x08049210 <+0>:	endbr32
++   0x08049214 <+4>:	push   %esi
++   0x08049215 <+5>:	push   %ebx
++   0x08049216 <+6>:	call   0x8049130 <__x86.get_pc_thunk.bx>
++   0x0804921b <+11>:	add    $0x8de5,%ebx
++   0x08049221 <+17>:	sub    $0x20,%esp
++   0x08049224 <+20>:	mov    0x30(%esp),%esi
++   0x08049228 <+24>:	pushl  0x2c(%esp)
++   0x0804922c <+28>:	call   0x804e600 <__bid32_to_bid64>
++   0x08049231 <+33>:	mov    %esi,(%esp)
++   0x08049234 <+36>:	movd   %edx,%xmm1
++   0x08049238 <+40>:	movd   %eax,%xmm0
++   0x0804923c <+44>:	punpckldq %xmm1,%xmm0
++=> 0x08049240 <+48>:	movaps %xmm0,0x10(%esp)
++   0x08049245 <+53>:	call   0x804e600 <__bid32_to_bid64>
++   0x0804924a <+58>:	push   %edx
++   0x0804924b <+59>:	push   %eax
++   0x0804924c <+60>:	pushl  0x1c(%esp)
++   0x08049250 <+64>:	pushl  0x1c(%esp)
++   0x08049254 <+68>:	call   0x804b260 <__bid64_quiet_not_equal>
++   0x08049259 <+73>:	add    $0x34,%esp
++   0x0804925c <+76>:	pop    %ebx
++   0x0804925d <+77>:	pop    %esi
++   0x0804925e <+78>:	ret
++
++when libgcc is compiled with -msse2.  According to GCC manual:
++
++'-mpreferred-stack-boundary=NUM'
++     Attempt to keep the stack boundary aligned to a 2 raised to NUM
++     byte boundary.  If '-mpreferred-stack-boundary' is not specified,
++     the default is 4 (16 bytes or 128-bits).
++
++     *Warning:* If you use this switch, then you must build all modules
++     with the same value, including any libraries.  This includes the
++     system libraries and startup modules.
++
++c-c++-common/dfp/func-vararg-mixed-2.c, which was added by
++
++commit 3b2488ca6ece182f2136a20ee5fa0bb92f935b0f
++Author: H.J. Lu <hongjiu.lu@intel.com>
++Date:   Wed Jul 30 19:24:02 2008 +0000
++
++    func-vararg-alternate-d128-2.c: New.
++
++    2008-07-30  H.J. Lu  <hongjiu.lu@intel.com>
++                Joey Ye  <joey.ye@intel.com>
++
++            * gcc.dg/dfp/func-vararg-alternate-d128-2.c: New.
++            * gcc.dg/dfp/func-vararg-mixed-2.c: Likewise.
++
++isn't expected to work with libgcc.
++
++gcc/
++
++	PR target/95021
++	* config/i386/i386-features.c (has_non_address_hard_reg):
++	Renamed to ...
++	(pseudo_reg_set): This.  Return the SET expression.  Ignore
++	pseudo register push.
++	(general_scalar_to_vector_candidate_p): Combine single_set and
++	has_non_address_hard_reg calls to pseudo_reg_set.
++	(timode_scalar_to_vector_candidate_p): Likewise.
++	* config/i386/i386.md (*pushv1ti2): New pattern.
++
++gcc/testsuite/
++
++	PR target/95021
++	* c-c++-common/dfp/func-vararg-mixed-2.c: Removed.
++	* gcc.target/i386/pr95021-1.c: New test.
++	* gcc.target/i386/pr95021-2.c: Likewise.
++	* gcc.target/i386/pr95021-3.c: Likewise.
++	* gcc.target/i386/pr95021-4.c: Likewise.
++	* gcc.target/i386/pr95021-5.c: Likewise.
++
++(cherry picked from commit 266f44a91c0c9705d3d18e82d7c5bab32927a18f)
++---
++ gcc/config/i386/i386-features.c               |  37 +++---
++ gcc/config/i386/i386.md                       |  16 +++
++ .../c-c++-common/dfp/func-vararg-mixed-2.c    | 105 ------------------
++ gcc/testsuite/gcc.target/i386/pr95021-1.c     |  27 +++++
++ gcc/testsuite/gcc.target/i386/pr95021-2.c     |  39 +++++++
++ gcc/testsuite/gcc.target/i386/pr95021-3.c     |   5 +
++ gcc/testsuite/gcc.target/i386/pr95021-4.c     |  28 +++++
++ gcc/testsuite/gcc.target/i386/pr95021-5.c     |  45 ++++++++
++ 8 files changed, 181 insertions(+), 121 deletions(-)
++ delete mode 100644 gcc/testsuite/c-c++-common/dfp/func-vararg-mixed-2.c
++ create mode 100644 gcc/testsuite/gcc.target/i386/pr95021-1.c
++ create mode 100644 gcc/testsuite/gcc.target/i386/pr95021-2.c
++ create mode 100644 gcc/testsuite/gcc.target/i386/pr95021-3.c
++ create mode 100644 gcc/testsuite/gcc.target/i386/pr95021-4.c
++ create mode 100644 gcc/testsuite/gcc.target/i386/pr95021-5.c
++
++diff --git a/gcc/config/i386/i386-features.c b/gcc/config/i386/i386-features.c
++index 78fb373db6e..b9b764c092a 100644
++--- a/gcc/config/i386/i386-features.c
+++++ b/gcc/config/i386/i386-features.c
++@@ -1253,25 +1253,36 @@ scalar_chain::convert ()
++   return converted_insns;
++ }
++ 
++-/* Return 1 if INSN uses or defines a hard register.
++-   Hard register uses in a memory address are ignored.
++-   Clobbers and flags definitions are ignored.  */
+++/* Return the SET expression if INSN doesn't reference hard register.
+++   Return NULL if INSN uses or defines a hard register, excluding
+++   pseudo register pushes, hard register uses in a memory address,
+++   clobbers and flags definitions.  */
++ 
++-static bool
++-has_non_address_hard_reg (rtx_insn *insn)
+++static rtx
+++pseudo_reg_set (rtx_insn *insn)
++ {
+++  rtx set = single_set (insn);
+++  if (!set)
+++    return NULL;
+++
+++  /* Check pseudo register push first. */
+++  if (REG_P (SET_SRC (set))
+++      && !HARD_REGISTER_P (SET_SRC (set))
+++      && push_operand (SET_DEST (set), GET_MODE (SET_DEST (set))))
+++    return set;
+++
++   df_ref ref;
++   FOR_EACH_INSN_DEF (ref, insn)
++     if (HARD_REGISTER_P (DF_REF_REAL_REG (ref))
++ 	&& !DF_REF_FLAGS_IS_SET (ref, DF_REF_MUST_CLOBBER)
++ 	&& DF_REF_REGNO (ref) != FLAGS_REG)
++-      return true;
+++      return NULL;
++ 
++   FOR_EACH_INSN_USE (ref, insn)
++     if (!DF_REF_REG_MEM_P (ref) && HARD_REGISTER_P (DF_REF_REAL_REG (ref)))
++-      return true;
+++      return NULL;
++ 
++-  return false;
+++  return set;
++ }
++ 
++ /* Check if comparison INSN may be transformed
++@@ -1345,14 +1356,11 @@ convertible_comparison_p (rtx_insn *insn, enum machine_mode mode)
++ static bool
++ general_scalar_to_vector_candidate_p (rtx_insn *insn, enum machine_mode mode)
++ {
++-  rtx def_set = single_set (insn);
+++  rtx def_set = pseudo_reg_set (insn);
++ 
++   if (!def_set)
++     return false;
++ 
++-  if (has_non_address_hard_reg (insn))
++-    return false;
++-
++   rtx src = SET_SRC (def_set);
++   rtx dst = SET_DEST (def_set);
++ 
++@@ -1442,14 +1450,11 @@ general_scalar_to_vector_candidate_p (rtx_insn *insn, enum machine_mode mode)
++ static bool
++ timode_scalar_to_vector_candidate_p (rtx_insn *insn)
++ {
++-  rtx def_set = single_set (insn);
+++  rtx def_set = pseudo_reg_set (insn);
++ 
++   if (!def_set)
++     return false;
++ 
++-  if (has_non_address_hard_reg (insn))
++-    return false;
++-
++   rtx src = SET_SRC (def_set);
++   rtx dst = SET_DEST (def_set);
++ 
++diff --git a/gcc/config/i386/i386.md b/gcc/config/i386/i386.md
++index acf3382fae5..edbb3881f2c 100644
++--- a/gcc/config/i386/i386.md
+++++ b/gcc/config/i386/i386.md
++@@ -1662,6 +1662,22 @@
++ 
++ ;; Push/pop instructions.
++ 
+++(define_insn_and_split "*pushv1ti2"
+++  [(set (match_operand:V1TI 0 "push_operand" "=<")
+++	(match_operand:V1TI 1 "register_operand" "v"))]
+++  "TARGET_64BIT && TARGET_STV"
+++  "#"
+++  "&& reload_completed"
+++  [(set (reg:P SP_REG) (plus:P (reg:P SP_REG) (match_dup 2)))
+++   (set (match_dup 0) (match_dup 1))]
+++{
+++  operands[2] = GEN_INT (-PUSH_ROUNDING (GET_MODE_SIZE (V1TImode)));
+++  /* Preserve memory attributes. */
+++  operands[0] = replace_equiv_address (operands[0], stack_pointer_rtx);
+++}
+++  [(set_attr "type" "multi")
+++   (set_attr "mode" "TI")])
+++
++ (define_insn "*push<mode>2"
++   [(set (match_operand:DWI 0 "push_operand" "=<,<")
++ 	(match_operand:DWI 1 "general_no_elim_operand" "riF*o,*v"))]
++diff --git a/gcc/testsuite/c-c++-common/dfp/func-vararg-mixed-2.c b/gcc/testsuite/c-c++-common/dfp/func-vararg-mixed-2.c
++deleted file mode 100644
++index 02cafb016d1..00000000000
++--- a/gcc/testsuite/c-c++-common/dfp/func-vararg-mixed-2.c
+++++ /dev/null
++@@ -1,105 +0,0 @@
++-/* { dg-do run { target { { i?86-*-* x86_64-*-* } && ia32 } } } */
++-/* { dg-options "-mpreferred-stack-boundary=2" } */
++-
++-/* C99 6.5.2.2 Function calls.
++-   Test passing varargs of the combination of decimal float types and
++-   other types.  */
++-
++-#include <stdarg.h>
++-#include "dfp-dbg.h"
++-
++-/* Supposing the list of varying number of arguments is:
++-   unsigned int, _Decimal128, double, _Decimal32, _Decimal64.  */
++-
++-static _Decimal32
++-vararg_d32 (unsigned arg, ...)
++-{
++-  va_list ap;
++-  _Decimal32 result;
++-
++-  va_start (ap, arg);
++-
++-  va_arg (ap, unsigned int);
++-  va_arg (ap, _Decimal128);
++-  va_arg (ap, double);
++-  result = va_arg (ap, _Decimal32);
++-
++-  va_end (ap);
++-  return result;
++-}
++-
++-static _Decimal32
++-vararg_d64 (unsigned arg, ...)
++-{
++-  va_list ap;
++-  _Decimal64 result;
++-
++-  va_start (ap, arg);
++-
++-  va_arg (ap, unsigned int);
++-  va_arg (ap, _Decimal128);
++-  va_arg (ap, double);
++-  va_arg (ap, _Decimal32);
++-  result = va_arg (ap, _Decimal64);
++-
++-  va_end (ap);
++-  return result;
++-}
++-
++-static _Decimal128
++-vararg_d128 (unsigned arg, ...)
++-{
++-  va_list ap;
++-  _Decimal128 result;
++-
++-  va_start (ap, arg);
++-
++-  va_arg (ap, unsigned int);
++-  result = va_arg (ap, _Decimal128);
++-
++-  va_end (ap);
++-  return result;
++-}
++-
++-static unsigned int
++-vararg_int (unsigned arg, ...)
++-{
++-  va_list ap;
++-  unsigned int result;
++-
++-  va_start (ap, arg);
++-
++-  result = va_arg (ap, unsigned int);
++-
++-  va_end (ap);
++-  return result;
++-}
++-
++-static double
++-vararg_double (unsigned arg, ...)
++-{
++-  va_list ap;
++-  float result;
++-
++-  va_start (ap, arg);
++-
++-  va_arg (ap, unsigned int);
++-  va_arg (ap, _Decimal128);
++-  result = va_arg (ap, double);
++-
++-  va_end (ap);
++-  return result;
++-}
++-
++-
++-int
++-main ()
++-{
++-  if (vararg_d32 (3, 0, 1.0dl, 2.0, 3.0df, 4.0dd) != 3.0df) FAILURE
++-  if (vararg_d64 (4, 0, 1.0dl, 2.0, 3.0df, 4.0dd) != 4.0dd) FAILURE
++-  if (vararg_d128 (1, 0, 1.0dl, 2.0, 3.0df, 4.0dd) != 1.0dl) FAILURE
++-  if (vararg_int (0, 0, 1.0dl, 2.0, 3.0df, 4.0dd) != 0) FAILURE
++-  if (vararg_double (2, 0, 1.0dl, 2.0, 3.0df, 4.0dd) != 2.0) FAILURE
++-
++-  FINISH
++-}
++diff --git a/gcc/testsuite/gcc.target/i386/pr95021-1.c b/gcc/testsuite/gcc.target/i386/pr95021-1.c
++new file mode 100644
++index 00000000000..a0b9a262a87
++--- /dev/null
+++++ b/gcc/testsuite/gcc.target/i386/pr95021-1.c
++@@ -0,0 +1,27 @@
+++/* { dg-do compile { target ia32 } } */
+++/* { dg-options "-O2 -msse2 -mstv -W" } */
+++/* { dg-final { scan-assembler "movq\[ \t\]%xmm\[0-9\]+, \\(%esp\\)" } } */
+++/* { dg-final { scan-assembler-not "psrlq" } } */
+++
+++#include <setjmp.h>
+++
+++extern jmp_buf buf;
+++
+++extern long long *target_p;
+++extern long long *c;
+++
+++extern void foo (long long);
+++
+++__attribute__ ((noclone, noinline))
+++void
+++bar (void)
+++{
+++  if (setjmp (buf))
+++    {
+++      long long target = *target_p;
+++      *c = target;
+++      foo (target);
+++    }
+++  else
+++    foo (0);
+++}
++diff --git a/gcc/testsuite/gcc.target/i386/pr95021-2.c b/gcc/testsuite/gcc.target/i386/pr95021-2.c
++new file mode 100644
++index 00000000000..53247e52784
++--- /dev/null
+++++ b/gcc/testsuite/gcc.target/i386/pr95021-2.c
++@@ -0,0 +1,39 @@
+++/* { dg-do run { target ia32 } } */
+++/* { dg-require-effective-target sse2_runtime } */
+++/* { dg-options "-O2 -msse2 -mstv -W" } */
+++
+++#include <stdlib.h>
+++#include "pr95021-1.c"
+++
+++jmp_buf buf;
+++
+++long long *target_p;
+++long long *c;
+++
+++int count;
+++
+++__attribute__ ((noclone, noinline))
+++void
+++foo (long long x)
+++{
+++  if (x != *c)
+++    abort ();
+++  if (!count)
+++    {
+++      count++;
+++      longjmp (buf, 1);
+++    }
+++}
+++
+++int
+++main ()
+++{
+++  long long val = 30;
+++  long long local = 0;
+++  target_p = &val;
+++  c = &local;
+++  bar ();
+++  if (val != local)
+++    abort ();
+++  return 0;
+++}
++diff --git a/gcc/testsuite/gcc.target/i386/pr95021-3.c b/gcc/testsuite/gcc.target/i386/pr95021-3.c
++new file mode 100644
++index 00000000000..1748161a77c
++--- /dev/null
+++++ b/gcc/testsuite/gcc.target/i386/pr95021-3.c
++@@ -0,0 +1,5 @@
+++/* { dg-do compile { target ia32 } } */
+++/* { dg-options "-O2 -msse2 -mstv -mregparm=3 -W" } */
+++/* { dg-final { scan-assembler "movq\[ \t\]+\[^\n\]*, %xmm" } } */
+++
+++#include "pr95021-1.c"
++diff --git a/gcc/testsuite/gcc.target/i386/pr95021-4.c b/gcc/testsuite/gcc.target/i386/pr95021-4.c
++new file mode 100644
++index 00000000000..d5bb28cc01a
++--- /dev/null
+++++ b/gcc/testsuite/gcc.target/i386/pr95021-4.c
++@@ -0,0 +1,28 @@
+++/* { dg-do compile { target int128 } } */
+++/* { dg-options "-O2 -msse2 -mstv -W" } */
+++/* { dg-final { scan-assembler "(movaps|vmovdqa)\[ \t\]%xmm\[0-9\]+, \\(%rsp\\)" } } */
+++
+++#include <setjmp.h>
+++
+++extern jmp_buf buf;
+++
+++extern __int128 *target_p;
+++__int128 *c;
+++
+++extern int count;
+++
+++extern void foo (__int128, __int128, __int128, __int128);
+++
+++__attribute__ ((noclone, noinline))
+++void
+++bar (void)
+++{
+++  if (setjmp (buf))
+++    {
+++      __int128 target = *target_p;
+++      *c = target;
+++      foo (0xbadbeef1, 0x2badbeef, 0xbad3beef, target);
+++    }
+++  else
+++    foo (0xbadbeef1, 0x2badbeef, 0xbad3beef, 0);
+++}
++diff --git a/gcc/testsuite/gcc.target/i386/pr95021-5.c b/gcc/testsuite/gcc.target/i386/pr95021-5.c
++new file mode 100644
++index 00000000000..d8658095bc8
++--- /dev/null
+++++ b/gcc/testsuite/gcc.target/i386/pr95021-5.c
++@@ -0,0 +1,45 @@
+++/* { dg-do run { target int128 } } */
+++/* { dg-require-effective-target sse2_runtime } */
+++/* { dg-options "-O2 -msse2 -mstv -W" } */
+++
+++#include <stdlib.h>
+++#include "pr95021-4.c"
+++
+++jmp_buf buf;
+++
+++__int128 *target_p;
+++__int128 *c;
+++
+++int count;
+++
+++__attribute__ ((noclone, noinline))
+++void
+++foo (__int128 i1, __int128 i2, __int128 i3, __int128 x)
+++{
+++  if (i1 != 0xbadbeef1)
+++    abort ();
+++  if (i2 != 0x2badbeef)
+++    abort ();
+++  if (i3 != 0xbad3beef)
+++    abort ();
+++  if (x != *c)
+++    abort ();
+++  if (!count)
+++    {
+++      count++;
+++      longjmp (buf, 1);
+++    }
+++}
+++
+++int
+++main ()
+++{
+++  __int128 val = 30;
+++  __int128 local = 0;
+++  target_p = &val;
+++  c = &local;
+++  bar ();
+++  if (val != local)
+++    abort ();
+++  return 0;
+++}
++-- 
++2.26.2
++
+diff --git a/gcc.spec b/gcc.spec
+index 9b34b5a..1f88453 100644
+--- a/gcc.spec
++++ b/gcc.spec
+@@ -1,3 +1,6 @@
++Patch100001: 0001-i386-Allow-SI-DI-and-TImode-pushes-from-XMM-register.patch
++Patch100002: 0002-x86-Allow-V1TI-vector-register-pushes.patch
++
+ %global DATE 20200507
+ %global gitrev 563509ad4338c7193d06f4008e9df657990628a5
+ %global gcc_version 10.1.1
+@@ -785,6 +788,9 @@ to NVidia PTX capable devices if available.
+ %endif
+ %patch11 -p0 -b .d-shared-libphobos~
+ 
++%patch100001 -p1 -b .pushxmm
++%patch100002 -p1 -b .pushv1ti2
++
+ echo 'Red Hat %{version}-%{gcc_release}' > gcc/DEV-PHASE
+ 
+ cp -a libstdc++-v3/config/cpu/i{4,3}86/atomicity.h
+-- 
+2.26.2
+
