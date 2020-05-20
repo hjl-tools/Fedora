@@ -1,0 +1,67 @@
+From e9a168300b39348661da8d4e1dd3dbab03665893 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Wed, 20 May 2020 07:32:49 -0700
+Subject: [PATCH] Fix x86: Allow SI/DI/TI/V1TI vector register pushes
+
+Fix a typo in *pushsi2_rex64
+---
+ 0003-Fix-a-typo-in-pushsi2_rex64.patch | 27 ++++++++++++++++++++++++++
+ gcc.spec                               |  2 ++
+ 2 files changed, 29 insertions(+)
+ create mode 100644 0003-Fix-a-typo-in-pushsi2_rex64.patch
+
+diff --git a/0003-Fix-a-typo-in-pushsi2_rex64.patch b/0003-Fix-a-typo-in-pushsi2_rex64.patch
+new file mode 100644
+index 0000000..dc99cb0
+--- /dev/null
++++ b/0003-Fix-a-typo-in-pushsi2_rex64.patch
+@@ -0,0 +1,27 @@
++From a38a1b131333c5808098d5c7cd7d345c6297146a Mon Sep 17 00:00:00 2001
++From: "H.J. Lu" <hjl.tools@gmail.com>
++Date: Wed, 20 May 2020 07:27:32 -0700
++Subject: [PATCH] Fix a typo in *pushsi2_rex64
++
++	PR target/95238
++	* config/i386/i386.md (*pushsi2_rex64): Change "i" back to "e".
++---
++ gcc/config/i386/i386.md | 2 +-
++ 1 file changed, 1 insertion(+), 1 deletion(-)
++
++diff --git a/gcc/config/i386/i386.md b/gcc/config/i386/i386.md
++index edbb3881f2c..cfa025a65b8 100644
++--- a/gcc/config/i386/i386.md
+++++ b/gcc/config/i386/i386.md
++@@ -1738,7 +1738,7 @@
++ ;; For TARGET_64BIT we always round up to 8 bytes.
++ (define_insn "*pushsi2_rex64"
++   [(set (match_operand:SI 0 "push_operand" "=X,X")
++-	(match_operand:SI 1 "nonmemory_no_elim_operand" "ri,*v"))]
+++	(match_operand:SI 1 "nonmemory_no_elim_operand" "re,*v"))]
++   "TARGET_64BIT"
++   "@
++    push{q}\t%q1
++-- 
++2.26.2
++
+diff --git a/gcc.spec b/gcc.spec
+index affe669..dbb82af 100644
+--- a/gcc.spec
++++ b/gcc.spec
+@@ -1,5 +1,6 @@
+ Patch100001: 0001-i386-Allow-SI-DI-and-TImode-pushes-from-XMM-register.patch
+ Patch100002: 0002-x86-Allow-V1TI-vector-register-pushes.patch
++Patch100003: 0003-Fix-a-typo-in-pushsi2_rex64.patch
+ 
+ %global DATE 20200507
+ %global gitrev 563509ad4338c7193d06f4008e9df657990628a5
+@@ -790,6 +791,7 @@ to NVidia PTX capable devices if available.
+ 
+ %patch100001 -p1 -b .pushxmm
+ %patch100002 -p1 -b .pushv1ti2
++%patch100003 -p1 -b .pushsi2_rex64
+ 
+ echo 'Red Hat %{version}-%{gcc_release}' > gcc/DEV-PHASE
+ 
+-- 
+2.26.2
+
