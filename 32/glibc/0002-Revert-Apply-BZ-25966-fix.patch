@@ -1,0 +1,87 @@
+From 13143bc2cf248e88cc2963564542a9b7f1600a67 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Thu, 21 May 2020 20:12:30 -0700
+Subject: [PATCH 2/2] Revert "Apply [BZ #25966] fix"
+
+This reverts commit acda520f094fd8d4896247a5a338c11921016d42.
+---
+ ...P-on-__x86_shared_non_temporal_thres.patch | 52 -------------------
+ glibc.spec                                    |  3 +-
+ 2 files changed, 1 insertion(+), 54 deletions(-)
+ delete mode 100644 0001-x86-64-Use-RDX_LP-on-__x86_shared_non_temporal_thres.patch
+
+diff --git a/0001-x86-64-Use-RDX_LP-on-__x86_shared_non_temporal_thres.patch b/0001-x86-64-Use-RDX_LP-on-__x86_shared_non_temporal_thres.patch
+deleted file mode 100644
+index f1c135b..0000000
+--- a/0001-x86-64-Use-RDX_LP-on-__x86_shared_non_temporal_thres.patch
++++ /dev/null
+@@ -1,52 +0,0 @@
+-From 4c833bbebe366ac5baec87dd68ec0a4962ee86ae Mon Sep 17 00:00:00 2001
+-From: "H.J. Lu" <hjl.tools@gmail.com>
+-Date: Sat, 9 May 2020 12:04:23 -0700
+-Subject: [PATCH] x86-64: Use RDX_LP on __x86_shared_non_temporal_threshold [BZ
+- #25966]
+-
+-Since __x86_shared_non_temporal_threshold is defined as
+-
+-long int __x86_shared_non_temporal_threshold;
+-
+-and long int is 4 bytes for x32, use RDX_LP to compare against
+-__x86_shared_non_temporal_threshold in assembly code.
+-
+-(cherry picked from commit 55c7bcc71b84123d5d4bd2814366a6b05fcf8ebd)
+----
+- sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S | 6 +++---
+- 1 file changed, 3 insertions(+), 3 deletions(-)
+-
+-diff --git a/sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S b/sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S
+-index c763b7d871..74953245aa 100644
+---- a/sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S
+-+++ b/sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S
+-@@ -244,7 +244,7 @@ L(return):
+- 	ret
+- 
+- L(movsb):
+--	cmpq	__x86_shared_non_temporal_threshold(%rip), %rdx
+-+	cmp	__x86_shared_non_temporal_threshold(%rip), %RDX_LP
+- 	jae	L(more_8x_vec)
+- 	cmpq	%rsi, %rdi
+- 	jb	1f
+-@@ -402,7 +402,7 @@ L(more_8x_vec):
+- 	addq	%r8, %rdx
+- #if (defined USE_MULTIARCH || VEC_SIZE == 16) && IS_IN (libc)
+- 	/* Check non-temporal store threshold.  */
+--	cmpq	__x86_shared_non_temporal_threshold(%rip), %rdx
+-+	cmp	__x86_shared_non_temporal_threshold(%rip), %RDX_LP
+- 	ja	L(large_forward)
+- #endif
+- L(loop_4x_vec_forward):
+-@@ -454,7 +454,7 @@ L(more_8x_vec_backward):
+- 	subq	%r8, %rdx
+- #if (defined USE_MULTIARCH || VEC_SIZE == 16) && IS_IN (libc)
+- 	/* Check non-temporal store threshold.  */
+--	cmpq	__x86_shared_non_temporal_threshold(%rip), %rdx
+-+	cmp	__x86_shared_non_temporal_threshold(%rip), %RDX_LP
+- 	ja	L(large_backward)
+- #endif
+- L(loop_4x_vec_backward):
+--- 
+-2.26.2
+-
+diff --git a/glibc.spec b/glibc.spec
+index 8db6239..8c84971 100644
+--- a/glibc.spec
++++ b/glibc.spec
+@@ -5,8 +5,7 @@ Patch200003: 0003-i386-mcount.S-Add-_CET_ENDBR-to-_mcount-and-__fentry.patch
+ Patch200004: 0004-i386-Use-ENTRY-END-in-assembly-codes.patch
+ Patch200005: 0005-i386-Remove-_exit.S.patch
+ Patch200006: 0006-i386-Enable-CET-support-in-ucontext-functions.patch
+-Patch400001: 0001-x86-64-Use-RDX_LP-on-__x86_shared_non_temporal_thres.patch
+-Patch400002: 0001-x86-Add-thresholds-for-rep-movsb-stosb-to-tunables.patch
++Patch300001: 0001-x86-Add-thresholds-for-rep-movsb-stosb-to-tunables.patch
+ 
+ %define glibcsrcdir glibc-2.31-43-gc839175267
+ %define glibcversion 2.31
+-- 
+2.26.2
+
