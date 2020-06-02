@@ -1,0 +1,1649 @@
+From f19f63f91da8e1e3032bb9f9cac682ad5511dc8f Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Tue, 2 Jun 2020 04:16:11 -0700
+Subject: [PATCH] Update Intel CET patches for Linux kernel 5.7
+
+---
+ ...ename-validate_xstate_header-to-vali.patch |  8 +-
+ ...efine-new-macros-for-supervisor-and-.patch | 16 ++--
+ ...eparate-user-and-supervisor-xfeature.patch | 12 +--
+ ...e-Introduce-XSAVES-supervisor-states.patch |  4 +-
+ ...efine-new-functions-for-clearing-fpr.patch |  4 +-
+ ...pdate-sanitize_restored_xstate-for-s.patch | 23 ++---
+ ...pdate-copy_kernel_to_xregs_err-for-X.patch |  5 +-
+ ...-Introduce-copy_supervisor_to_kernel.patch |  6 +-
+ ...reserve-supervisor-states-for-slow-p.patch | 35 +++-----
+ ...estore-supervisor-states-for-signal-.patch | 37 +++++---
+ ...ocumentation-x86-Add-CET-description.patch |  2 +-
+ ...Add-CET-CPU-feature-flags-for-Contro.patch |  2 +-
+ ...ntroduce-CET-MSR-XSAVES-supervisor-s.patch |  4 +-
+ ...Add-control-protection-fault-handler.patch |  4 +-
+ ...d-Kconfig-option-for-user-mode-Shado.patch |  6 +-
+ ...Change-_PAGE_DIRTY-to-_PAGE_DIRTY_HW.patch |  6 +-
+ ...-_PAGE_DIRTY_HW-from-kernel-RO-pages.patch |  6 +-
+ 0018-x86-mm-Introduce-_PAGE_COW.patch         |  2 +-
+ ...ange-_PAGE_DIRTY-to-_PAGE_DIRTY_BITS.patch |  2 +-
+ ...6-mm-Update-pte_modify-for-_PAGE_COW.patch |  2 +-
+ ...ep_set_wrprotect-and-pmdp_set_wrprot.patch |  2 +-
+ ...uce-VM_SHSTK-for-shadow-stack-memory.patch |  4 +-
+ ...adow-Stack-page-fault-error-checking.patch |  2 +-
+ ...pdate-maybe_mkwrite-for-shadow-stack.patch | 12 +--
+ ...laces-that-call-pte_mkwrite-directly.patch |  2 +-
+ ...dd-guard-pages-around-a-shadow-stack.patch | 10 +--
+ ...dow-stack-pages-to-memory-accounting.patch |  2 +-
+ ...an_follow_write_pte-for-shadow-stack.patch |  4 +-
+ ...shstk-User-mode-shadow-stack-support.patch |  4 +-
+ ...hstk-Handle-signals-for-shadow-stack.patch | 47 +++++-----
+ ...nfig-additions-for-ELF-program-prope.patch | 16 ++--
+ ...ELF-program-property-parsing-support.patch |  6 +-
+ ...LF-Introduce-arch_setup_elf_property.patch |  4 +-
+ ...-ELF-header-parsing-for-shadow-stack.patch | 17 ++--
+ ...cet-shstk-Handle-thread-shadow-stack.patch |  6 +-
+ ...d-arch_prctl-functions-for-shadow-st.patch | 86 +++++++++++++------
+ ...Kconfig-option-for-user-mode-Indirec.patch |  6 +-
+ ...-mode-Indirect-Branch-Tracking-suppo.patch |  6 +-
+ ...le-signals-for-Indirect-Branch-Track.patch | 12 +--
+ ...header-parsing-for-Indirect-Branch-T.patch | 10 +--
+ ...arch_prctl-functions-for-Indirect-Br.patch | 20 ++---
+ ...x86-cet-Add-PTRACE-interface-for-CET.patch |  4 +-
+ ...ENDBR32-to-__kernel_vsyscall-entry-p.patch |  2 +-
+ ...-vdso-Insert-endbr32-endbr64-to-vDSO.patch |  2 +-
+ ...yscall-emulation-when-CET-is-enabled.patch | 12 +--
+ ...la-sections-when-CONFIG_RELOCATABLE-.patch |  2 +-
+ ...u.property-sections-in-generic-NOTES.patch |  2 +-
+ kernel.spec                                   |  3 -
+ 48 files changed, 268 insertions(+), 223 deletions(-)
+
+diff --git a/0001-x86-fpu-xstate-Rename-validate_xstate_header-to-vali.patch b/0001-x86-fpu-xstate-Rename-validate_xstate_header-to-vali.patch
+index 8ab660bcb..1a6c49751 100644
+--- a/0001-x86-fpu-xstate-Rename-validate_xstate_header-to-vali.patch
++++ b/0001-x86-fpu-xstate-Rename-validate_xstate_header-to-vali.patch
+@@ -1,4 +1,4 @@
+-From 53033cf39d5bc4d46b0069f303b2cf4f671493af Mon Sep 17 00:00:00 2001
++From a795020f5251c22dceaa2480f0cf4d9569bcf65c Mon Sep 17 00:00:00 2001
+ From: Fenghua Yu <fenghua.yu@intel.com>
+ Date: Wed, 13 Dec 2017 16:08:28 -0800
+ Subject: [PATCH 01/47] x86/fpu/xstate: Rename validate_xstate_header() to
+@@ -63,7 +63,7 @@ index 400a05e1c1c5..585e3651b98f 100644
+  		if (ret)
+  			goto err_out;
+ diff --git a/arch/x86/kernel/fpu/xstate.c b/arch/x86/kernel/fpu/xstate.c
+-index 32b153d38748..8ed64397c78b 100644
++index 6a54e83d5589..56a4379a2001 100644
+ --- a/arch/x86/kernel/fpu/xstate.c
+ +++ b/arch/x86/kernel/fpu/xstate.c
+ @@ -472,7 +472,7 @@ int using_compacted_format(void)
+@@ -75,7 +75,7 @@ index 32b153d38748..8ed64397c78b 100644
+  {
+  	/* No unknown or supervisor features may be set */
+  	if (hdr->xfeatures & (~xfeatures_mask | XFEATURE_MASK_SUPERVISOR))
+-@@ -1147,7 +1147,7 @@ int copy_kernel_to_xstate(struct xregs_state *xsave, const void *kbuf)
++@@ -1157,7 +1157,7 @@ int copy_kernel_to_xstate(struct xregs_state *xsave, const void *kbuf)
+  
+  	memcpy(&hdr, kbuf + offset, size);
+  
+@@ -84,7 +84,7 @@ index 32b153d38748..8ed64397c78b 100644
+  		return -EINVAL;
+  
+  	for (i = 0; i < XFEATURE_MAX; i++) {
+-@@ -1201,7 +1201,7 @@ int copy_user_to_xstate(struct xregs_state *xsave, const void __user *ubuf)
++@@ -1211,7 +1211,7 @@ int copy_user_to_xstate(struct xregs_state *xsave, const void __user *ubuf)
+  	if (__copy_from_user(&hdr, ubuf + offset, size))
+  		return -EFAULT;
+  
+diff --git a/0002-x86-fpu-xstate-Define-new-macros-for-supervisor-and-.patch b/0002-x86-fpu-xstate-Define-new-macros-for-supervisor-and-.patch
+index d0a3534e2..27f492590 100644
+--- a/0002-x86-fpu-xstate-Define-new-macros-for-supervisor-and-.patch
++++ b/0002-x86-fpu-xstate-Define-new-macros-for-supervisor-and-.patch
+@@ -1,4 +1,4 @@
+-From 6e49b2a5fecd0b461bc06251fc06856742a5cff0 Mon Sep 17 00:00:00 2001
++From 6b03d53f4931a4fc6b58f570f7326a12868903cf Mon Sep 17 00:00:00 2001
+ From: Fenghua Yu <fenghua.yu@intel.com>
+ Date: Thu, 10 Nov 2016 10:13:56 -0800
+ Subject: [PATCH 02/47] x86/fpu/xstate: Define new macros for supervisor and
+@@ -92,7 +92,7 @@ index 6ce7e0a23268..61ddc3a5e5c2 100644
+  
+  /* Legacy code to initialize eager fpu mode. */
+ diff --git a/arch/x86/kernel/fpu/xstate.c b/arch/x86/kernel/fpu/xstate.c
+-index 8ed64397c78b..9997df717339 100644
++index 56a4379a2001..f3093c63c584 100644
+ --- a/arch/x86/kernel/fpu/xstate.c
+ +++ b/arch/x86/kernel/fpu/xstate.c
+ @@ -208,14 +208,13 @@ void fpu__init_cpu_xstate(void)
+@@ -143,16 +143,16 @@ index 8ed64397c78b..9997df717339 100644
+  
+  	fpu__init_prepare_fx_sw_frame();
+  	setup_init_fpu_buf();
+-@@ -996,7 +996,7 @@ int copy_xstate_to_kernel(void *kbuf, struct xregs_state *xsave, unsigned int of
++@@ -1010,7 +1010,7 @@ int copy_xstate_to_kernel(void *kbuf, struct xregs_state *xsave, unsigned int of
+  	 */
+  	memset(&header, 0, sizeof(header));
+  	header.xfeatures = xsave->header.xfeatures;
+ -	header.xfeatures &= ~XFEATURE_MASK_SUPERVISOR;
+ +	header.xfeatures &= XFEATURE_MASK_USER_SUPPORTED;
+  
+- 	/*
+- 	 * Copy xregs_state->header:
+-@@ -1080,7 +1080,7 @@ int copy_xstate_to_user(void __user *ubuf, struct xregs_state *xsave, unsigned i
++ 	if (header.xfeatures & XFEATURE_MASK_FP)
++ 		copy_part(0, off_mxcsr,
++@@ -1090,7 +1090,7 @@ int copy_xstate_to_user(void __user *ubuf, struct xregs_state *xsave, unsigned i
+  	 */
+  	memset(&header, 0, sizeof(header));
+  	header.xfeatures = xsave->header.xfeatures;
+@@ -161,7 +161,7 @@ index 8ed64397c78b..9997df717339 100644
+  
+  	/*
+  	 * Copy xregs_state->header:
+-@@ -1173,7 +1173,7 @@ int copy_kernel_to_xstate(struct xregs_state *xsave, const void *kbuf)
++@@ -1183,7 +1183,7 @@ int copy_kernel_to_xstate(struct xregs_state *xsave, const void *kbuf)
+  	 * The state that came in from userspace was user-state only.
+  	 * Mask all the user states out of 'xfeatures':
+  	 */
+@@ -170,7 +170,7 @@ index 8ed64397c78b..9997df717339 100644
+  
+  	/*
+  	 * Add back in the features that came in from userspace:
+-@@ -1229,7 +1229,7 @@ int copy_user_to_xstate(struct xregs_state *xsave, const void __user *ubuf)
++@@ -1239,7 +1239,7 @@ int copy_user_to_xstate(struct xregs_state *xsave, const void __user *ubuf)
+  	 * The state that came in from userspace was user-state only.
+  	 * Mask all the user states out of 'xfeatures':
+  	 */
+diff --git a/0003-x86-fpu-xstate-Separate-user-and-supervisor-xfeature.patch b/0003-x86-fpu-xstate-Separate-user-and-supervisor-xfeature.patch
+index 527d2409f..d2ece6d04 100644
+--- a/0003-x86-fpu-xstate-Separate-user-and-supervisor-xfeature.patch
++++ b/0003-x86-fpu-xstate-Separate-user-and-supervisor-xfeature.patch
+@@ -1,4 +1,4 @@
+-From 8d40e5f28aec1df0989f26ce6da18a5909dad103 Mon Sep 17 00:00:00 2001
++From 973a93ce4dc3ef0e3a6d341a2a0cbb2493808359 Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Wed, 13 Dec 2017 16:08:28 -0800
+ Subject: [PATCH 03/47] x86/fpu/xstate: Separate user and supervisor xfeatures
+@@ -126,7 +126,7 @@ index 585e3651b98f..3df0cfae535f 100644
+  
+  	if (IS_ENABLED(CONFIG_IA32_EMULATION) ||
+ diff --git a/arch/x86/kernel/fpu/xstate.c b/arch/x86/kernel/fpu/xstate.c
+-index 9997df717339..fa71af643025 100644
++index f3093c63c584..18e0e2a4c890 100644
+ --- a/arch/x86/kernel/fpu/xstate.c
+ +++ b/arch/x86/kernel/fpu/xstate.c
+ @@ -54,9 +54,10 @@ static short xsave_cpuid_features[] __initdata = {
+@@ -330,16 +330,16 @@ index 9997df717339..fa71af643025 100644
+  		  "get of unsupported state");
+  	/*
+  	 * This assumes the last 'xsave*' instruction to
+-@@ -996,7 +1009,7 @@ int copy_xstate_to_kernel(void *kbuf, struct xregs_state *xsave, unsigned int of
++@@ -1010,7 +1023,7 @@ int copy_xstate_to_kernel(void *kbuf, struct xregs_state *xsave, unsigned int of
+  	 */
+  	memset(&header, 0, sizeof(header));
+  	header.xfeatures = xsave->header.xfeatures;
+ -	header.xfeatures &= XFEATURE_MASK_USER_SUPPORTED;
+ +	header.xfeatures &= xfeatures_mask_user();
+  
+- 	/*
+- 	 * Copy xregs_state->header:
+-@@ -1080,7 +1093,7 @@ int copy_xstate_to_user(void __user *ubuf, struct xregs_state *xsave, unsigned i
++ 	if (header.xfeatures & XFEATURE_MASK_FP)
++ 		copy_part(0, off_mxcsr,
++@@ -1090,7 +1103,7 @@ int copy_xstate_to_user(void __user *ubuf, struct xregs_state *xsave, unsigned i
+  	 */
+  	memset(&header, 0, sizeof(header));
+  	header.xfeatures = xsave->header.xfeatures;
+diff --git a/0004-x86-fpu-xstate-Introduce-XSAVES-supervisor-states.patch b/0004-x86-fpu-xstate-Introduce-XSAVES-supervisor-states.patch
+index 717b114d9..dc0c79e3a 100644
+--- a/0004-x86-fpu-xstate-Introduce-XSAVES-supervisor-states.patch
++++ b/0004-x86-fpu-xstate-Introduce-XSAVES-supervisor-states.patch
+@@ -1,4 +1,4 @@
+-From aad049e88941e5d2039fc238b93f37a9548dcc9a Mon Sep 17 00:00:00 2001
++From 18ab1746423145306069f2acb972197f723dc6b0 Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Thu, 10 Nov 2016 10:13:56 -0800
+ Subject: [PATCH 04/47] x86/fpu/xstate: Introduce XSAVES supervisor states
+@@ -19,7 +19,7 @@ Reviewed-by: Tony Luck <tony.luck@intel.com>
+  1 file changed, 19 insertions(+), 9 deletions(-)
+ 
+ diff --git a/arch/x86/kernel/fpu/xstate.c b/arch/x86/kernel/fpu/xstate.c
+-index fa71af643025..a68213ed5be6 100644
++index 18e0e2a4c890..95f09c2e8cd6 100644
+ --- a/arch/x86/kernel/fpu/xstate.c
+ +++ b/arch/x86/kernel/fpu/xstate.c
+ @@ -228,13 +228,14 @@ void fpu__init_cpu_xstate(void)
+diff --git a/0005-x86-fpu-xstate-Define-new-functions-for-clearing-fpr.patch b/0005-x86-fpu-xstate-Define-new-functions-for-clearing-fpr.patch
+index 641416e96..bb491e023 100644
+--- a/0005-x86-fpu-xstate-Define-new-functions-for-clearing-fpr.patch
++++ b/0005-x86-fpu-xstate-Define-new-functions-for-clearing-fpr.patch
+@@ -1,4 +1,4 @@
+-From 6863a15c861cc904610e0f2f7a39dc1c2b2b5b32 Mon Sep 17 00:00:00 2001
++From ecde7e8b453458e3424431e3d4f8a3800d74e259 Mon Sep 17 00:00:00 2001
+ From: Fenghua Yu <fenghua.yu@intel.com>
+ Date: Thu, 10 Nov 2016 10:13:56 -0800
+ Subject: [PATCH 05/47] x86/fpu/xstate: Define new functions for clearing
+@@ -154,7 +154,7 @@ index 3df0cfae535f..cd6eafba12da 100644
+  }
+  
+ diff --git a/arch/x86/kernel/process.c b/arch/x86/kernel/process.c
+-index 9da70b279dad..de182b84723a 100644
++index 35638f1c5791..ce6cd220f722 100644
+ --- a/arch/x86/kernel/process.c
+ +++ b/arch/x86/kernel/process.c
+ @@ -191,7 +191,7 @@ void flush_thread(void)
+diff --git a/0006-x86-fpu-xstate-Update-sanitize_restored_xstate-for-s.patch b/0006-x86-fpu-xstate-Update-sanitize_restored_xstate-for-s.patch
+index a267e244c..bae40cca0 100644
+--- a/0006-x86-fpu-xstate-Update-sanitize_restored_xstate-for-s.patch
++++ b/0006-x86-fpu-xstate-Update-sanitize_restored_xstate-for-s.patch
+@@ -1,12 +1,13 @@
+-From 0515f131aee679479a8e4460f5aa66c1e9b98917 Mon Sep 17 00:00:00 2001
++From bda901519751a4765e8546939ff198b8535dee12 Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Tue, 12 Nov 2019 09:09:10 -0800
+ Subject: [PATCH 06/47] x86/fpu/xstate: Update sanitize_restored_xstate() for
+  supervisor xstates
+ 
+ The function sanitize_restored_xstate() sanitizes user xstates of an XSAVE
+-buffer by setting the buffer's header->xfeatures to the input 'xfeatures',
+-effectively resetting features not in 'xfeatures' back to the init state.
++buffer by clearing bits not in the input 'xfeatures' from the buffer's
++header->xfeatures, effectively resetting those features back to the init
++state.
+ 
+ When supervisor xstates are introduced, it is necessary to make sure only
+ user xstates are sanitized.  Ensure supervisor bits in header->xfeatures
+@@ -15,20 +16,20 @@ stay set and supervisor states are not modified.
+ To make names clear, also:
+ 
+ - Rename the function to sanitize_restored_user_xstate().
+-- Rename input parameter 'xfeatures' to 'xfeatures_from_user'.
++- Rename input parameter 'xfeatures' to 'user_xfeatures'.
+ - In __fpu__restore_sig(), rename 'xfeatures' to 'user_xfeatures'.
+ 
+-v3:
+-- Change xfeatures_user to user_xfeatures.
+-
+ Signed-off-by: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Reviewed-by: Dave Hansen <dave.hansen@linux.intel.com>
++
++v3:
++- Change xfeatures_user to user_xfeatures.
+ ---
+  arch/x86/kernel/fpu/signal.c | 37 +++++++++++++++++++++++-------------
+  1 file changed, 24 insertions(+), 13 deletions(-)
+ 
+ diff --git a/arch/x86/kernel/fpu/signal.c b/arch/x86/kernel/fpu/signal.c
+-index cd6eafba12da..d09d72334a12 100644
++index cd6eafba12da..40583487883e 100644
+ --- a/arch/x86/kernel/fpu/signal.c
+ +++ b/arch/x86/kernel/fpu/signal.c
+ @@ -211,9 +211,9 @@ int copy_fpstate_to_sigframe(void __user *buf, void __user *buf_fx, int size)
+@@ -40,7 +41,7 @@ index cd6eafba12da..d09d72334a12 100644
+ -			 u64 xfeatures, int fx_only)
+ +sanitize_restored_user_xstate(union fpregs_state *state,
+ +			      struct user_i387_ia32_struct *ia32_env,
+-+			      u64 xfeatures_from_user, int fx_only)
+++			      u64 user_xfeatures, int fx_only)
+  {
+  	struct xregs_state *xsave = &state->xsave;
+  	struct xstate_header *header = &xsave->header;
+@@ -50,7 +51,7 @@ index cd6eafba12da..d09d72334a12 100644
+  		/*
+ -		 * Init the state that is not present in the memory
+ -		 * layout and not enabled by the OS.
+-+		 * 'xfeatures_from_user' might have bits clear which are
+++		 * 'user_xfeatures' might have bits clear which are
+ +		 * set in header->xfeatures. This represents features that
+ +		 * were in init state prior to a signal delivery, and need
+ +		 * to be reset back to the init state.  Clear any user
+@@ -65,7 +66,7 @@ index cd6eafba12da..d09d72334a12 100644
+  			header->xfeatures = XFEATURE_MASK_FPSSE;
+  		else
+ -			header->xfeatures &= xfeatures;
+-+			header->xfeatures &= xfeatures_from_user |
+++			header->xfeatures &= user_xfeatures |
+ +					     xfeatures_mask_supervisor();
+  	}
+  
+diff --git a/0007-x86-fpu-xstate-Update-copy_kernel_to_xregs_err-for-X.patch b/0007-x86-fpu-xstate-Update-copy_kernel_to_xregs_err-for-X.patch
+index c85a0c21a..fe1140c15 100644
+--- a/0007-x86-fpu-xstate-Update-copy_kernel_to_xregs_err-for-X.patch
++++ b/0007-x86-fpu-xstate-Update-copy_kernel_to_xregs_err-for-X.patch
+@@ -1,4 +1,4 @@
+-From 2343173bba5b204d6feb836ea1ce163b2f1a1e8a Mon Sep 17 00:00:00 2001
++From a6d2ac13fc0efe552faf2f761abff8b1e21d9b31 Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Tue, 29 Oct 2019 12:42:06 -0700
+ Subject: [PATCH 07/47] x86/fpu/xstate: Update copy_kernel_to_xregs_err() for
+@@ -17,8 +17,7 @@ in kernel:
+    XRSTORS based on X86_FEATURE_XSAVES.
+ 2. copy_user_to_xregs(), which *needs* XRSTOR because it is copying from
+    userspace and must never copy supervisor state with XRSTORS.
+-3. copy_kernel_to_xregs_err() mistakenly used XRSTOR only.  Fixed in
+-   this patch.
++3. copy_kernel_to_xregs_err() mistakenly used XRSTOR only.  Fixed it.
+ 
+ Signed-off-by: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Reviewed-by: Dave Hansen <dave.hansen@linux.intel.com>
+diff --git a/0008-x86-fpu-Introduce-copy_supervisor_to_kernel.patch b/0008-x86-fpu-Introduce-copy_supervisor_to_kernel.patch
+index 13524da6b..99adf031e 100644
+--- a/0008-x86-fpu-Introduce-copy_supervisor_to_kernel.patch
++++ b/0008-x86-fpu-Introduce-copy_supervisor_to_kernel.patch
+@@ -1,4 +1,4 @@
+-From 74473f94682473d3b80b42439275c8027ff69f82 Mon Sep 17 00:00:00 2001
++From cb17dcf151aab3c650d7cb81715d5c5e99041fb7 Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Mon, 16 Mar 2020 10:29:12 -0700
+ Subject: [PATCH 08/47] x86/fpu: Introduce copy_supervisor_to_kernel()
+@@ -34,7 +34,7 @@ index 92104b298d77..422d8369012a 100644
+  /* Validate an xstate header supplied by userspace (ptrace or sigreturn) */
+  int validate_user_xstate_header(const struct xstate_header *hdr);
+ diff --git a/arch/x86/kernel/fpu/xstate.c b/arch/x86/kernel/fpu/xstate.c
+-index a68213ed5be6..587e03f0094d 100644
++index 95f09c2e8cd6..bda2e5eaca0e 100644
+ --- a/arch/x86/kernel/fpu/xstate.c
+ +++ b/arch/x86/kernel/fpu/xstate.c
+ @@ -62,6 +62,7 @@ u64 xfeatures_mask_all __read_mostly;
+@@ -87,7 +87,7 @@ index a68213ed5be6..587e03f0094d 100644
+  	print_xstate_offset_size();
+  
+  	pr_info("x86/fpu: Enabled xstate features 0x%llx, context size is %d bytes, using '%s' format.\n",
+-@@ -1262,6 +1291,61 @@ int copy_user_to_xstate(struct xregs_state *xsave, const void __user *ubuf)
++@@ -1272,6 +1301,61 @@ int copy_user_to_xstate(struct xregs_state *xsave, const void __user *ubuf)
+  	return 0;
+  }
+  
+diff --git a/0009-x86-fpu-xstate-Preserve-supervisor-states-for-slow-p.patch b/0009-x86-fpu-xstate-Preserve-supervisor-states-for-slow-p.patch
+index 803464dd0..c3b2b0702 100644
+--- a/0009-x86-fpu-xstate-Preserve-supervisor-states-for-slow-p.patch
++++ b/0009-x86-fpu-xstate-Preserve-supervisor-states-for-slow-p.patch
+@@ -1,4 +1,4 @@
+-From b80f8b90fa69e5462129516318ba8c3f533ae403 Mon Sep 17 00:00:00 2001
++From 2b149ef4cd5acfe5112c9d10b2144c0b99fcfd5d Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Tue, 29 Oct 2019 13:03:10 -0700
+ Subject: [PATCH 09/47] x86/fpu/xstate: Preserve supervisor states for slow
+@@ -9,30 +9,21 @@ in user memory and loading it into the hardware registers.  This
+ operation only affects user XSAVE state and never affects supervisor state.
+ 
+ The fast path through this code simply points XRSTOR directly at the
+-user buffer.  However, due to page faults, this XRSTOR can fail.  If it
+-fails, the signal return code falls back to a slow path which can
+-tolerate page faults.
++user buffer.  However, since user memory is not guaranteed to be always
++mapped, this XRSTOR can fail.  If it fails, the signal return code falls
++back to a slow path which can tolerate page faults.
+ 
+ That slow path copies the xfeatures one by one out of the user buffer
+ into the task's fpu state area.  However, by being in a context where it
+-can handle page faults, the code can also schedule.  That exposes us to
+-the whims of the lazy-fpu-load code.  That code currently can not
+-comprehend valid fpregs (the supervisor state) mixed with the *not*
+-valid user fpregs.  To do that, we would need to track whether
+-individual XSAVE components had valid fpregs or fpstate.
++can handle page faults, the code can also schedule.  The lazy-fpu-load code
++would think it has an up-to-date fpstate and would fail to save the
++supervisor state when scheduling the task out.  When scheduling back in, it
++would likely restore stale supervisor state.
+ 
+-If we left the current code in place, the context-switch code would
+-think it has an up-to-date fpstate and would fail to save the supervisor
+-state when scheduling the task out.  When scheduling back in, it would
+-likely restore stale supervisor state.
+-
+-To fix that, we need to save the supervisor state before the slow path.
+-That way, the supervisor state is always up-to-date and the task can
+-survive being scheduled.
+-
+-Modify copy_user_to_fpregs_zeroing() so that if it fails, fpregs are not
+-zeroed, and there is no need for fpregs_deactivate() and supervisor states
+-are preserved.
++To fix that, preserve supervisor state before the slow path.  Modify
++copy_user_to_fpregs_zeroing() so that if it fails, fpregs are not zeroed,
++and there is no need for fpregs_deactivate() and supervisor states are
++preserved.
+ 
+ Move set_thread_flag(TIF_NEED_FPU_LOAD) to the slow path.  Without doing
+ this, the fast path also needs supervisor states to be saved first.
+@@ -43,7 +34,7 @@ Signed-off-by: Yu-cheng Yu <yu-cheng.yu@intel.com>
+  1 file changed, 28 insertions(+), 25 deletions(-)
+ 
+ diff --git a/arch/x86/kernel/fpu/signal.c b/arch/x86/kernel/fpu/signal.c
+-index d09d72334a12..545ca4314096 100644
++index 40583487883e..c0e07b548076 100644
+ --- a/arch/x86/kernel/fpu/signal.c
+ +++ b/arch/x86/kernel/fpu/signal.c
+ @@ -262,19 +262,23 @@ sanitize_restored_user_xstate(union fpregs_state *state,
+diff --git a/0010-x86-fpu-xstate-Restore-supervisor-states-for-signal-.patch b/0010-x86-fpu-xstate-Restore-supervisor-states-for-signal-.patch
+index 1e2436d90..4e437bc0f 100644
+--- a/0010-x86-fpu-xstate-Restore-supervisor-states-for-signal-.patch
++++ b/0010-x86-fpu-xstate-Restore-supervisor-states-for-signal-.patch
+@@ -1,4 +1,4 @@
+-From 5ce6496026f9c33637ed74342c401e8ba359dc28 Mon Sep 17 00:00:00 2001
++From 299a4d2e1c53addbf2169a9cb88d28069d0aa58e Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Fri, 27 Mar 2020 09:42:02 -0700
+ Subject: [PATCH 10/47] x86/fpu/xstate: Restore supervisor states for signal
+@@ -48,18 +48,30 @@ v3:
+ Signed-off-by: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Reviewed-by: Dave Hansen <dave.hansen@linux.intel.com>
+ ---
+- arch/x86/kernel/fpu/signal.c | 27 ++++++++++++++++++++++-----
+- 1 file changed, 22 insertions(+), 5 deletions(-)
++ arch/x86/kernel/fpu/signal.c | 44 ++++++++++++++++++++++++++++++++----
++ 1 file changed, 39 insertions(+), 5 deletions(-)
+ 
+ diff --git a/arch/x86/kernel/fpu/signal.c b/arch/x86/kernel/fpu/signal.c
+-index 545ca4314096..4dad5afc938d 100644
++index c0e07b548076..003735eec674 100644
+ --- a/arch/x86/kernel/fpu/signal.c
+ +++ b/arch/x86/kernel/fpu/signal.c
+-@@ -347,6 +347,11 @@ static int __fpu__restore_sig(void __user *buf, void __user *buf_fx, int size)
++@@ -347,6 +347,23 @@ static int __fpu__restore_sig(void __user *buf, void __user *buf_fx, int size)
+  		ret = copy_user_to_fpregs_zeroing(buf_fx, user_xfeatures, fx_only);
+  		pagefault_enable();
+  		if (!ret) {
+-+			/* Restore supervisor states */
+++
+++			/*
+++			 * Restore supervisor states: previous context switch
+++			 * etc has done XSAVES and saved the supervisor states
+++			 * in the kernel buffer from which they can be restored
+++			 * now.
+++			 *
+++			 * We cannot do a single XRSTORS here - which would
+++			 * be nice - because the rest of the FPU registers are
+++			 * being restored from a user buffer directly. The
+++			 * single XRSTORS happens below, when the user buffer
+++			 * has been copied to the kernel one.
+++			 */
+ +			if (test_thread_flag(TIF_NEED_FPU_LOAD) &&
+ +			    xfeatures_mask_supervisor())
+ +				copy_kernel_to_xregs(&fpu->state.xsave,
+@@ -67,15 +79,13 @@ index 545ca4314096..4dad5afc938d 100644
+  			fpregs_mark_activate();
+  			fpregs_unlock();
+  			return 0;
+-@@ -364,14 +369,21 @@ static int __fpu__restore_sig(void __user *buf, void __user *buf_fx, int size)
++@@ -364,14 +381,25 @@ static int __fpu__restore_sig(void __user *buf, void __user *buf_fx, int size)
+  	}
+  
+  	/*
+ -	 * The current state of the FPU registers does not matter. By setting
+ -	 * TIF_NEED_FPU_LOAD unconditionally it is ensured that the our xstate
+ -	 * is not modified on context switch and that the xstate is considered
+-+	 * Supervisor states are not modified by user space input.  Save
+-+	 * current supervisor states first.
+ +	 * By setting TIF_NEED_FPU_LOAD it is ensured that our xstate is
+ +	 * not modified on context switch and that the xstate is considered
+  	 * to be loaded again on return to userland (overriding last_cpu avoids
+@@ -83,7 +93,13 @@ index 545ca4314096..4dad5afc938d 100644
+  	 */
+ -	set_thread_flag(TIF_NEED_FPU_LOAD);
+ +	fpregs_lock();
+++
+ +	if (!test_thread_flag(TIF_NEED_FPU_LOAD)) {
+++
+++		/*
+++		 * Supervisor states are not modified by user space input.  Save
+++		 * current supervisor states first and invalidate the FPU regs.
+++		 */
+ +		if (xfeatures_mask_supervisor())
+ +			copy_supervisor_to_kernel(&fpu->state.xsave);
+ +		set_thread_flag(TIF_NEED_FPU_LOAD);
+@@ -93,11 +109,12 @@ index 545ca4314096..4dad5afc938d 100644
+  
+  	if (use_xsave() && !fx_only) {
+  		u64 init_bv = xfeatures_mask_user() & ~user_xfeatures;
+-@@ -393,7 +405,12 @@ static int __fpu__restore_sig(void __user *buf, void __user *buf_fx, int size)
++@@ -393,7 +421,13 @@ static int __fpu__restore_sig(void __user *buf, void __user *buf_fx, int size)
+  		fpregs_lock();
+  		if (unlikely(init_bv))
+  			copy_kernel_to_xregs(&init_fpstate.xsave, init_bv);
+ -		ret = copy_kernel_to_xregs_err(&fpu->state.xsave, user_xfeatures);
+++
+ +		/*
+ +		 * Restore previously saved supervisor xstates along with
+ +		 * copied-in user xstates.
+diff --git a/0011-Documentation-x86-Add-CET-description.patch b/0011-Documentation-x86-Add-CET-description.patch
+index b83bdd8db..20481249e 100644
+--- a/0011-Documentation-x86-Add-CET-description.patch
++++ b/0011-Documentation-x86-Add-CET-description.patch
+@@ -1,4 +1,4 @@
+-From c72e7d5caa51eeb3e55069a6ecb4baaf529fc381 Mon Sep 17 00:00:00 2001
++From 2f2184cda3322b9a1a23d88a5bcc99f26410041f Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Sun, 17 Dec 2017 09:09:23 -0800
+ Subject: [PATCH 11/47] Documentation/x86: Add CET description
+diff --git a/0012-x86-cpufeatures-Add-CET-CPU-feature-flags-for-Contro.patch b/0012-x86-cpufeatures-Add-CET-CPU-feature-flags-for-Contro.patch
+index 520496606..a6c9285a1 100644
+--- a/0012-x86-cpufeatures-Add-CET-CPU-feature-flags-for-Contro.patch
++++ b/0012-x86-cpufeatures-Add-CET-CPU-feature-flags-for-Contro.patch
+@@ -1,4 +1,4 @@
+-From 8cfbc446f98bda8038a9949a575eabe223583c85 Mon Sep 17 00:00:00 2001
++From eb3b52bc6441b6a8b437d9b356d00b5b767cb619 Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Wed, 9 Nov 2016 16:26:37 -0800
+ Subject: [PATCH 12/47] x86/cpufeatures: Add CET CPU feature flags for
+diff --git a/0013-x86-fpu-xstate-Introduce-CET-MSR-XSAVES-supervisor-s.patch b/0013-x86-fpu-xstate-Introduce-CET-MSR-XSAVES-supervisor-s.patch
+index b26062648..4708cbbca 100644
+--- a/0013-x86-fpu-xstate-Introduce-CET-MSR-XSAVES-supervisor-s.patch
++++ b/0013-x86-fpu-xstate-Introduce-CET-MSR-XSAVES-supervisor-s.patch
+@@ -1,4 +1,4 @@
+-From 69f135eabfcae1cd3413403c5304c281f324c880 Mon Sep 17 00:00:00 2001
++From 86722a77bc955478c0399d653937d522893b8991 Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Thu, 10 Nov 2016 10:13:56 -0800
+ Subject: [PATCH 13/47] x86/fpu/xstate: Introduce CET MSR XSAVES supervisor
+@@ -135,7 +135,7 @@ index bcba3c643e63..a8df907e8017 100644
+  /*
+   * x86-64 Task Priority Register, CR8
+ diff --git a/arch/x86/kernel/fpu/xstate.c b/arch/x86/kernel/fpu/xstate.c
+-index 587e03f0094d..7c7be482e6f3 100644
++index bda2e5eaca0e..85b7f295c399 100644
+ --- a/arch/x86/kernel/fpu/xstate.c
+ +++ b/arch/x86/kernel/fpu/xstate.c
+ @@ -38,6 +38,9 @@ static const char *xfeature_names[] =
+diff --git a/0014-x86-cet-Add-control-protection-fault-handler.patch b/0014-x86-cet-Add-control-protection-fault-handler.patch
+index 23933126c..c20b3d1b7 100644
+--- a/0014-x86-cet-Add-control-protection-fault-handler.patch
++++ b/0014-x86-cet-Add-control-protection-fault-handler.patch
+@@ -1,4 +1,4 @@
+-From e3d5dd9441d50b07009d61145a0691443b5f6156 Mon Sep 17 00:00:00 2001
++From 5482399434ea919130c6825ef4235ecd9fcd470d Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Thu, 10 Nov 2016 13:17:46 -0800
+ Subject: [PATCH 14/47] x86/cet: Add control-protection fault handler
+@@ -31,7 +31,7 @@ v9:
+  6 files changed, 72 insertions(+), 3 deletions(-)
+ 
+ diff --git a/arch/x86/entry/entry_64.S b/arch/x86/entry/entry_64.S
+-index 0e9504fabe52..f42780922387 100644
++index 3063aa9090f9..b260e3eaecda 100644
+ --- a/arch/x86/entry/entry_64.S
+ +++ b/arch/x86/entry/entry_64.S
+ @@ -1034,7 +1034,7 @@ idtentry spurious_interrupt_bug		do_spurious_interrupt_bug	has_error_code=0
+diff --git a/0015-x86-cet-shstk-Add-Kconfig-option-for-user-mode-Shado.patch b/0015-x86-cet-shstk-Add-Kconfig-option-for-user-mode-Shado.patch
+index 14dc2c865..f07882a67 100644
+--- a/0015-x86-cet-shstk-Add-Kconfig-option-for-user-mode-Shado.patch
++++ b/0015-x86-cet-shstk-Add-Kconfig-option-for-user-mode-Shado.patch
+@@ -1,4 +1,4 @@
+-From a74b69f88ad8b5675c4dc2fd8a60a77d1d8168a8 Mon Sep 17 00:00:00 2001
++From ba4ba07816db79eb7a3b77283fe2d50074f0d42d Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Tue, 3 Oct 2017 12:55:03 -0700
+ Subject: [PATCH 15/47] x86/cet/shstk: Add Kconfig option for user-mode Shadow
+@@ -24,10 +24,10 @@ v10:
+  create mode 100755 scripts/as-x86_64-has-shadow-stack.sh
+ 
+ diff --git a/arch/x86/Kconfig b/arch/x86/Kconfig
+-index 1197b5596d5a..c98f82fffe85 100644
++index 2d3f963fd6f1..315647350fa2 100644
+ --- a/arch/x86/Kconfig
+ +++ b/arch/x86/Kconfig
+-@@ -1947,6 +1947,36 @@ config X86_INTEL_TSX_MODE_AUTO
++@@ -1948,6 +1948,36 @@ config X86_INTEL_TSX_MODE_AUTO
+  	  side channel attacks- equals the tsx=auto command line parameter.
+  endchoice
+  
+diff --git a/0016-x86-mm-Change-_PAGE_DIRTY-to-_PAGE_DIRTY_HW.patch b/0016-x86-mm-Change-_PAGE_DIRTY-to-_PAGE_DIRTY_HW.patch
+index 85895b25c..e121baacb 100644
+--- a/0016-x86-mm-Change-_PAGE_DIRTY-to-_PAGE_DIRTY_HW.patch
++++ b/0016-x86-mm-Change-_PAGE_DIRTY-to-_PAGE_DIRTY_HW.patch
+@@ -1,4 +1,4 @@
+-From addec26bd71d944f1d6081079b63fa98a2061cc5 Mon Sep 17 00:00:00 2001
++From ce2166e6e1ea24b455444c68679ed5acde6675fd Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Thu, 12 Apr 2018 09:32:59 -0700
+ Subject: [PATCH 16/47] x86/mm: Change _PAGE_DIRTY to _PAGE_DIRTY_HW
+@@ -180,10 +180,10 @@ index a4d9a261425b..e3bb4ff95523 100644
+  /*
+   * control_page + KEXEC_CONTROL_CODE_MAX_SIZE
+ diff --git a/arch/x86/kvm/vmx/vmx.c b/arch/x86/kvm/vmx/vmx.c
+-index c2c6335a998c..d52d470e36b1 100644
++index 89c766fad889..5d143b2eb3b7 100644
+ --- a/arch/x86/kvm/vmx/vmx.c
+ +++ b/arch/x86/kvm/vmx/vmx.c
+-@@ -3501,7 +3501,7 @@ static int init_rmode_identity_map(struct kvm *kvm)
++@@ -3500,7 +3500,7 @@ static int init_rmode_identity_map(struct kvm *kvm)
+  	/* Set up identity-mapping pagetable for EPT in real mode */
+  	for (i = 0; i < PT32_ENT_PER_PAGE; i++) {
+  		tmp = (i << 22) + (_PAGE_PRESENT | _PAGE_RW | _PAGE_USER |
+diff --git a/0017-x86-mm-Remove-_PAGE_DIRTY_HW-from-kernel-RO-pages.patch b/0017-x86-mm-Remove-_PAGE_DIRTY_HW-from-kernel-RO-pages.patch
+index ac6abb057..8ba1cd136 100644
+--- a/0017-x86-mm-Remove-_PAGE_DIRTY_HW-from-kernel-RO-pages.patch
++++ b/0017-x86-mm-Remove-_PAGE_DIRTY_HW-from-kernel-RO-pages.patch
+@@ -1,4 +1,4 @@
+-From 0dae423395a60445a16e62d632eed06e0ecdf26e Mon Sep 17 00:00:00 2001
++From 59a325f01bf3297438bb7e9e9be1450f1cacb3ec Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Tue, 14 Apr 2020 14:48:14 -0700
+ Subject: [PATCH 17/47] x86/mm: Remove _PAGE_DIRTY_HW from kernel RO pages
+@@ -39,10 +39,10 @@ index b82e0f167879..522b80b952f4 100644
+  #define __PAGE_KERNEL_LARGE_EXEC (__PP|__RW|   0|___A|   0|___D|_PSE|___G)
+  #define __PAGE_KERNEL_WP	 (__PP|__RW|   0|___A|__NX|___D|   0|___G| __WP)
+ diff --git a/arch/x86/mm/pat/set_memory.c b/arch/x86/mm/pat/set_memory.c
+-index 59eca6a94ce7..87751b7e2131 100644
++index b8c55a2e402d..deb8b044f15d 100644
+ --- a/arch/x86/mm/pat/set_memory.c
+ +++ b/arch/x86/mm/pat/set_memory.c
+-@@ -1923,7 +1923,7 @@ int set_memory_nx(unsigned long addr, int numpages)
++@@ -1927,7 +1927,7 @@ int set_memory_nx(unsigned long addr, int numpages)
+  
+  int set_memory_ro(unsigned long addr, int numpages)
+  {
+diff --git a/0018-x86-mm-Introduce-_PAGE_COW.patch b/0018-x86-mm-Introduce-_PAGE_COW.patch
+index 6dd088e48..3e4679ceb 100644
+--- a/0018-x86-mm-Introduce-_PAGE_COW.patch
++++ b/0018-x86-mm-Introduce-_PAGE_COW.patch
+@@ -1,4 +1,4 @@
+-From 593de1e61e9c21f9e41a9748cfd09075710c0b33 Mon Sep 17 00:00:00 2001
++From 725ee629712261d648961d822a87aca0528a1930 Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Wed, 24 Jan 2018 10:27:13 -0800
+ Subject: [PATCH 18/47] x86/mm: Introduce _PAGE_COW
+diff --git a/0019-drm-i915-gvt-Change-_PAGE_DIRTY-to-_PAGE_DIRTY_BITS.patch b/0019-drm-i915-gvt-Change-_PAGE_DIRTY-to-_PAGE_DIRTY_BITS.patch
+index 82015de97..bf99c97bd 100644
+--- a/0019-drm-i915-gvt-Change-_PAGE_DIRTY-to-_PAGE_DIRTY_BITS.patch
++++ b/0019-drm-i915-gvt-Change-_PAGE_DIRTY-to-_PAGE_DIRTY_BITS.patch
+@@ -1,4 +1,4 @@
+-From 6978d74999513535e2c541048930f2784e3559b6 Mon Sep 17 00:00:00 2001
++From 92be29e61e2aa19145f9b07aa665dce69d4b57e6 Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Tue, 28 Aug 2018 13:01:49 -0700
+ Subject: [PATCH 19/47] drm/i915/gvt: Change _PAGE_DIRTY to _PAGE_DIRTY_BITS
+diff --git a/0020-x86-mm-Update-pte_modify-for-_PAGE_COW.patch b/0020-x86-mm-Update-pte_modify-for-_PAGE_COW.patch
+index a6d67039c..d58e60781 100644
+--- a/0020-x86-mm-Update-pte_modify-for-_PAGE_COW.patch
++++ b/0020-x86-mm-Update-pte_modify-for-_PAGE_COW.patch
+@@ -1,4 +1,4 @@
+-From 8dd1a58bd6df2049cb664897f0e46ba7d7a4aae4 Mon Sep 17 00:00:00 2001
++From 9274121b3a80dd2046ed015c8f6dc1caae296332 Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Thu, 29 Aug 2019 09:24:13 -0700
+ Subject: [PATCH 20/47] x86/mm: Update pte_modify for _PAGE_COW
+diff --git a/0021-x86-mm-Update-ptep_set_wrprotect-and-pmdp_set_wrprot.patch b/0021-x86-mm-Update-ptep_set_wrprotect-and-pmdp_set_wrprot.patch
+index 9e35c17be..2e2c1da7a 100644
+--- a/0021-x86-mm-Update-ptep_set_wrprotect-and-pmdp_set_wrprot.patch
++++ b/0021-x86-mm-Update-ptep_set_wrprotect-and-pmdp_set_wrprot.patch
+@@ -1,4 +1,4 @@
+-From c71fe76beeb68737017d5c46f37ac8cec83e42fc Mon Sep 17 00:00:00 2001
++From fe62117cb5951c82e604a3cb770021910b4e27da Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Fri, 15 Jun 2018 09:33:40 -0700
+ Subject: [PATCH 21/47] x86/mm: Update ptep_set_wrprotect() and
+diff --git a/0022-mm-Introduce-VM_SHSTK-for-shadow-stack-memory.patch b/0022-mm-Introduce-VM_SHSTK-for-shadow-stack-memory.patch
+index e1ff1ebb0..a6ddd8985 100644
+--- a/0022-mm-Introduce-VM_SHSTK-for-shadow-stack-memory.patch
++++ b/0022-mm-Introduce-VM_SHSTK-for-shadow-stack-memory.patch
+@@ -1,4 +1,4 @@
+-From 0239a60efa34b7d8c7d4a9a5b013120c31c8ef27 Mon Sep 17 00:00:00 2001
++From 0a010dee48e194ef3d88731d58ff5e1cae81805f Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Fri, 12 Jan 2018 15:04:54 -0800
+ Subject: [PATCH 22/47] mm: Introduce VM_SHSTK for shadow stack memory
+@@ -48,7 +48,7 @@ index 8d382d4ec067..434692759265 100644
+  	size_t i;
+  
+ diff --git a/include/linux/mm.h b/include/linux/mm.h
+-index 5a323422d783..54bb4cd9fee8 100644
++index f3fe7371855c..ac3490df64d8 100644
+ --- a/include/linux/mm.h
+ +++ b/include/linux/mm.h
+ @@ -294,11 +294,13 @@ extern unsigned int kobjsize(const void *objp);
+diff --git a/0023-x86-mm-Shadow-Stack-page-fault-error-checking.patch b/0023-x86-mm-Shadow-Stack-page-fault-error-checking.patch
+index d73569797..b95a12870 100644
+--- a/0023-x86-mm-Shadow-Stack-page-fault-error-checking.patch
++++ b/0023-x86-mm-Shadow-Stack-page-fault-error-checking.patch
+@@ -1,4 +1,4 @@
+-From c0a16afd2f8d71996fabe4b069efdeb9d3b237ff Mon Sep 17 00:00:00 2001
++From afe0845429def9f7412d9a0d3629bea890bf7a56 Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Tue, 28 Nov 2017 13:01:18 -0800
+ Subject: [PATCH 23/47] x86/mm: Shadow Stack page fault error checking
+diff --git a/0024-x86-mm-Update-maybe_mkwrite-for-shadow-stack.patch b/0024-x86-mm-Update-maybe_mkwrite-for-shadow-stack.patch
+index dc190ff6b..0f1b1dad4 100644
+--- a/0024-x86-mm-Update-maybe_mkwrite-for-shadow-stack.patch
++++ b/0024-x86-mm-Update-maybe_mkwrite-for-shadow-stack.patch
+@@ -1,4 +1,4 @@
+-From 63a7b1ea4b165674badb552aa8a321c45b343163 Mon Sep 17 00:00:00 2001
++From 9705338c9d66aa1118c4cf1c2ee6cd09cac55f9d Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Tue, 7 Apr 2020 16:03:36 -0700
+ Subject: [PATCH 24/47] x86/mm: Update maybe_mkwrite() for shadow stack
+@@ -16,10 +16,10 @@ Signed-off-by: Yu-cheng Yu <yu-cheng.yu@intel.com>
+  5 files changed, 50 insertions(+)
+ 
+ diff --git a/arch/x86/Kconfig b/arch/x86/Kconfig
+-index c98f82fffe85..ac07e1f6a2bc 100644
++index 315647350fa2..df24c4a90ea0 100644
+ --- a/arch/x86/Kconfig
+ +++ b/arch/x86/Kconfig
+-@@ -1955,6 +1955,9 @@ config AS_HAS_SHADOW_STACK
++@@ -1956,6 +1956,9 @@ config AS_HAS_SHADOW_STACK
+  config X86_INTEL_CET
+  	def_bool n
+  
+@@ -29,7 +29,7 @@ index c98f82fffe85..ac07e1f6a2bc 100644
+  config ARCH_HAS_SHADOW_STACK
+  	def_bool n
+  
+-@@ -1965,6 +1968,7 @@ config X86_INTEL_SHADOW_STACK_USER
++@@ -1966,6 +1969,7 @@ config X86_INTEL_SHADOW_STACK_USER
+  	depends on AS_HAS_SHADOW_STACK
+  	select ARCH_USES_HIGH_VMA_FLAGS
+  	select X86_INTEL_CET
+@@ -102,10 +102,10 @@ index 329b8c8ca703..2c3875724809 100644
+   * Architecture PAGE_KERNEL_* fallbacks
+   *
+ diff --git a/include/linux/mm.h b/include/linux/mm.h
+-index 54bb4cd9fee8..f0669e3cdd37 100644
++index ac3490df64d8..6c31b5222b0f 100644
+ --- a/include/linux/mm.h
+ +++ b/include/linux/mm.h
+-@@ -944,6 +944,8 @@ static inline pte_t maybe_mkwrite(pte_t pte, struct vm_area_struct *vma)
++@@ -955,6 +955,8 @@ static inline pte_t maybe_mkwrite(pte_t pte, struct vm_area_struct *vma)
+  {
+  	if (likely(vma->vm_flags & VM_WRITE))
+  		pte = pte_mkwrite(pte);
+diff --git a/0025-mm-Fixup-places-that-call-pte_mkwrite-directly.patch b/0025-mm-Fixup-places-that-call-pte_mkwrite-directly.patch
+index cdeda4bd9..230508b79 100644
+--- a/0025-mm-Fixup-places-that-call-pte_mkwrite-directly.patch
++++ b/0025-mm-Fixup-places-that-call-pte_mkwrite-directly.patch
+@@ -1,4 +1,4 @@
+-From b666144ee7794cfc694718e425c3ed831419b77b Mon Sep 17 00:00:00 2001
++From cd5f5266db8dc418271ebc131313633bfe96e51a Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Mon, 13 Apr 2020 13:21:22 -0700
+ Subject: [PATCH 25/47] mm: Fixup places that call pte_mkwrite() directly
+diff --git a/0026-mm-Add-guard-pages-around-a-shadow-stack.patch b/0026-mm-Add-guard-pages-around-a-shadow-stack.patch
+index 049c7a137..e2c4b3872 100644
+--- a/0026-mm-Add-guard-pages-around-a-shadow-stack.patch
++++ b/0026-mm-Add-guard-pages-around-a-shadow-stack.patch
+@@ -1,4 +1,4 @@
+-From fe6a6da680cf6def6515123476e53f32a70b5442 Mon Sep 17 00:00:00 2001
++From c2a20059924bcb9c77937a77c9999e9eec5a0a4f Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Fri, 4 Oct 2019 14:00:58 -0700
+ Subject: [PATCH 26/47] mm: Add guard pages around a shadow stack.
+@@ -43,10 +43,10 @@ index 3bcf27caf6c9..eb9536f803f9 100644
+  	.addr_limit		= KERNEL_DS,			\
+  }
+ diff --git a/include/linux/mm.h b/include/linux/mm.h
+-index f0669e3cdd37..68eadf2c466d 100644
++index 6c31b5222b0f..5c623db088eb 100644
+ --- a/include/linux/mm.h
+ +++ b/include/linux/mm.h
+-@@ -2630,6 +2630,10 @@ void page_cache_async_readahead(struct address_space *mapping,
++@@ -2641,6 +2641,10 @@ void page_cache_async_readahead(struct address_space *mapping,
+  				pgoff_t offset,
+  				unsigned long size);
+  
+@@ -57,7 +57,7 @@ index f0669e3cdd37..68eadf2c466d 100644
+  extern unsigned long stack_guard_gap;
+  /* Generic expand stack which grows the stack according to GROWS{UP,DOWN} */
+  extern int expand_stack(struct vm_area_struct *vma, unsigned long address);
+-@@ -2662,9 +2666,15 @@ static inline struct vm_area_struct * find_vma_intersection(struct mm_struct * m
++@@ -2673,9 +2677,15 @@ static inline struct vm_area_struct * find_vma_intersection(struct mm_struct * m
+  static inline unsigned long vm_start_gap(struct vm_area_struct *vma)
+  {
+  	unsigned long vm_start = vma->vm_start;
+@@ -75,7 +75,7 @@ index f0669e3cdd37..68eadf2c466d 100644
+  		if (vm_start > vma->vm_start)
+  			vm_start = 0;
+  	}
+-@@ -2674,9 +2684,15 @@ static inline unsigned long vm_start_gap(struct vm_area_struct *vma)
++@@ -2685,9 +2695,15 @@ static inline unsigned long vm_start_gap(struct vm_area_struct *vma)
+  static inline unsigned long vm_end_gap(struct vm_area_struct *vma)
+  {
+  	unsigned long vm_end = vma->vm_end;
+diff --git a/0027-mm-mmap-Add-shadow-stack-pages-to-memory-accounting.patch b/0027-mm-mmap-Add-shadow-stack-pages-to-memory-accounting.patch
+index a70cb6d43..78a391b55 100644
+--- a/0027-mm-mmap-Add-shadow-stack-pages-to-memory-accounting.patch
++++ b/0027-mm-mmap-Add-shadow-stack-pages-to-memory-accounting.patch
+@@ -1,4 +1,4 @@
+-From 6123324d6ad64c7f5a5dcda2525c36eb3f31a4e9 Mon Sep 17 00:00:00 2001
++From 699a8340f958398bc90c83fed9ad41da00a77789 Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Thu, 13 Sep 2018 12:36:48 -0700
+ Subject: [PATCH 27/47] mm/mmap: Add shadow stack pages to memory accounting
+diff --git a/0028-mm-Update-can_follow_write_pte-for-shadow-stack.patch b/0028-mm-Update-can_follow_write_pte-for-shadow-stack.patch
+index aa4487109..2f7ac3742 100644
+--- a/0028-mm-Update-can_follow_write_pte-for-shadow-stack.patch
++++ b/0028-mm-Update-can_follow_write_pte-for-shadow-stack.patch
+@@ -1,4 +1,4 @@
+-From bb7ee31681f7c0a8c50f4ca0273d327a36b7bdea Mon Sep 17 00:00:00 2001
++From 3b9f89fdc05ebb1861d163cb52c7d7a9c21a2055 Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Tue, 3 Jul 2018 13:07:12 -0700
+ Subject: [PATCH 28/47] mm: Update can_follow_write_pte() for shadow stack
+@@ -22,7 +22,7 @@ v10:
+  2 files changed, 10 insertions(+), 6 deletions(-)
+ 
+ diff --git a/mm/gup.c b/mm/gup.c
+-index 50681f0286de..c737782403ee 100644
++index 87a6a59fe667..304366ba141e 100644
+ --- a/mm/gup.c
+ +++ b/mm/gup.c
+ @@ -385,10 +385,12 @@ static int follow_pfn_pte(struct vm_area_struct *vma, unsigned long address,
+diff --git a/0029-x86-cet-shstk-User-mode-shadow-stack-support.patch b/0029-x86-cet-shstk-User-mode-shadow-stack-support.patch
+index 7b236f5a7..1af57d6ec 100644
+--- a/0029-x86-cet-shstk-User-mode-shadow-stack-support.patch
++++ b/0029-x86-cet-shstk-User-mode-shadow-stack-support.patch
+@@ -1,4 +1,4 @@
+-From eb4fd03088956f71dd73ced19412a7a3a4a672df Mon Sep 17 00:00:00 2001
++From ca1a609ee448e93b86809cc383bbcac891c9f841 Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Thu, 22 Aug 2019 10:06:11 -0700
+ Subject: [PATCH 29/47] x86/cet/shstk: User-mode shadow stack support
+@@ -329,7 +329,7 @@ index bed0cb83fe24..1563b472e0f9 100644
+  	/*
+  	 * Clear/Set all flags overridden by options, need do it
+ diff --git a/arch/x86/kernel/process.c b/arch/x86/kernel/process.c
+-index de182b84723a..9d9cff2c1018 100644
++index ce6cd220f722..56587051df5a 100644
+ --- a/arch/x86/kernel/process.c
+ +++ b/arch/x86/kernel/process.c
+ @@ -42,6 +42,7 @@
+diff --git a/0030-x86-cet-shstk-Handle-signals-for-shadow-stack.patch b/0030-x86-cet-shstk-Handle-signals-for-shadow-stack.patch
+index c7bea1602..462cfa92a 100644
+--- a/0030-x86-cet-shstk-Handle-signals-for-shadow-stack.patch
++++ b/0030-x86-cet-shstk-Handle-signals-for-shadow-stack.patch
+@@ -1,4 +1,4 @@
+-From 0386f433ef50037f451bc28bf2d2e29fba9de578 Mon Sep 17 00:00:00 2001
++From b30f0fddbdd84f37040474a7e07c35b13d3e3158 Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Thu, 5 Jan 2017 13:48:31 -0800
+ Subject: [PATCH 30/47] x86/cet/shstk: Handle signals for shadow stack
+@@ -38,12 +38,12 @@ v2:
+  arch/x86/ia32/ia32_signal.c            |  17 +++
+  arch/x86/include/asm/cet.h             |   8 ++
+  arch/x86/include/asm/fpu/internal.h    |  10 ++
+- arch/x86/include/asm/special_insns.h   |  32 ++++++
++ arch/x86/include/asm/special_insns.h   |  32 +++++
+  arch/x86/include/uapi/asm/sigcontext.h |   9 ++
+- arch/x86/kernel/cet.c                  | 151 +++++++++++++++++++++++++
+- arch/x86/kernel/fpu/signal.c           | 101 +++++++++++++++++
++ arch/x86/kernel/cet.c                  | 154 +++++++++++++++++++++++++
++ arch/x86/kernel/fpu/signal.c           | 100 ++++++++++++++++
+  arch/x86/kernel/signal.c               |  10 ++
+- 8 files changed, 338 insertions(+)
++ 8 files changed, 340 insertions(+)
+ 
+ diff --git a/arch/x86/ia32/ia32_signal.c b/arch/x86/ia32/ia32_signal.c
+ index f9d8804144d0..cb19159817cb 100644
+@@ -202,7 +202,7 @@ index 844d60eb1882..cf2d55db3be4 100644
+   * The 32-bit signal frame:
+   */
+ diff --git a/arch/x86/kernel/cet.c b/arch/x86/kernel/cet.c
+-index d8196c8e792a..274fecdd9669 100644
++index d8196c8e792a..e95bd2b3c394 100644
+ --- a/arch/x86/kernel/cet.c
+ +++ b/arch/x86/kernel/cet.c
+ @@ -19,6 +19,8 @@
+@@ -295,7 +295,7 @@ index d8196c8e792a..274fecdd9669 100644
+  int cet_setup_shstk(void)
+  {
+  	unsigned long addr, size;
+-@@ -133,3 +209,78 @@ void cet_disable_free_shstk(struct task_struct *tsk)
++@@ -133,3 +209,81 @@ void cet_disable_free_shstk(struct task_struct *tsk)
+  	cet->shstk_base = 0;
+  	cet->shstk_size = 0;
+  }
+@@ -310,6 +310,9 @@ index d8196c8e792a..274fecdd9669 100644
+ +	struct cet_status *cet = &current->thread.cet;
+ +	u64 msr_val = 0;
+ +
+++	if (!static_cpu_has(X86_FEATURE_SHSTK))
+++		return;
+++
+ +	cet_user_state = get_xsave_addr(&current->thread.fpu.state.xsave,
+ +					XFEATURE_CET_USER);
+ +	if (!cet_user_state)
+@@ -375,10 +378,10 @@ index d8196c8e792a..274fecdd9669 100644
+ +	return 0;
+ +}
+ diff --git a/arch/x86/kernel/fpu/signal.c b/arch/x86/kernel/fpu/signal.c
+-index 4dad5afc938d..95ee76d08971 100644
++index 003735eec674..163a17772ca0 100644
+ --- a/arch/x86/kernel/fpu/signal.c
+ +++ b/arch/x86/kernel/fpu/signal.c
+-@@ -52,6 +52,73 @@ static inline int check_for_xstate(struct fxregs_state __user *buf,
++@@ -52,6 +52,74 @@ static inline int check_for_xstate(struct fxregs_state __user *buf,
+  	return 0;
+  }
+  
+@@ -437,7 +440,8 @@ index 4dad5afc938d..95ee76d08971 100644
+ +		if (ext->total_size != sizeof(*ext))
+ +			return -EFAULT;
+ +
+-+		err = cet_verify_rstor_token(ia32, ext->ssp, &ext->ssp);
+++		if (current->thread.cet.shstk_size)
+++			err = cet_verify_rstor_token(ia32, ext->ssp, &ext->ssp);
+ +	}
+ +
+ +	return err;
+@@ -452,7 +456,7 @@ index 4dad5afc938d..95ee76d08971 100644
+  /*
+   * Signal frame handlers.
+   */
+-@@ -294,6 +361,7 @@ static int __fpu__restore_sig(void __user *buf, void __user *buf_fx, int size)
++@@ -294,6 +362,7 @@ static int __fpu__restore_sig(void __user *buf, void __user *buf_fx, int size)
+  	struct task_struct *tsk = current;
+  	struct fpu *fpu = &tsk->thread.fpu;
+  	struct user_i387_ia32_struct env;
+@@ -460,7 +464,7 @@ index 4dad5afc938d..95ee76d08971 100644
+  	u64 user_xfeatures = 0;
+  	int fx_only = 0;
+  	int ret = 0;
+-@@ -334,6 +402,10 @@ static int __fpu__restore_sig(void __user *buf, void __user *buf_fx, int size)
++@@ -334,6 +403,10 @@ static int __fpu__restore_sig(void __user *buf, void __user *buf_fx, int size)
+  	if ((unsigned long)buf_fx % 64)
+  		fx_only = 1;
+  
+@@ -471,28 +475,25 @@ index 4dad5afc938d..95ee76d08971 100644
+  	if (!ia32_fxstate) {
+  		/*
+  		 * Attempt to restore the FPU registers directly from user
+-@@ -346,7 +418,10 @@ static int __fpu__restore_sig(void __user *buf, void __user *buf_fx, int size)
+- 		pagefault_disable();
+- 		ret = copy_user_to_fpregs_zeroing(buf_fx, user_xfeatures, fx_only);
++@@ -348,6 +421,8 @@ static int __fpu__restore_sig(void __user *buf, void __user *buf_fx, int size)
+  		pagefault_enable();
+-+
+  		if (!ret) {
++ 
+ +			cet_restore_signal(&sc_ext);
+ +
+- 			/* Restore supervisor states */
+- 			if (test_thread_flag(TIF_NEED_FPU_LOAD) &&
+- 			    xfeatures_mask_supervisor())
+-@@ -405,6 +480,9 @@ static int __fpu__restore_sig(void __user *buf, void __user *buf_fx, int size)
+- 		fpregs_lock();
++ 			/*
++ 			 * Restore supervisor states: previous context switch
++ 			 * etc has done XSAVES and saved the supervisor states
++@@ -422,6 +497,8 @@ static int __fpu__restore_sig(void __user *buf, void __user *buf_fx, int size)
+  		if (unlikely(init_bv))
+  			copy_kernel_to_xregs(&init_fpstate.xsave, init_bv);
+-+
++ 
+ +		cet_restore_signal(&sc_ext);
+ +
+  		/*
+  		 * Restore previously saved supervisor xstates along with
+  		 * copied-in user xstates.
+-@@ -473,12 +551,35 @@ int fpu__restore_sig(void __user *buf, int ia32_frame)
++@@ -490,12 +567,35 @@ int fpu__restore_sig(void __user *buf, int ia32_frame)
+  	return __fpu__restore_sig(buf, buf_fx, size);
+  }
+  
+diff --git a/0031-ELF-UAPI-and-Kconfig-additions-for-ELF-program-prope.patch b/0031-ELF-UAPI-and-Kconfig-additions-for-ELF-program-prope.patch
+index df04875a5..ac4f75a34 100644
+--- a/0031-ELF-UAPI-and-Kconfig-additions-for-ELF-program-prope.patch
++++ b/0031-ELF-UAPI-and-Kconfig-additions-for-ELF-program-prope.patch
+@@ -1,4 +1,4 @@
+-From 48890ab3f159bc0257491271c14c965aa469d8d2 Mon Sep 17 00:00:00 2001
++From b917d33bc0bb3db931d0c6a70cb446665483a755 Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Fri, 18 Oct 2019 18:25:34 +0100
+ Subject: [PATCH 31/47] ELF: UAPI and Kconfig additions for ELF program
+@@ -13,10 +13,10 @@ Reviewed-by: Kees Cook <keescook@chromium.org>
+ v10:
+ - Merge GNU_PROPERTY_X86_FEATURE_1_* from a separate patch.
+ ---
+- fs/Kconfig.binfmt        | 3 +++
+- include/linux/elf.h      | 8 ++++++++
+- include/uapi/linux/elf.h | 8 ++++++++
+- 3 files changed, 19 insertions(+)
++ fs/Kconfig.binfmt        |  3 +++
++ include/linux/elf.h      |  8 ++++++++
++ include/uapi/linux/elf.h | 10 ++++++++++
++ 3 files changed, 21 insertions(+)
+ 
+ diff --git a/fs/Kconfig.binfmt b/fs/Kconfig.binfmt
+ index 62dc4f577ba1..d2cfe0729a73 100644
+@@ -57,7 +57,7 @@ index e3649b3e970e..459cddcceaac 100644
+ +
+  #endif /* _LINUX_ELF_H */
+ diff --git a/include/uapi/linux/elf.h b/include/uapi/linux/elf.h
+-index 34c02e4290fe..61251ecabdd7 100644
++index 34c02e4290fe..509fd27c6f93 100644
+ --- a/include/uapi/linux/elf.h
+ +++ b/include/uapi/linux/elf.h
+ @@ -36,6 +36,7 @@ typedef __s64	Elf64_Sxword;
+@@ -68,7 +68,7 @@ index 34c02e4290fe..61251ecabdd7 100644
+  
+  #define PT_GNU_STACK	(PT_LOOS + 0x474e551)
+  
+-@@ -443,4 +444,11 @@ typedef struct elf64_note {
++@@ -443,4 +444,13 @@ typedef struct elf64_note {
+    Elf64_Word n_type;	/* Content type */
+  } Elf64_Nhdr;
+  
+@@ -78,6 +78,8 @@ index 34c02e4290fe..61251ecabdd7 100644
+ +/* Bits of GNU_PROPERTY_X86_FEATURE_1_AND */
+ +#define GNU_PROPERTY_X86_FEATURE_1_IBT		0x00000001
+ +#define GNU_PROPERTY_X86_FEATURE_1_SHSTK	0x00000002
+++#define GNU_PROPERTY_X86_FEATURE_1_INVAL ~(GNU_PROPERTY_X86_FEATURE_1_IBT | \
+++					    GNU_PROPERTY_X86_FEATURE_1_SHSTK)
+ +
+  #endif /* _UAPI_LINUX_ELF_H */
+ -- 
+diff --git a/0032-ELF-Add-ELF-program-property-parsing-support.patch b/0032-ELF-Add-ELF-program-property-parsing-support.patch
+index 4ee3814f8..e34da1aa9 100644
+--- a/0032-ELF-Add-ELF-program-property-parsing-support.patch
++++ b/0032-ELF-Add-ELF-program-property-parsing-support.patch
+@@ -1,4 +1,4 @@
+-From 452945792ab8e5f24869b174076253fbeb6c2c4a Mon Sep 17 00:00:00 2001
++From 4a1799148638787d64eaeb67482794034bfe2647 Mon Sep 17 00:00:00 2001
+ From: Dave Martin <Dave.Martin@arm.com>
+ Date: Mon, 16 Mar 2020 16:50:44 +0000
+ Subject: [PATCH 32/47] ELF: Add ELF program property parsing support
+@@ -26,7 +26,7 @@ Signed-off-by: Yu-cheng Yu <yu-cheng.yu@intel.com>
+  4 files changed, 154 insertions(+)
+ 
+ diff --git a/fs/binfmt_elf.c b/fs/binfmt_elf.c
+-index 13f25e241ac4..327a995ff743 100644
++index 25d489bc9453..9eebecfcd331 100644
+ --- a/fs/binfmt_elf.c
+ +++ b/fs/binfmt_elf.c
+ @@ -40,12 +40,18 @@
+@@ -284,7 +284,7 @@ index 459cddcceaac..7bdc6da160c7 100644
+ +
+  #endif /* _LINUX_ELF_H */
+ diff --git a/include/uapi/linux/elf.h b/include/uapi/linux/elf.h
+-index 61251ecabdd7..518651708d8f 100644
++index 509fd27c6f93..49c026ce8d97 100644
+ --- a/include/uapi/linux/elf.h
+ +++ b/include/uapi/linux/elf.h
+ @@ -368,6 +368,7 @@ typedef struct elf64_shdr {
+diff --git a/0033-ELF-Introduce-arch_setup_elf_property.patch b/0033-ELF-Introduce-arch_setup_elf_property.patch
+index 6d9f7fe4f..71fbd5d43 100644
+--- a/0033-ELF-Introduce-arch_setup_elf_property.patch
++++ b/0033-ELF-Introduce-arch_setup_elf_property.patch
+@@ -1,4 +1,4 @@
+-From 67b7b912acb1b5b0196dd68446c2e9a1dabe0a6c Mon Sep 17 00:00:00 2001
++From d5fa1383166189cf11d9e08e8c6ac690416f7d2c Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Tue, 20 Aug 2019 13:20:37 -0700
+ Subject: [PATCH 33/47] ELF: Introduce arch_setup_elf_property()
+@@ -15,7 +15,7 @@ Signed-off-by: Yu-cheng Yu <yu-cheng.yu@intel.com>
+  2 files changed, 10 insertions(+)
+ 
+ diff --git a/fs/binfmt_elf.c b/fs/binfmt_elf.c
+-index 327a995ff743..d7a4c0a1245e 100644
++index 9eebecfcd331..91ae3e71e2d5 100644
+ --- a/fs/binfmt_elf.c
+ +++ b/fs/binfmt_elf.c
+ @@ -1216,6 +1216,10 @@ static int load_elf_binary(struct linux_binprm *bprm)
+diff --git a/0034-x86-cet-shstk-ELF-header-parsing-for-shadow-stack.patch b/0034-x86-cet-shstk-ELF-header-parsing-for-shadow-stack.patch
+index 75f415440..b03950227 100644
+--- a/0034-x86-cet-shstk-ELF-header-parsing-for-shadow-stack.patch
++++ b/0034-x86-cet-shstk-ELF-header-parsing-for-shadow-stack.patch
+@@ -1,4 +1,4 @@
+-From 562ff88b416adeacf5ec8b61a5fd9d9119bfb6eb Mon Sep 17 00:00:00 2001
++From 8c795861545891784657a459783adb1785028f7f Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Tue, 3 Oct 2017 16:07:12 -0700
+ Subject: [PATCH 34/47] x86/cet/shstk: ELF header parsing for shadow stack
+@@ -13,14 +13,14 @@ v9:
+ ---
+  arch/x86/Kconfig             |  2 ++
+  arch/x86/include/asm/elf.h   | 13 +++++++++++++
+- arch/x86/kernel/process_64.c | 29 +++++++++++++++++++++++++++++
+- 3 files changed, 44 insertions(+)
++ arch/x86/kernel/process_64.c | 32 ++++++++++++++++++++++++++++++++
++ 3 files changed, 47 insertions(+)
+ 
+ diff --git a/arch/x86/Kconfig b/arch/x86/Kconfig
+-index ac07e1f6a2bc..8b7b97ff5fb4 100644
++index df24c4a90ea0..b1d7a2a37e3b 100644
+ --- a/arch/x86/Kconfig
+ +++ b/arch/x86/Kconfig
+-@@ -1970,6 +1970,8 @@ config X86_INTEL_SHADOW_STACK_USER
++@@ -1971,6 +1971,8 @@ config X86_INTEL_SHADOW_STACK_USER
+  	select X86_INTEL_CET
+  	select ARCH_MAYBE_MKWRITE
+  	select ARCH_HAS_SHADOW_STACK
+@@ -54,10 +54,10 @@ index 69c0f892e310..fac79b621e0a 100644
+  enum align_flags {
+  	ALIGN_VA_32	= BIT(0),
+ diff --git a/arch/x86/kernel/process_64.c b/arch/x86/kernel/process_64.c
+-index 5ef9d8f25b0e..93ba4afd0c19 100644
++index 5ef9d8f25b0e..0c0475887d5c 100644
+ --- a/arch/x86/kernel/process_64.c
+ +++ b/arch/x86/kernel/process_64.c
+-@@ -730,3 +730,32 @@ unsigned long KSTK_ESP(struct task_struct *task)
++@@ -730,3 +730,35 @@ unsigned long KSTK_ESP(struct task_struct *task)
+  {
+  	return task_pt_regs(task)->sp;
+  }
+@@ -80,6 +80,9 @@ index 5ef9d8f25b0e..93ba4afd0c19 100644
+ +{
+ +	int r = 0;
+ +
+++	if (!IS_ENABLED(CONFIG_X86_INTEL_CET))
+++		return r;
+++
+ +	memset(&current->thread.cet, 0, sizeof(struct cet_status));
+ +
+ +	if (static_cpu_has(X86_FEATURE_SHSTK)) {
+diff --git a/0035-x86-cet-shstk-Handle-thread-shadow-stack.patch b/0035-x86-cet-shstk-Handle-thread-shadow-stack.patch
+index f79fb7dfa..ff1a7c0b2 100644
+--- a/0035-x86-cet-shstk-Handle-thread-shadow-stack.patch
++++ b/0035-x86-cet-shstk-Handle-thread-shadow-stack.patch
+@@ -1,4 +1,4 @@
+-From a6991af04d26e213e229a4e1032ca20a0e142081 Mon Sep 17 00:00:00 2001
++From 099768f8bcc8bca0d73b98119882f54c9da3984c Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Thu, 3 May 2018 12:40:57 -0700
+ Subject: [PATCH 35/47] x86/cet/shstk: Handle thread shadow stack
+@@ -68,7 +68,7 @@ index 4e55370e48e8..bb7a4a2d6923 100644
+  	loadsegment(fs, 0);			\
+  } while (0)
+ diff --git a/arch/x86/kernel/cet.c b/arch/x86/kernel/cet.c
+-index 274fecdd9669..121552047b86 100644
++index e95bd2b3c394..736652b9b73f 100644
+ --- a/arch/x86/kernel/cet.c
+ +++ b/arch/x86/kernel/cet.c
+ @@ -169,6 +169,47 @@ int cet_setup_shstk(void)
+@@ -120,7 +120,7 @@ index 274fecdd9669..121552047b86 100644
+  {
+  	struct cet_status *cet = &tsk->thread.cet;
+ diff --git a/arch/x86/kernel/process.c b/arch/x86/kernel/process.c
+-index 9d9cff2c1018..ef1c2b8086a2 100644
++index 56587051df5a..aa896833f074 100644
+ --- a/arch/x86/kernel/process.c
+ +++ b/arch/x86/kernel/process.c
+ @@ -109,6 +109,7 @@ void exit_thread(struct task_struct *tsk)
+diff --git a/0036-x86-cet-shstk-Add-arch_prctl-functions-for-shadow-st.patch b/0036-x86-cet-shstk-Add-arch_prctl-functions-for-shadow-st.patch
+index 3338ba5ac..15d289219 100644
+--- a/0036-x86-cet-shstk-Add-arch_prctl-functions-for-shadow-st.patch
++++ b/0036-x86-cet-shstk-Add-arch_prctl-functions-for-shadow-st.patch
+@@ -1,4 +1,4 @@
+-From 0fc3d0d509ef7f9254bb2a72831ea5855c04c172 Mon Sep 17 00:00:00 2001
++From e87c40b026539d4a8774044e3c463940c759fd6c Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Thu, 3 May 2018 13:04:29 -0700
+ Subject: [PATCH 36/47] x86/cet/shstk: Add arch_prctl functions for shadow
+@@ -28,20 +28,28 @@ arch_prctl(ARCH_X86_CET_ALLOC_SHSTK, u64 *args)
+     desired size to allocate.  The kernel returns the allocated shadow
+     stack address in *args.
+ 
++Also change do_arch_prctl_common()'s parameter 'cpuid_enabled' to
++'arg2', as it is now also passed to prctl_cet().
++
+ Signed-off-by: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ 
++v11:
++- Check input for invalid features.
++- Fix prctl_cet() return values.
++
+ v10:
+ - Verify CET is enabled before handling arch_prctl.
+ - Change input parameters from unsigned long to u64, to make it clear they
+   are 64-bit.
+ ---
+- arch/x86/include/asm/cet.h        |  4 ++
+- arch/x86/include/uapi/asm/prctl.h |  5 ++
+- arch/x86/kernel/Makefile          |  2 +-
+- arch/x86/kernel/cet.c             | 29 +++++++++++
+- arch/x86/kernel/cet_prctl.c       | 87 +++++++++++++++++++++++++++++++
+- arch/x86/kernel/process.c         |  4 +-
+- 6 files changed, 128 insertions(+), 3 deletions(-)
++ arch/x86/include/asm/cet.h              |  4 ++
++ arch/x86/include/uapi/asm/prctl.h       |  5 ++
++ arch/x86/kernel/Makefile                |  2 +-
++ arch/x86/kernel/cet.c                   | 29 ++++++++
++ arch/x86/kernel/cet_prctl.c             | 91 +++++++++++++++++++++++++
++ arch/x86/kernel/process.c               |  6 +-
++ tools/arch/x86/include/uapi/asm/prctl.h |  5 ++
++ 7 files changed, 138 insertions(+), 4 deletions(-)
+  create mode 100644 arch/x86/kernel/cet_prctl.c
+ 
+ diff --git a/arch/x86/include/asm/cet.h b/arch/x86/include/asm/cet.h
+@@ -97,7 +105,7 @@ index e9cc2551573b..0b621e2afbdc 100644
+  ###
+  # 64 bit specific files
+ diff --git a/arch/x86/kernel/cet.c b/arch/x86/kernel/cet.c
+-index 121552047b86..c1b9b540c03e 100644
++index 736652b9b73f..b994f0a1e78e 100644
+ --- a/arch/x86/kernel/cet.c
+ +++ b/arch/x86/kernel/cet.c
+ @@ -145,6 +145,35 @@ static int create_rstor_token(bool ia32, unsigned long ssp,
+@@ -138,10 +146,10 @@ index 121552047b86..c1b9b540c03e 100644
+  	unsigned long addr, size;
+ diff --git a/arch/x86/kernel/cet_prctl.c b/arch/x86/kernel/cet_prctl.c
+ new file mode 100644
+-index 000000000000..0139c48f2215
++index 000000000000..844ff7f6d129
+ --- /dev/null
+ +++ b/arch/x86/kernel/cet_prctl.c
+-@@ -0,0 +1,87 @@
++@@ -0,0 +1,91 @@
+ +/* SPDX-License-Identifier: GPL-2.0 */
+ +
+ +#include <linux/errno.h>
+@@ -156,9 +164,8 @@ index 000000000000..0139c48f2215
+ +
+ +/* See Documentation/x86/intel_cet.rst. */
+ +
+-+static int handle_get_status(u64 arg2)
+++static int copy_status_to_user(struct cet_status *cet, u64 arg2)
+ +{
+-+	struct cet_status *cet = &current->thread.cet;
+ +	u64 buf[3] = {0, 0, 0};
+ +
+ +	if (cet->shstk_size) {
+@@ -198,24 +205,29 @@ index 000000000000..0139c48f2215
+ +{
+ +	struct cet_status *cet;
+ +
+++	/*
+++	 * GLIBC's ENOTSUPP == EOPNOTSUPP == 95, and it does not recognize
+++	 * the kernel's ENOTSUPP (524).  So return EOPNOTSUPP here.
+++	 */
+ +	if (!IS_ENABLED(CONFIG_X86_INTEL_CET))
+-+		return -EINVAL;
+++		return -EOPNOTSUPP;
+++
+++	cet = &current->thread.cet;
+ +
+ +	if (option == ARCH_X86_CET_STATUS)
+-+		return handle_get_status(arg2);
+++		return copy_status_to_user(cet, arg2);
+ +
+ +	if (!static_cpu_has(X86_FEATURE_SHSTK))
+-+		return -EINVAL;
+-+
+-+	cet = &current->thread.cet;
+++		return -EOPNOTSUPP;
+ +
+ +	switch (option) {
+ +	case ARCH_X86_CET_DISABLE:
+ +		if (cet->locked)
+ +			return -EPERM;
+++		if (arg2 & GNU_PROPERTY_X86_FEATURE_1_INVAL)
+++			return -EINVAL;
+ +		if (arg2 & GNU_PROPERTY_X86_FEATURE_1_SHSTK)
+ +			cet_disable_free_shstk(current);
+-+
+ +		return 0;
+ +
+ +	case ARCH_X86_CET_LOCK:
+@@ -226,23 +238,45 @@ index 000000000000..0139c48f2215
+ +		return handle_alloc_shstk(arg2);
+ +
+ +	default:
+-+		return -EINVAL;
+++		return -ENOSYS;
+ +	}
+ +}
+ diff --git a/arch/x86/kernel/process.c b/arch/x86/kernel/process.c
+-index ef1c2b8086a2..de6773dd6a16 100644
++index aa896833f074..c50ace4e6c52 100644
+ --- a/arch/x86/kernel/process.c
+ +++ b/arch/x86/kernel/process.c
+-@@ -996,7 +996,7 @@ long do_arch_prctl_common(struct task_struct *task, int option,
++@@ -989,14 +989,14 @@ unsigned long get_wchan(struct task_struct *p)
++ }
++ 
++ long do_arch_prctl_common(struct task_struct *task, int option,
++-			  unsigned long cpuid_enabled)
+++			  unsigned long arg2)
++ {
++ 	switch (option) {
++ 	case ARCH_GET_CPUID:
+  		return get_cpuid_mode();
+  	case ARCH_SET_CPUID:
+- 		return set_cpuid_mode(task, cpuid_enabled);
+-+	default:
+-+		return prctl_cet(option, cpuid_enabled);
++-		return set_cpuid_mode(task, cpuid_enabled);
+++		return set_cpuid_mode(task, arg2);
+  	}
+--
++ 
+ -	return -EINVAL;
+++	return prctl_cet(option, arg2);
+  }
++diff --git a/tools/arch/x86/include/uapi/asm/prctl.h b/tools/arch/x86/include/uapi/asm/prctl.h
++index 5a6aac9fa41f..d962f0ec9ccf 100644
++--- a/tools/arch/x86/include/uapi/asm/prctl.h
+++++ b/tools/arch/x86/include/uapi/asm/prctl.h
++@@ -14,4 +14,9 @@
++ #define ARCH_MAP_VDSO_32	0x2002
++ #define ARCH_MAP_VDSO_64	0x2003
++ 
+++#define ARCH_X86_CET_STATUS		0x3001
+++#define ARCH_X86_CET_DISABLE		0x3002
+++#define ARCH_X86_CET_LOCK		0x3003
+++#define ARCH_X86_CET_ALLOC_SHSTK	0x3004
+++
++ #endif /* _ASM_X86_PRCTL_H */
+ -- 
+ 2.26.2
+ 
+diff --git a/0037-x86-cet-ibt-Add-Kconfig-option-for-user-mode-Indirec.patch b/0037-x86-cet-ibt-Add-Kconfig-option-for-user-mode-Indirec.patch
+index 18de7ac4c..6469be780 100644
+--- a/0037-x86-cet-ibt-Add-Kconfig-option-for-user-mode-Indirec.patch
++++ b/0037-x86-cet-ibt-Add-Kconfig-option-for-user-mode-Indirec.patch
+@@ -1,4 +1,4 @@
+-From b6729eeb85678e8cdf0d90b8a70e879de188071d Mon Sep 17 00:00:00 2001
++From 5c3f3ca62796d7360a3fc4abf29119b40d72267e Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Wed, 4 Oct 2017 12:35:32 -0700
+ Subject: [PATCH 37/47] x86/cet/ibt: Add Kconfig option for user-mode Indirect
+@@ -21,10 +21,10 @@ v10:
+  1 file changed, 16 insertions(+)
+ 
+ diff --git a/arch/x86/Kconfig b/arch/x86/Kconfig
+-index 8b7b97ff5fb4..d45fbdfe61e7 100644
++index b1d7a2a37e3b..8670b1d5e34f 100644
+ --- a/arch/x86/Kconfig
+ +++ b/arch/x86/Kconfig
+-@@ -1983,6 +1983,22 @@ config X86_INTEL_SHADOW_STACK_USER
++@@ -1984,6 +1984,22 @@ config X86_INTEL_SHADOW_STACK_USER
+  
+  	  If unsure, say y.
+  
+diff --git a/0038-x86-cet-ibt-User-mode-Indirect-Branch-Tracking-suppo.patch b/0038-x86-cet-ibt-User-mode-Indirect-Branch-Tracking-suppo.patch
+index 044116ff8..179d71d71 100644
+--- a/0038-x86-cet-ibt-User-mode-Indirect-Branch-Tracking-suppo.patch
++++ b/0038-x86-cet-ibt-User-mode-Indirect-Branch-Tracking-suppo.patch
+@@ -1,4 +1,4 @@
+-From fcf570fac1c0c8e134ec73118c34456d0bc2a885 Mon Sep 17 00:00:00 2001
++From 58eae73614da310ee02f46ee5aa1434a89c5e273 Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Thu, 3 May 2018 13:30:56 -0700
+ Subject: [PATCH 38/47] x86/cet/ibt: User-mode Indirect Branch Tracking support
+@@ -72,7 +72,7 @@ index a0e1b24cfa02..52c9c07cfacc 100644
+  
+  #endif /* _ASM_X86_DISABLED_FEATURES_H */
+ diff --git a/arch/x86/kernel/cet.c b/arch/x86/kernel/cet.c
+-index c1b9b540c03e..1782b905b705 100644
++index b994f0a1e78e..fe4ff3590331 100644
+ --- a/arch/x86/kernel/cet.c
+ +++ b/arch/x86/kernel/cet.c
+ @@ -13,6 +13,8 @@
+@@ -84,7 +84,7 @@ index c1b9b540c03e..1782b905b705 100644
+  #include <asm/msr.h>
+  #include <asm/user.h>
+  #include <asm/fpu/internal.h>
+-@@ -354,3 +356,34 @@ int cet_setup_signal(bool ia32, unsigned long rstor_addr, struct sc_ext *sc_ext)
++@@ -357,3 +359,34 @@ int cet_setup_signal(bool ia32, unsigned long rstor_addr, struct sc_ext *sc_ext)
+  
+  	return 0;
+  }
+diff --git a/0039-x86-cet-ibt-Handle-signals-for-Indirect-Branch-Track.patch b/0039-x86-cet-ibt-Handle-signals-for-Indirect-Branch-Track.patch
+index 0b5767c8b..0a4d73519 100644
+--- a/0039-x86-cet-ibt-Handle-signals-for-Indirect-Branch-Track.patch
++++ b/0039-x86-cet-ibt-Handle-signals-for-Indirect-Branch-Track.patch
+@@ -1,4 +1,4 @@
+-From a56456424e7566e21092ddf9fcc5a1ac40c317fc Mon Sep 17 00:00:00 2001
++From 06687de015e319f7ad4c32f431cab3c4c6592569 Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Tue, 28 May 2019 12:29:14 -0700
+ Subject: [PATCH 39/47] x86/cet/ibt: Handle signals for Indirect Branch
+@@ -22,10 +22,10 @@ v9:
+  2 files changed, 30 insertions(+), 5 deletions(-)
+ 
+ diff --git a/arch/x86/kernel/cet.c b/arch/x86/kernel/cet.c
+-index 1782b905b705..92b8730c0b08 100644
++index fe4ff3590331..b1d592699964 100644
+ --- a/arch/x86/kernel/cet.c
+ +++ b/arch/x86/kernel/cet.c
+-@@ -306,6 +306,13 @@ void cet_restore_signal(struct sc_ext *sc_ext)
++@@ -309,6 +309,13 @@ void cet_restore_signal(struct sc_ext *sc_ext)
+  		msr_val |= MSR_IA32_CET_SHSTK_EN;
+  	}
+  
+@@ -39,7 +39,7 @@ index 1782b905b705..92b8730c0b08 100644
+  	if (test_thread_flag(TIF_NEED_FPU_LOAD))
+  		cet_user_state->user_cet = msr_val;
+  	else
+-@@ -348,9 +355,25 @@ int cet_setup_signal(bool ia32, unsigned long rstor_addr, struct sc_ext *sc_ext)
++@@ -351,9 +358,25 @@ int cet_setup_signal(bool ia32, unsigned long rstor_addr, struct sc_ext *sc_ext)
+  		sc_ext->ssp = new_ssp;
+  	}
+  
+@@ -68,7 +68,7 @@ index 1782b905b705..92b8730c0b08 100644
+  	}
+  
+ diff --git a/arch/x86/kernel/fpu/signal.c b/arch/x86/kernel/fpu/signal.c
+-index 95ee76d08971..b6ea9b0e0c0b 100644
++index 163a17772ca0..43e4464674c2 100644
+ --- a/arch/x86/kernel/fpu/signal.c
+ +++ b/arch/x86/kernel/fpu/signal.c
+ @@ -57,7 +57,8 @@ int save_cet_to_sigframe(int ia32, void __user *fp, unsigned long restorer)
+@@ -91,7 +91,7 @@ index 95ee76d08971..b6ea9b0e0c0b 100644
+  		return 0;
+  
+  	if (fp) {
+-@@ -560,7 +562,7 @@ static unsigned long fpu__alloc_sigcontext_ext(unsigned long sp)
++@@ -576,7 +578,7 @@ static unsigned long fpu__alloc_sigcontext_ext(unsigned long sp)
+  	 * sigcontext_ext is at: fpu + fpu_user_xstate_size +
+  	 * FP_XSTATE_MAGIC2_SIZE, then aligned to 8.
+  	 */
+diff --git a/0040-x86-cet-ibt-ELF-header-parsing-for-Indirect-Branch-T.patch b/0040-x86-cet-ibt-ELF-header-parsing-for-Indirect-Branch-T.patch
+index 8bc3394d2..15602260f 100644
+--- a/0040-x86-cet-ibt-ELF-header-parsing-for-Indirect-Branch-T.patch
++++ b/0040-x86-cet-ibt-ELF-header-parsing-for-Indirect-Branch-T.patch
+@@ -1,4 +1,4 @@
+-From 965cddc8387f1ec285de366d8104ad9b163ac451 Mon Sep 17 00:00:00 2001
++From 777d0c94585c2f82e7f570020cc5e3df3569ea81 Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Tue, 30 Apr 2019 15:16:22 -0700
+ Subject: [PATCH 40/47] x86/cet/ibt: ELF header parsing for Indirect Branch
+@@ -16,10 +16,10 @@ v9:
+  2 files changed, 10 insertions(+)
+ 
+ diff --git a/arch/x86/Kconfig b/arch/x86/Kconfig
+-index d45fbdfe61e7..1a7e077ab336 100644
++index 8670b1d5e34f..bb0e2a9feab7 100644
+ --- a/arch/x86/Kconfig
+ +++ b/arch/x86/Kconfig
+-@@ -1989,6 +1989,8 @@ config X86_INTEL_BRANCH_TRACKING_USER
++@@ -1990,6 +1990,8 @@ config X86_INTEL_BRANCH_TRACKING_USER
+  	depends on CPU_SUP_INTEL && X86_64
+  	depends on $(cc-option,-fcf-protection)
+  	select X86_INTEL_CET
+@@ -29,10 +29,10 @@ index d45fbdfe61e7..1a7e077ab336 100644
+  	  Indirect Branch Tracking (IBT) provides protection against
+  	  CALL-/JMP-oriented programming attacks.  It is active when
+ diff --git a/arch/x86/kernel/process_64.c b/arch/x86/kernel/process_64.c
+-index 93ba4afd0c19..b7ab2030010b 100644
++index 0c0475887d5c..d21c9cd90ced 100644
+ --- a/arch/x86/kernel/process_64.c
+ +++ b/arch/x86/kernel/process_64.c
+-@@ -756,6 +756,14 @@ int arch_setup_elf_property(struct arch_elf_state *state)
++@@ -759,6 +759,14 @@ int arch_setup_elf_property(struct arch_elf_state *state)
+  			r = cet_setup_shstk();
+  	}
+  
+diff --git a/0041-x86-cet-ibt-Add-arch_prctl-functions-for-Indirect-Br.patch b/0041-x86-cet-ibt-Add-arch_prctl-functions-for-Indirect-Br.patch
+index 4dbaa77b6..d29114eb9 100644
+--- a/0041-x86-cet-ibt-Add-arch_prctl-functions-for-Indirect-Br.patch
++++ b/0041-x86-cet-ibt-Add-arch_prctl-functions-for-Indirect-Br.patch
+@@ -1,4 +1,4 @@
+-From b8232805edc40b732d6db1c3d6a03d14dcacac35 Mon Sep 17 00:00:00 2001
++From 0e6450cf06c92f42840ab364588504e66c8d9f67 Mon Sep 17 00:00:00 2001
+ From: "H.J. Lu" <hjl.tools@gmail.com>
+ Date: Tue, 21 Aug 2018 14:13:05 -0700
+ Subject: [PATCH 41/47] x86/cet/ibt: Add arch_prctl functions for Indirect
+@@ -14,10 +14,10 @@ Signed-off-by: Yu-cheng Yu <yu-cheng.yu@intel.com>
+  1 file changed, 7 insertions(+), 1 deletion(-)
+ 
+ diff --git a/arch/x86/kernel/cet_prctl.c b/arch/x86/kernel/cet_prctl.c
+-index 0139c48f2215..a8e68fefd524 100644
++index 844ff7f6d129..81c8d76cac18 100644
+ --- a/arch/x86/kernel/cet_prctl.c
+ +++ b/arch/x86/kernel/cet_prctl.c
+-@@ -23,6 +23,9 @@ static int handle_get_status(u64 arg2)
++@@ -22,6 +22,9 @@ static int copy_status_to_user(struct cet_status *cet, u64 arg2)
+  		buf[2] = (u64)cet->shstk_size;
+  	}
+  
+@@ -27,25 +27,25 @@ index 0139c48f2215..a8e68fefd524 100644
+  	return copy_to_user((u64 __user *)arg2, buf, sizeof(buf));
+  }
+  
+-@@ -60,7 +63,8 @@ int prctl_cet(int option, u64 arg2)
++@@ -65,7 +68,8 @@ int prctl_cet(int option, u64 arg2)
+  	if (option == ARCH_X86_CET_STATUS)
+- 		return handle_get_status(arg2);
++ 		return copy_status_to_user(cet, arg2);
+  
+ -	if (!static_cpu_has(X86_FEATURE_SHSTK))
+ +	if (!static_cpu_has(X86_FEATURE_SHSTK) &&
+ +	    !static_cpu_has(X86_FEATURE_IBT))
+- 		return -EINVAL;
++ 		return -EOPNOTSUPP;
+  
+- 	cet = &current->thread.cet;
+-@@ -71,6 +75,8 @@ int prctl_cet(int option, u64 arg2)
+- 			return -EPERM;
++ 	switch (option) {
++@@ -76,6 +80,8 @@ int prctl_cet(int option, u64 arg2)
++ 			return -EINVAL;
+  		if (arg2 & GNU_PROPERTY_X86_FEATURE_1_SHSTK)
+  			cet_disable_free_shstk(current);
+ +		if (arg2 & GNU_PROPERTY_X86_FEATURE_1_IBT)
+ +			cet_disable_ibt();
+- 
+  		return 0;
+  
++ 	case ARCH_X86_CET_LOCK:
+ -- 
+ 2.26.2
+ 
+diff --git a/0042-x86-cet-Add-PTRACE-interface-for-CET.patch b/0042-x86-cet-Add-PTRACE-interface-for-CET.patch
+index ab2b12022..48da92f7b 100644
+--- a/0042-x86-cet-Add-PTRACE-interface-for-CET.patch
++++ b/0042-x86-cet-Add-PTRACE-interface-for-CET.patch
+@@ -1,4 +1,4 @@
+-From 18c3761d3dc1cba0fe9a627c4de504cbda8e2cde Mon Sep 17 00:00:00 2001
++From c45c0ee32e70d7712f021a9998d9a34b6bde9227 Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Mon, 23 Apr 2018 12:55:13 -0700
+ Subject: [PATCH 42/47] x86/cet: Add PTRACE interface for CET
+@@ -135,7 +135,7 @@ index f0e1ddbc2fd7..c362abdf6ef1 100644
+  
+  static const struct user_regset_view user_x86_32_view = {
+ diff --git a/include/uapi/linux/elf.h b/include/uapi/linux/elf.h
+-index 518651708d8f..793f171c37c2 100644
++index 49c026ce8d97..6502906ef47c 100644
+ --- a/include/uapi/linux/elf.h
+ +++ b/include/uapi/linux/elf.h
+ @@ -402,6 +402,7 @@ typedef struct elf64_shdr {
+diff --git a/0043-x86-vdso-32-Add-ENDBR32-to-__kernel_vsyscall-entry-p.patch b/0043-x86-vdso-32-Add-ENDBR32-to-__kernel_vsyscall-entry-p.patch
+index dffe017e6..b4b764a85 100644
+--- a/0043-x86-vdso-32-Add-ENDBR32-to-__kernel_vsyscall-entry-p.patch
++++ b/0043-x86-vdso-32-Add-ENDBR32-to-__kernel_vsyscall-entry-p.patch
+@@ -1,4 +1,4 @@
+-From f410a63b37b73dea0e7b0057a9b7f8c4c34badcb Mon Sep 17 00:00:00 2001
++From ad9ffb6c49123c8f94e10b2a8405f455de24dcf7 Mon Sep 17 00:00:00 2001
+ From: "H.J. Lu" <hjl.tools@gmail.com>
+ Date: Fri, 28 Sep 2018 06:21:50 -0700
+ Subject: [PATCH 43/47] x86/vdso/32: Add ENDBR32 to __kernel_vsyscall entry
+diff --git a/0044-x86-vdso-Insert-endbr32-endbr64-to-vDSO.patch b/0044-x86-vdso-Insert-endbr32-endbr64-to-vDSO.patch
+index 32563fff3..76a005f4d 100644
+--- a/0044-x86-vdso-Insert-endbr32-endbr64-to-vDSO.patch
++++ b/0044-x86-vdso-Insert-endbr32-endbr64-to-vDSO.patch
+@@ -1,4 +1,4 @@
+-From a12c4159f06c519e8edc087b52b7f2b623e1f2e4 Mon Sep 17 00:00:00 2001
++From 348373388783ef8fc26c0cc7f2a6022fdc34c7fc Mon Sep 17 00:00:00 2001
+ From: "H.J. Lu" <hjl.tools@gmail.com>
+ Date: Fri, 16 Mar 2018 04:18:48 -0700
+ Subject: [PATCH 44/47] x86/vdso: Insert endbr32/endbr64 to vDSO
+diff --git a/0045-x86-Disallow-vsyscall-emulation-when-CET-is-enabled.patch b/0045-x86-Disallow-vsyscall-emulation-when-CET-is-enabled.patch
+index 0cc7be273..7c929b96f 100644
+--- a/0045-x86-Disallow-vsyscall-emulation-when-CET-is-enabled.patch
++++ b/0045-x86-Disallow-vsyscall-emulation-when-CET-is-enabled.patch
+@@ -1,4 +1,4 @@
+-From df0c0b50402a20d69caadaea0240a190ac4a09b9 Mon Sep 17 00:00:00 2001
++From db93aeb7cf62532a740a82c6194424309b9272bb Mon Sep 17 00:00:00 2001
+ From: "H.J. Lu" <hjl.tools@gmail.com>
+ Date: Wed, 29 Jan 2020 08:44:11 -0800
+ Subject: [PATCH 45/47] x86: Disallow vsyscall emulation when CET is enabled
+@@ -15,10 +15,10 @@ Signed-off-by: Yu-cheng Yu <yu-cheng.yu@intel.com>
+  1 file changed, 6 insertions(+), 2 deletions(-)
+ 
+ diff --git a/arch/x86/Kconfig b/arch/x86/Kconfig
+-index 1a7e077ab336..2400cf2ca99c 100644
++index bb0e2a9feab7..a1d82f0bea6b 100644
+ --- a/arch/x86/Kconfig
+ +++ b/arch/x86/Kconfig
+-@@ -1210,7 +1210,7 @@ config X86_ESPFIX64
++@@ -1211,7 +1211,7 @@ config X86_ESPFIX64
+  config X86_VSYSCALL_EMULATION
+  	bool "Enable vsyscall emulation" if EXPERT
+  	default y
+@@ -27,7 +27,7 @@ index 1a7e077ab336..2400cf2ca99c 100644
+  	---help---
+  	 This enables emulation of the legacy vsyscall page.  Disabling
+  	 it is roughly equivalent to booting with vsyscall=none, except
+-@@ -1225,6 +1225,8 @@ config X86_VSYSCALL_EMULATION
++@@ -1226,6 +1226,8 @@ config X86_VSYSCALL_EMULATION
+  	 Disabling this option saves about 7K of kernel size and
+  	 possibly 4K of additional runtime pagetable memory.
+  
+@@ -36,7 +36,7 @@ index 1a7e077ab336..2400cf2ca99c 100644
+  config X86_IOPL_IOPERM
+  	bool "IOPERM and IOPL Emulation"
+  	default y
+-@@ -2381,7 +2383,7 @@ config COMPAT_VDSO
++@@ -2382,7 +2384,7 @@ config COMPAT_VDSO
+  
+  choice
+  	prompt "vsyscall table for legacy applications"
+@@ -45,7 +45,7 @@ index 1a7e077ab336..2400cf2ca99c 100644
+  	default LEGACY_VSYSCALL_XONLY
+  	help
+  	  Legacy user code that does not know how to find the vDSO expects
+-@@ -2398,6 +2400,8 @@ choice
++@@ -2399,6 +2401,8 @@ choice
+  
+  	  If unsure, select "Emulate execution only".
+  
+diff --git a/0046-powerpc-Keep-.rela-sections-when-CONFIG_RELOCATABLE-.patch b/0046-powerpc-Keep-.rela-sections-when-CONFIG_RELOCATABLE-.patch
+index 8eff37a46..c09e10bd7 100644
+--- a/0046-powerpc-Keep-.rela-sections-when-CONFIG_RELOCATABLE-.patch
++++ b/0046-powerpc-Keep-.rela-sections-when-CONFIG_RELOCATABLE-.patch
+@@ -1,4 +1,4 @@
+-From 8343b3ca6d7a4614b4e768feab29f2f26cdf3ac7 Mon Sep 17 00:00:00 2001
++From eecc5257e67990c5277abc0f9e69bb5fc8c13a99 Mon Sep 17 00:00:00 2001
+ From: "H.J. Lu" <hjl.tools@gmail.com>
+ Date: Mon, 27 Apr 2020 14:04:48 -0700
+ Subject: [PATCH 46/47] powerpc: Keep .rela* sections when CONFIG_RELOCATABLE
+diff --git a/0047-Discard-.note.gnu.property-sections-in-generic-NOTES.patch b/0047-Discard-.note.gnu.property-sections-in-generic-NOTES.patch
+index 2227b4d85..37a422891 100644
+--- a/0047-Discard-.note.gnu.property-sections-in-generic-NOTES.patch
++++ b/0047-Discard-.note.gnu.property-sections-in-generic-NOTES.patch
+@@ -1,4 +1,4 @@
+-From 2047a19f21575bb7bced3c7aa89f13d193d834f6 Mon Sep 17 00:00:00 2001
++From 6b194ba038dc1936e319028eb95dd1cfe56aea8e Mon Sep 17 00:00:00 2001
+ From: "H.J. Lu" <hjl.tools@gmail.com>
+ Date: Thu, 30 Jan 2020 12:39:09 -0800
+ Subject: [PATCH 47/47] Discard .note.gnu.property sections in generic NOTES
+diff --git a/kernel.spec b/kernel.spec
+index ab9c39fdb..2ab7eb481 100644
+--- a/kernel.spec
++++ b/kernel.spec
+@@ -48,8 +48,6 @@ Patch200045: 0045-x86-Disallow-vsyscall-emulation-when-CET-is-enabled.patch
+ Patch200046: 0046-powerpc-Keep-.rela-sections-when-CONFIG_RELOCATABLE-.patch
+ Patch200047: 0047-Discard-.note.gnu.property-sections-in-generic-NOTES.patch
+ 
+-Patch300001: 0001-Fix-java-script.patch
+-
+ # We have to override the new %%install behavior because, well... the kernel is special.
+ %global __spec_install_pre %{___build_pre}
+ 
+@@ -1522,7 +1520,6 @@ ApplyOptionalPatch 0044-x86-vdso-Insert-endbr32-endbr64-to-vDSO.patch
+ ApplyOptionalPatch 0045-x86-Disallow-vsyscall-emulation-when-CET-is-enabled.patch
+ ApplyOptionalPatch 0046-powerpc-Keep-.rela-sections-when-CONFIG_RELOCATABLE-.patch
+ ApplyOptionalPatch 0047-Discard-.note.gnu.property-sections-in-generic-NOTES.patch
+-ApplyOptionalPatch 0001-Fix-java-script.patch
+ 
+ # END OF PATCH APPLICATIONS
+ 
+-- 
+2.26.2
+
