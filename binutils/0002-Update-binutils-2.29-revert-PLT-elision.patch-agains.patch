@@ -1,0 +1,26 @@
+From e7030e6ed438304e857f2e660812a24847a70100 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Mon, 8 Jun 2020 10:22:19 -0700
+Subject: [PATCH 2/2] Update binutils-2.29-revert-PLT-elision.patch against
+ master
+
+---
+ binutils-2.29-revert-PLT-elision.patch | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/binutils-2.29-revert-PLT-elision.patch b/binutils-2.29-revert-PLT-elision.patch
+index c5478f0..3db95a0 100644
+--- a/binutils-2.29-revert-PLT-elision.patch
++++ b/binutils-2.29-revert-PLT-elision.patch
+@@ -88,7 +88,7 @@ diff -rup binutils.orig/ld/testsuite/ld-x86-64/plt-main-ibt.dd binutils-2.29.1/l
+ -
+ -[a-f0-9]+ <[_a-z]+@plt>:
+  [ 	]*[a-f0-9]+:	f3 0f 1e fa          	endbr64 
+--[ 	]*[a-f0-9]+:	f2 ff 25 .. .. 20 00 	bnd jmpq \*0x20....\(%rip\)        # ...... <[_a-z]+>
++-[ 	]*[a-f0-9]+:	f2 ff 25 .. .. 20 00 	bnd jmpq \*0x20....\(%rip\)        # ...... <.*>
+  #pass
+ diff -rup binutils.orig/ld/testsuite/ld-x86-64/plt-main.rd binutils-2.29.1/ld/testsuite/ld-x86-64/plt-main.rd
+ --- binutils.orig/ld/testsuite/ld-x86-64/plt-main.rd	2017-11-15 13:32:39.407064397 +0000
+-- 
+2.26.2
+
