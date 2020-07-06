@@ -1,0 +1,36 @@
+From 4e8a28ee0d4a3e084c53ef10b7679a5d7f0e7783 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Mon, 6 Jul 2020 12:01:15 -0700
+Subject: [PATCH] Updated to 20200706
+
+---
+ binutils.spec | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/binutils.spec b/binutils.spec
+index 80cf1a4..79fd974 100644
+--- a/binutils.spec
++++ b/binutils.spec
+@@ -1,7 +1,7 @@
+ 
+ Summary: A GNU collection of binary utilities
+ Name: %{?cross}binutils%{?_with_debug:-debug}
+-Version: 2.34.50.0.1
++Version: 2.35.50.0.1
+ Release: 1%{?dist}
+ License: GPLv3+
+ URL: https://sourceware.org/binutils
+@@ -121,8 +121,8 @@ URL: https://sourceware.org/binutils
+ #
+ # FIXME: Undo this change once the next official binutils release is made.
+ 
+-%global DATE 20200630
+-Epoch: 275
++%global DATE 20200706
++Epoch: 276
+ Source: binutils-%{version}-%{DATE}.tar.bz2
+ 
+ Source2: binutils-2.19.50.0.1-output-format.sed
+-- 
+2.26.2
+
