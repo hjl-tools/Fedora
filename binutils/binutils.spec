@@ -1,7 +1,7 @@
 
 Summary: A GNU collection of binary utilities
 Name: %{?cross}binutils%{?_with_debug:-debug}
-Version: 2.34.50.0.1
+Version: 2.35.50.0.1
 Release: 1%{?dist}
 License: GPLv3+
 URL: https://sourceware.org/binutils
@@ -121,8 +121,8 @@ URL: https://sourceware.org/binutils
 #
 # FIXME: Undo this change once the next official binutils release is made.
 
-%global DATE 20200524
-Epoch: 265
+%global DATE 20200710
+Epoch: 277
 Source: binutils-%{version}-%{DATE}.tar.bz2
 
 Source2: binutils-2.19.50.0.1-output-format.sed
@@ -166,7 +166,7 @@ Patch04: binutils-2.22.52.0.4-no-config-h-check.patch
 #           making it better (IMHO) but also potentially breaking tools that
 #           depend upon readelf's current format.  Hence it remains a local
 #           patch.
-Patch05: binutils-2.29-filename-in-error-messages.patch
+#Patch05: binutils-2.29-filename-in-error-messages.patch
 
 # Purpose:  Disable an x86/x86_64 optimization that moves functions from the
 #           PLT into the GOTPLT for faster access.  This optimization is
@@ -182,7 +182,7 @@ Patch06: binutils-2.29-revert-PLT-elision.patch
 # FIXME:    The proper fix would be to update the scripts that are expecting
 #           a fixed output from readelf.  But it seems that some of them are
 #           no longer being maintained.
-Patch07: binutils-readelf-other-sym-info.patch
+#Patch07: binutils-readelf-other-sym-info.patch
 
 # Purpose:  Do not create PLT entries for AARCH64 IFUNC symbols referenced in
 #           debug sections.
@@ -197,12 +197,12 @@ Patch09: binutils-do-not-link-with-static-libstdc++.patch
 # Purpose:  Add a .attach_to_group pseudo-op to the assembler for
 #           use by the annobin gcc plugin.
 # Lifetime: Permanent.
-Patch10: binutils-attach-to-group.patch
+#Patch10: binutils-attach-to-group.patch
 
 # Purpose:  Stop gold from complaining about relocs in the .gnu.build.attribute
 #           section that reference symbols in discarded sections.
 # Lifetime: Fixed in 2.35 (maybe)
-Patch11: binutils-gold-ignore-discarded-note-relocs.patch
+#Patch11: binutils-gold-ignore-discarded-note-relocs.patch
 
 # Purpose:  Allow OS specific sections in section groups.
 # Lifetime: Fixed in 2.35 (maybe)
@@ -210,7 +210,7 @@ Patch12: binutils-special-sections-in-groups.patch
 
 # Purpose:  Fix linker testsuite failures.
 # Lifetime: Fixed in 2.35 (maybe)
-Patch13: binutils-fix-testsuite-failures.patch
+#Patch13: binutils-fix-testsuite-failures.patch
 
 # Purpose:  Stop gold from aborting when input sections with the same name
 #            have different flags.
@@ -224,13 +224,20 @@ Patch15: binutils-CVE-2019-1010204.patch
 
 # Purpose:  Fix a potential use of an initialised field by readelf.
 # Lifetime: Fixed in 2.35
-Patch16: binutils-readelf-compression-header-size.patch
+#Patch16: binutils-readelf-compression-header-size.patch
 
 # Purpose:  Change the gold configuration script to only warn about
 #            unsupported targets.  This allows the binutils to be built with
 #            BPF support enabled.
 # Lifetime: Permanent.
-Patch17: binutils-gold-warn-unsupported.patch
+#Patch17: binutils-gold-warn-unsupported.patch
+
+# Purpose:  Enhance the error message displayed by the BFD library when
+#            to fails to load a plugin.
+# Lifetime: Should be fixed in 2.35.
+#Patch18: binutils-bad-plugin-err-message.patch
+
+Patch19: binutils-s390-build.patch
 
 #----------------------------------------------------------------------------
 
@@ -369,24 +376,7 @@ Conflicts: gcc-c++ < 4.0.0
 #----------------------------------------------------------------------------
 
 %prep
-%setup -q -n binutils
-%patch01 -p1
-%patch02 -p1
-%patch03 -p1
-%patch04 -p1
-#%patch05 -p1
-%patch06 -p1
-#%patch07 -p1
-%patch08 -p1
-%patch09 -p1
-#%patch10 -p1
-#%patch11 -p1
-%patch12 -p1
-#%patch13 -p1
-%patch14 -p1
-%patch15 -p1
-#%patch16 -p1
-#%patch17 -p1
+%autosetup -p1 -n binutils
 
 # We cannot run autotools as there is an exact requirement of autoconf-2.59.
 # FIXME - this is no longer true.  Maybe try reinstating autotool use ?
@@ -463,6 +453,15 @@ esac
 
 case %{binutils_target} in ppc64le*)
     CARGS="$CARGS --enable-targets=powerpc-linux,bpf-unknown-none"
+    ;;
+esac
+
+case %{binutils_target} in s390*)
+    # FIXME: For some unknown reason settting --enable-targets=bpf-unknown-none
+    # here breaks the building of GOLD.  I have no idea why, and not enough
+    # knowledge of how gold is configured to fix quickly.  So instead I have
+    # found that supporting "all" targets works.
+    CARGS="$CARGS --enable-targets=all"
     ;;
 esac
 
@@ -800,6 +799,15 @@ exit 0
 
 #----------------------------------------------------------------------------
 %changelog
+* Tue Jul 07 2020 Jeff Law  <law@redhat.com> - 2.34-8
+- Switch to using %%autosetup.
+
+* Tue Jun 16 2020 Nick Clifton  <nickc@redhat.com> - 2.34-7
+- Add BPF support to the s390x target.  (#1825193)
+
+* Tue May 26 2020 Nick Clifton  <nickc@redhat.com> - 2.34-6
+- Enhance the error message displayed by the BFD library when it fails to load a plugin.  (#1836618)
+
 * Fri May 22 2020 Nick Clifton  <nickc@redhat.com> - 2.34-5
 - Rebase to tip of GNU Binutils 2.34 branch, brining in LTO fixes.
 - Retire: binutils-nm-lto-plugin.patch
