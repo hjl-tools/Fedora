@@ -20,6 +20,7 @@ URL: https://sourceware.org/binutils
 # --without testsuite    Do not run the testsuite.  Default is to run it.
 # --without gold         Disable building of the GOLD linker.
 # --with clang           To force building with the CLANG.
+# --without debuginfod   Disable support for debuginfod.
 
 #---Start of Configure Options-----------------------------------------------
 
@@ -73,6 +74,8 @@ URL: https://sourceware.org/binutils
 %bcond_with testsuite
 # Use clang as the build time compiler.  Default: gcc
 %bcond_with clang 
+# Default: support debuginfod.
+%bcond_without debuginfod
 
 
 %if %{with bootstrap}
@@ -106,25 +109,9 @@ URL: https://sourceware.org/binutils
 # too many controversial patches so we stick with the official FSF version
 # instead.
 
-# The source for the binutils are normally retrieved from the official
-# GNU repository.  IE:
-#   Source: https://ftp.gnu.org/gnu/binutils/binutils-%%{version}.tar.xz
-#
-# But we have a need in this rawhide release to pull in the latest version
-# on the 2.34 branch.  So the tarball was created using the following
-# commands:
-#
-#   git clone git://sourceware.org/git/binutils-gdb.git -b binutils-2_34-branch
-#   git checkout 5dfc0c955dbe912cd328fc2688e5fceb3239ac2a
-#   ./src-release -x binutils
-#   mv binutils-2.34.0.tar.xz binutils-2.34.0-5dfc0c955dbe912cd328fc2688e5fceb3239ac2a.tar.xz
-#
-# FIXME: Undo this change once the next official binutils release is made.
-
-%global DATE 20200710
-Epoch: 277
+%global DATE 20200727
+Epoch: 282
 Source: binutils-%{version}-%{DATE}.tar.bz2
-
 Source2: binutils-2.19.50.0.1-output-format.sed
 
 #----------------------------------------------------------------------------
@@ -199,11 +186,6 @@ Patch09: binutils-do-not-link-with-static-libstdc++.patch
 # Lifetime: Permanent.
 #Patch10: binutils-attach-to-group.patch
 
-# Purpose:  Stop gold from complaining about relocs in the .gnu.build.attribute
-#           section that reference symbols in discarded sections.
-# Lifetime: Fixed in 2.35 (maybe)
-#Patch11: binutils-gold-ignore-discarded-note-relocs.patch
-
 # Purpose:  Allow OS specific sections in section groups.
 # Lifetime: Fixed in 2.35 (maybe)
 Patch12: binutils-special-sections-in-groups.patch
@@ -222,26 +204,31 @@ Patch14: binutils-gold-mismatched-section-flags.patch
 # Lifetime: Fixed in 2.35 (maybe)
 Patch15: binutils-CVE-2019-1010204.patch
 
-# Purpose:  Fix a potential use of an initialised field by readelf.
-# Lifetime: Fixed in 2.35
-#Patch16: binutils-readelf-compression-header-size.patch
-
 # Purpose:  Change the gold configuration script to only warn about
 #            unsupported targets.  This allows the binutils to be built with
 #            BPF support enabled.
 # Lifetime: Permanent.
 #Patch17: binutils-gold-warn-unsupported.patch
 
-# Purpose:  Enhance the error message displayed by the BFD library when
-#            to fails to load a plugin.
-# Lifetime: Should be fixed in 2.35.
-#Patch18: binutils-bad-plugin-err-message.patch
-
+# Purpose:  Fix compile time warning messages building s390 target with gcc-10.
+# Lifetime: Should be fixed in 2.36.
 Patch19: binutils-s390-build.patch
 
+# Purpose:  Fix LTO problems running config mini-builds.
+# Lifetime: Should be fixed in 2.36.
+Patch20: binutils-config.patch
+
+# Purpose:  Fix compile time warning messages building with gcc-10.
+# Lifetime: Should be fixed in 2.36.
+Patch21: binutils-warnings.patch
+
+# Purpose:  Fix compile time warning messages building with gcc-10. (part 2).
+# Lifetime: Should be fixed in 2.36.
+Patch22: binutils-gcc-10-fixes.patch
 #----------------------------------------------------------------------------
 
 Provides: bundled(libiberty)
+BuildRequires: autoconf automake
 
 %if %{with gold}
 # For now we make the binutils package require the gold sub-package.
@@ -299,6 +286,10 @@ Requires(post): coreutils
 # target triple.
 %ifnarch %{arm}
 %define _gnu %{nil}
+%endif
+
+%if %{with debuginfod}
+BuildRequires: elfutils-debuginfod-client-devel
 %endif
 
 #----------------------------------------------------------------------------
@@ -418,6 +409,11 @@ touch */configure
 #----------------------------------------------------------------------------
 
 %build
+# LTO is triggering a bug in ld which in turn causes ld to create incorrect
+# binaries.  It is not yet clear how serious this bug is (still debugging).
+# Until that analysis is finished I am disabling LTO
+%define _lto_cflags %{nil}
+
 echo target is %{binutils_target}
 
 %ifarch %{power64}
@@ -427,6 +423,10 @@ export CFLAGS="$RPM_OPT_FLAGS"
 %endif
 
 CARGS=
+
+%if %{with debuginfod}
+CARGS="$CARGS --with-debuginfod"
+%endif
 
 case %{binutils_target} in i?86*|sparc*|ppc*|s390*|sh*|arm*|aarch64*|riscv*)
   CARGS="$CARGS --enable-64-bit-bfd"
@@ -487,6 +487,17 @@ export LDFLAGS=$RPM_LD_FLAGS
 %if %{with clang}
 %define _with_cc_clang 1
 %endif
+
+# Dependencies are not set up to rebuild the configure files
+# in the subdirectories.  So we just rebuild the ones we care
+# about after applying the configure patches
+pushd libiberty
+autoconf
+popd
+pushd intl
+autoconf
+popd
+
 
 # We could optimize the cross builds size by --enable-shared but the produced
 # binaries may be less convenient in the embedded environment.
@@ -799,6 +810,23 @@ exit 0
 
 #----------------------------------------------------------------------------
 %changelog
+* Mon Jul 27 2020 Fedora Release Engineering <releng@fedoraproject.org> - 2.35-3
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_33_Mass_Rebuild
+
+* Sun Jul 26 2020 Jeff Law  <nickc@redhat.com> - 2.35-2
+- Disable LTO for now
+
+* Sun Jul 26 2020 Nick Clifton  <nickc@redhat.com> - 2.35-1
+- Rebase to GNU Binutils 2.35.  (#1854613)
+
+* Mon Jul 20 2020 Jeff Law  <law@redhat.com> - 2.34-9
+- Fix more configure tests compromised by LTO.
+
+* Sun Jul 19 2020 Jeff Law  <law@redhat.com> - 2.34-9
+- Fix configure test compromised by LTO.  Add appropriate BuildRequires
+  and force rebuliding the configure files in the appropriate dirs
+- Fix various warnings exposed by LTO.
+
 * Tue Jul 07 2020 Jeff Law  <law@redhat.com> - 2.34-8
 - Switch to using %%autosetup.
 
