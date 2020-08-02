@@ -109,8 +109,8 @@ URL: https://sourceware.org/binutils
 # too many controversial patches so we stick with the official FSF version
 # instead.
 
-%global DATE 20200730
-Epoch: 283
+%global DATE 20200802
+Epoch: 284
 Source: binutils-%{version}-%{DATE}.tar.bz2
 Source2: binutils-2.19.50.0.1-output-format.sed
 
@@ -226,9 +226,19 @@ Patch21: binutils-warnings.patch
 # Lifetime: Should be fixed in 2.36.
 Patch22: binutils-gcc-10-fixes.patch
 
-# Purpose:  Default to DWARF level 4 in the assembler.
+# Purpose:  Default to DWARF level 3 in the assembler.
 # Lifetime: Fixed in 2.36.
 #Patch23: binutils-gas-dwarf-level-4.patch
+
+# Purpose:  Set the sh_entsize of the AArch64's PLT section to 0.
+# Lifetime: Fixed in 2.36.
+#Patch24: binutils-aarch64-plt-sh_entsize.patch
+
+# Purpose:  Fixes for linking LTO objects.
+# Lifetime: Fixed in 2.36
+#Patch25: binutils-add-sym-cache-to-elf-link-hash.patch
+#Patch26: binutils-elf-add-objects.patch
+
 #----------------------------------------------------------------------------
 
 Provides: bundled(libiberty)
@@ -413,11 +423,6 @@ touch */configure
 #----------------------------------------------------------------------------
 
 %build
-# LTO is triggering a bug in ld which in turn causes ld to create incorrect
-# binaries.  It is not yet clear how serious this bug is (still debugging).
-# Until that analysis is finished I am disabling LTO
-#define _lto_cflags %{nil}
-
 echo target is %{binutils_target}
 
 %ifarch %{power64}
@@ -814,8 +819,23 @@ exit 0
 
 #----------------------------------------------------------------------------
 %changelog
-* Thu Jul 30 2020 Nick Clifton  <nickc@redhat.com> - 2.35-4
-- Default to DWARF level 4 in the assembler.
+* Fri Jul 31 2020 Jeff Law  <nickc@redhat.com> - 2.35-10
+- Re-enable LTO
+
+* Fri Jul 31 2020 Jeff Law  <nickc@redhat.com> - 2.35-9
+- Disable LTO for bootstrapping purposes
+
+* Fri Jul 31 2020 Nick Clifton  <nickc@redhat.com> - 2.35-8
+- Fix building with LTO enabled.
+
+* Fri Jul 31 2020 Nick Clifton  <nickc@redhat.com> - 2.35-7
+- Set the sh_entsize field of the AArch64's PLT section to 0.  (PR 26312)
+
+* Thu Jul 30 2020 Richard W.M. Jones <rjones@redhat.com> - 2.35-6
+- Disable LTO again, it causes "ar" to segfault.
+
+* Thu Jul 30 2020 Nick Clifton  <nickc@redhat.com> - 2.35-5
+- Default to DWARF level 3 in the assembler.
 
 * Mon Jul 27 2020 Fedora Release Engineering <releng@fedoraproject.org> - 2.35-3
 - Rebuilt for https://fedoraproject.org/wiki/Fedora_33_Mass_Rebuild
