@@ -1,0 +1,507 @@
+From c25520b61156152e493ece4371ace8febb307ad6 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Sat, 15 Aug 2020 07:23:47 -0700
+Subject: [PATCH] CET: Backport ARCH_X86_CET_MMAP_SHSTK from v5.8
+
+---
+ ...ocumentation-x86-Add-CET-description.patch |  44 +++++--
+ ...shstk-User-mode-shadow-stack-support.patch |  33 +++--
+ ...cet-shstk-Handle-thread-shadow-stack.patch |  10 +-
+ ...d-arch_prctl-functions-for-shadow-st.patch | 120 ++++++++++++------
+ 4 files changed, 141 insertions(+), 66 deletions(-)
+
+diff --git a/0011-Documentation-x86-Add-CET-description.patch b/0011-Documentation-x86-Add-CET-description.patch
+index 20481249e..2f97eba77 100644
+--- a/0011-Documentation-x86-Add-CET-description.patch
++++ b/0011-Documentation-x86-Add-CET-description.patch
+@@ -1,4 +1,4 @@
+-From 2f2184cda3322b9a1a23d88a5bcc99f26410041f Mon Sep 17 00:00:00 2001
++From 43d598526afe5c32073d35cab862e7ba4dea1149 Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Sun, 17 Dec 2017 09:09:23 -0800
+ Subject: [PATCH 11/47] Documentation/x86: Add CET description
+@@ -7,7 +7,10 @@ Explain no_user_shstk/no_user_ibt kernel parameters, and introduce a new
+ document on Control-flow Enforcement Technology (CET).
+ 
+ Signed-off-by: Yu-cheng Yu <yu-cheng.yu@intel.com>
+-Reviewed-by: Kees Cook <keescook@chromium.org>
++
++v11:
++- Add back GLIBC tunables information.
++- Add ARCH_X86_CET_MMAP_SHSTK information.
+ 
+ v10:
+ - Change no_cet_shstk and no_cet_ibt to no_user_shstk and no_user_ibt.
+@@ -21,12 +24,12 @@ v10:
+ ---
+  .../admin-guide/kernel-parameters.txt         |   6 +
+  Documentation/x86/index.rst                   |   1 +
+- Documentation/x86/intel_cet.rst               | 129 ++++++++++++++++++
+- 3 files changed, 136 insertions(+)
++ Documentation/x86/intel_cet.rst               | 152 ++++++++++++++++++
++ 3 files changed, 159 insertions(+)
+  create mode 100644 Documentation/x86/intel_cet.rst
+ 
+ diff --git a/Documentation/admin-guide/kernel-parameters.txt b/Documentation/admin-guide/kernel-parameters.txt
+-index 7bc83f3d9bdf..be715675df6d 100644
++index 5e2ce88d6eda..b145619e97d4 100644
+ --- a/Documentation/admin-guide/kernel-parameters.txt
+ +++ b/Documentation/admin-guide/kernel-parameters.txt
+ @@ -3093,6 +3093,12 @@
+@@ -56,10 +59,10 @@ index 265d9e9a093b..2aef972a868d 100644
+     amd-memory-encryption
+ diff --git a/Documentation/x86/intel_cet.rst b/Documentation/x86/intel_cet.rst
+ new file mode 100644
+-index 000000000000..746eda8c82f3
++index 000000000000..acedbe5457e9
+ --- /dev/null
+ +++ b/Documentation/x86/intel_cet.rst
+-@@ -0,0 +1,129 @@
++@@ -0,0 +1,152 @@
+ +.. SPDX-License-Identifier: GPL-2.0
+ +
+ +=========================================
+@@ -114,7 +117,21 @@ index 000000000000..746eda8c82f3
+ +CET protection.  If the application needs any shared libraries, the loader
+ +checks all dependencies and enables CET when all requirements are met.
+ +
+-+[3] CET arch_prctl()'s
+++[3] Backward Compatibility
+++==========================
+++
+++GLIBC provides a few tunables for backward compatibility.
+++
+++GLIBC_TUNABLES=glibc.tune.hwcaps=-SHSTK,-IBT
+++    Turn off SHSTK/IBT for the current shell.
+++
+++GLIBC_TUNABLES=glibc.tune.x86_shstk=<on, permissive>
+++    This controls how dlopen() handles SHSTK legacy libraries::
+++
+++        on         - continue with SHSTK enabled;
+++        permissive - continue with SHSTK off.
+++
+++[4] CET arch_prctl()'s
+ +======================
+ +
+ +Several arch_prctl()'s have been added for CET:
+@@ -147,11 +164,20 @@ index 000000000000..746eda8c82f3
+ +    User-level threads that need a new stack are expected to allocate a
+ +    new shadow stack.
+ +
+++arch_prctl(ARCH_X86_CET_MMAP_SHSTK, u64 *args)
+++    Allocate a new shadow stack and put a restore token at top.
+++
+++    The parameter 'args' is a pointer to a user buffer::
+++
+++        *args = allocated shadow stack address
+++        *(args + 1) = desired size
+++        *(args + 2) = MAP_32BIT or MAP_POPULATE
+++
+ +Note:
+ +  There is no CET-enabling arch_prctl function.  By design, CET is enabled
+ +  automatically if the binary and the system can support it.
+ +
+-+[4] The implementation of the Shadow Stack
+++[5] The implementation of the Shadow Stack
+ +==========================================
+ +
+ +Shadow Stack size
+diff --git a/0029-x86-cet-shstk-User-mode-shadow-stack-support.patch b/0029-x86-cet-shstk-User-mode-shadow-stack-support.patch
+index 60a757138..7eeb8ecd3 100644
+--- a/0029-x86-cet-shstk-User-mode-shadow-stack-support.patch
++++ b/0029-x86-cet-shstk-User-mode-shadow-stack-support.patch
+@@ -1,4 +1,4 @@
+-From 433eacf3d198be8443afd432d15b40cc77f2f761 Mon Sep 17 00:00:00 2001
++From be40099bd770c21bda57f8b472f8d07af0cb805c Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Thu, 22 Aug 2019 10:06:11 -0700
+ Subject: [PATCH 29/47] x86/cet/shstk: User-mode shadow stack support
+@@ -9,6 +9,10 @@ size of min(RLIMIT_STACK, 4GB).
+ 
+ Signed-off-by: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ 
++v11:
++- Modify alloc_shstk() to take address and flags and pass to do_mmap().
++  This is to be used by an arch_prctl() introduced later.
++
+ v10:
+ - Change no_cet_shstk to no_user_shstk.
+ - Limit shadow stack size to 4 GB, and round_up to PAGE_SIZE.
+@@ -32,11 +36,11 @@ v2:
+  arch/x86/include/asm/disabled-features.h      |   8 +-
+  arch/x86/include/asm/processor.h              |   5 +
+  arch/x86/kernel/Makefile                      |   2 +
+- arch/x86/kernel/cet.c                         | 135 ++++++++++++++++++
++ arch/x86/kernel/cet.c                         | 138 ++++++++++++++++++
+  arch/x86/kernel/cpu/common.c                  |  28 ++++
+  arch/x86/kernel/process.c                     |   1 +
+  .../arch/x86/include/asm/disabled-features.h  |   8 +-
+- 8 files changed, 211 insertions(+), 2 deletions(-)
++ 8 files changed, 214 insertions(+), 2 deletions(-)
+  create mode 100644 arch/x86/include/asm/cet.h
+  create mode 100644 arch/x86/kernel/cet.c
+ 
+@@ -99,7 +103,7 @@ index 4ea8584682f9..a0e1b24cfa02 100644
+  #define DISABLED_MASK18	0
+  #define DISABLED_MASK_CHECK BUILD_BUG_ON_ZERO(NCAPINTS != 19)
+ diff --git a/arch/x86/include/asm/processor.h b/arch/x86/include/asm/processor.h
+-index 8352075b0435..2a11fd08b9f6 100644
++index ee9729231448..bb4cf7140c29 100644
+ --- a/arch/x86/include/asm/processor.h
+ +++ b/arch/x86/include/asm/processor.h
+ @@ -27,6 +27,7 @@ struct vm86;
+@@ -136,10 +140,10 @@ index ba89cabe5fcf..e9cc2551573b 100644
+  ifeq ($(CONFIG_X86_64),y)
+ diff --git a/arch/x86/kernel/cet.c b/arch/x86/kernel/cet.c
+ new file mode 100644
+-index 000000000000..d8196c8e792a
++index 000000000000..8cb8f205f786
+ --- /dev/null
+ +++ b/arch/x86/kernel/cet.c
+-@@ -0,0 +1,135 @@
++@@ -0,0 +1,138 @@
+ +/* SPDX-License-Identifier: GPL-2.0 */
+ +/*
+ + * cet.c - Control-flow Enforcement (CET)
+@@ -195,14 +199,17 @@ index 000000000000..d8196c8e792a
+ +	return ssp;
+ +}
+ +
+-+static unsigned long alloc_shstk(unsigned long size)
+++static unsigned long alloc_shstk(unsigned long addr, unsigned long size, int flags)
+ +{
+ +	struct mm_struct *mm = current->mm;
+-+	unsigned long addr, populate;
+++	unsigned long populate;
+++
+++	/* VM_SHSTK requires MAP_ANONYMOUS, MAP_PRIVATE */
+++	flags |= MAP_ANONYMOUS | MAP_PRIVATE;
+ +
+ +	down_write(&mm->mmap_sem);
+-+	addr = do_mmap(NULL, 0, size, PROT_READ, MAP_ANONYMOUS | MAP_PRIVATE,
+-+		       VM_SHSTK, 0, &populate, NULL);
+++	addr = do_mmap(NULL, addr, size, PROT_READ, flags, VM_SHSTK, 0,
+++		       &populate, NULL);
+ +	up_write(&mm->mmap_sem);
+ +
+ +	if (populate)
+@@ -220,9 +227,9 @@ index 000000000000..d8196c8e792a
+ +		return -EOPNOTSUPP;
+ +
+ +	size = round_up(min(rlimit(RLIMIT_STACK), 1UL << 32), PAGE_SIZE);
+-+	addr = alloc_shstk(size);
+++	addr = alloc_shstk(0, size, 0);
+ +
+-+	if (IS_ERR((void *)addr))
+++	if (IS_ERR_VALUE(addr))
+ +		return PTR_ERR((void *)addr);
+ +
+ +	cet->shstk_base = addr;
+@@ -329,7 +336,7 @@ index c669a5756bdf..034372825cbf 100644
+  	/*
+  	 * Clear/Set all flags overridden by options, need do it
+ diff --git a/arch/x86/kernel/process.c b/arch/x86/kernel/process.c
+-index 764b44206d4a..b1cbe01d8904 100644
++index 9bb6e07ca68f..fbd1536a322a 100644
+ --- a/arch/x86/kernel/process.c
+ +++ b/arch/x86/kernel/process.c
+ @@ -42,6 +42,7 @@
+diff --git a/0035-x86-cet-shstk-Handle-thread-shadow-stack.patch b/0035-x86-cet-shstk-Handle-thread-shadow-stack.patch
+index ff1a7c0b2..3427d7a30 100644
+--- a/0035-x86-cet-shstk-Handle-thread-shadow-stack.patch
++++ b/0035-x86-cet-shstk-Handle-thread-shadow-stack.patch
+@@ -1,4 +1,4 @@
+-From 099768f8bcc8bca0d73b98119882f54c9da3984c Mon Sep 17 00:00:00 2001
++From e2d71ff3444f873570ffc76aac3f7c9fa5935428 Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Thu, 3 May 2018 12:40:57 -0700
+ Subject: [PATCH 35/47] x86/cet/shstk: Handle thread shadow stack
+@@ -68,10 +68,10 @@ index 4e55370e48e8..bb7a4a2d6923 100644
+  	loadsegment(fs, 0);			\
+  } while (0)
+ diff --git a/arch/x86/kernel/cet.c b/arch/x86/kernel/cet.c
+-index e95bd2b3c394..736652b9b73f 100644
++index 1c38646a28e5..e7db91f8b490 100644
+ --- a/arch/x86/kernel/cet.c
+ +++ b/arch/x86/kernel/cet.c
+-@@ -169,6 +169,47 @@ int cet_setup_shstk(void)
++@@ -172,6 +172,47 @@ int cet_setup_shstk(void)
+  	return 0;
+  }
+  
+@@ -101,7 +101,7 @@ index e95bd2b3c394..736652b9b73f 100644
+ +	if (in_compat_syscall())
+ +		size /= 4;
+ +	size = round_up(size, PAGE_SIZE);
+-+	addr = alloc_shstk(size);
+++	addr = alloc_shstk(0, size, 0);
+ +
+ +	if (IS_ERR((void *)addr)) {
+ +		cet->shstk_base = 0;
+@@ -120,7 +120,7 @@ index e95bd2b3c394..736652b9b73f 100644
+  {
+  	struct cet_status *cet = &tsk->thread.cet;
+ diff --git a/arch/x86/kernel/process.c b/arch/x86/kernel/process.c
+-index 56587051df5a..aa896833f074 100644
++index fbd1536a322a..c5c042a338f4 100644
+ --- a/arch/x86/kernel/process.c
+ +++ b/arch/x86/kernel/process.c
+ @@ -109,6 +109,7 @@ void exit_thread(struct task_struct *tsk)
+diff --git a/0036-x86-cet-shstk-Add-arch_prctl-functions-for-shadow-st.patch b/0036-x86-cet-shstk-Add-arch_prctl-functions-for-shadow-st.patch
+index 15d289219..ac0f85b36 100644
+--- a/0036-x86-cet-shstk-Add-arch_prctl-functions-for-shadow-st.patch
++++ b/0036-x86-cet-shstk-Add-arch_prctl-functions-for-shadow-st.patch
+@@ -1,4 +1,4 @@
+-From e87c40b026539d4a8774044e3c463940c759fd6c Mon Sep 17 00:00:00 2001
++From 7773695c102a84d300198c27ac298eff8ddeb442 Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Thu, 3 May 2018 13:04:29 -0700
+ Subject: [PATCH 36/47] x86/cet/shstk: Add arch_prctl functions for shadow
+@@ -28,6 +28,15 @@ arch_prctl(ARCH_X86_CET_ALLOC_SHSTK, u64 *args)
+     desired size to allocate.  The kernel returns the allocated shadow
+     stack address in *args.
+ 
++arch_prctl(ARCH_X86_CET_MMAP_SHSTK, u64 *args)
++    Allocate a new shadow stack.
++
++    The parameter 'args' is a pointer to a user buffer.
++
++    *args = allocated shadow stack address
++    *(args + 1) = desired size
++    *(args + 2) = MAP_32BIT or MAP_POPULATE
++
+ Also change do_arch_prctl_common()'s parameter 'cpuid_enabled' to
+ 'arg2', as it is now also passed to prctl_cet().
+ 
+@@ -36,24 +45,25 @@ Signed-off-by: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ v11:
+ - Check input for invalid features.
+ - Fix prctl_cet() return values.
++- Introduce ARCH_X86_CET_MMAP_SHSTK.
+ 
+ v10:
+ - Verify CET is enabled before handling arch_prctl.
+ - Change input parameters from unsigned long to u64, to make it clear they
+   are 64-bit.
+ ---
+- arch/x86/include/asm/cet.h              |  4 ++
+- arch/x86/include/uapi/asm/prctl.h       |  5 ++
+- arch/x86/kernel/Makefile                |  2 +-
+- arch/x86/kernel/cet.c                   | 29 ++++++++
+- arch/x86/kernel/cet_prctl.c             | 91 +++++++++++++++++++++++++
+- arch/x86/kernel/process.c               |  6 +-
+- tools/arch/x86/include/uapi/asm/prctl.h |  5 ++
+- 7 files changed, 138 insertions(+), 4 deletions(-)
++ arch/x86/include/asm/cet.h              |   4 +
++ arch/x86/include/uapi/asm/prctl.h       |   6 ++
++ arch/x86/kernel/Makefile                |   2 +-
++ arch/x86/kernel/cet.c                   |  26 +++++
++ arch/x86/kernel/cet_prctl.c             | 124 ++++++++++++++++++++++++
++ arch/x86/kernel/process.c               |   6 +-
++ tools/arch/x86/include/uapi/asm/prctl.h |   6 ++
++ 7 files changed, 170 insertions(+), 4 deletions(-)
+  create mode 100644 arch/x86/kernel/cet_prctl.c
+ 
+ diff --git a/arch/x86/include/asm/cet.h b/arch/x86/include/asm/cet.h
+-index 71dc92acd2f2..99e6e741d28c 100644
++index 71dc92acd2f2..07d2ed6378f7 100644
+ --- a/arch/x86/include/asm/cet.h
+ +++ b/arch/x86/include/asm/cet.h
+ @@ -14,16 +14,20 @@ struct sc_ext;
+@@ -67,7 +77,7 @@ index 71dc92acd2f2..99e6e741d28c 100644
+ +int prctl_cet(int option, u64 arg2);
+  int cet_setup_shstk(void);
+  int cet_setup_thread_shstk(struct task_struct *p);
+-+int cet_alloc_shstk(unsigned long *arg);
+++unsigned long cet_alloc_shstk(unsigned long addr, unsigned long size, int flags);
+  void cet_disable_free_shstk(struct task_struct *p);
+  int cet_verify_rstor_token(bool ia32, unsigned long ssp, unsigned long *new_ssp);
+  void cet_restore_signal(struct sc_ext *sc);
+@@ -78,10 +88,10 @@ index 71dc92acd2f2..99e6e741d28c 100644
+  static inline void cet_disable_free_shstk(struct task_struct *p) {}
+  static inline void cet_restore_signal(struct sc_ext *sc) { return; }
+ diff --git a/arch/x86/include/uapi/asm/prctl.h b/arch/x86/include/uapi/asm/prctl.h
+-index 5a6aac9fa41f..d962f0ec9ccf 100644
++index 5a6aac9fa41f..ae4761566f4b 100644
+ --- a/arch/x86/include/uapi/asm/prctl.h
+ +++ b/arch/x86/include/uapi/asm/prctl.h
+-@@ -14,4 +14,9 @@
++@@ -14,4 +14,10 @@
+  #define ARCH_MAP_VDSO_32	0x2002
+  #define ARCH_MAP_VDSO_64	0x2003
+  
+@@ -89,6 +99,7 @@ index 5a6aac9fa41f..d962f0ec9ccf 100644
+ +#define ARCH_X86_CET_DISABLE		0x3002
+ +#define ARCH_X86_CET_LOCK		0x3003
+ +#define ARCH_X86_CET_ALLOC_SHSTK	0x3004
+++#define ARCH_X86_CET_MMAP_SHSTK		0x3005
+ +
+  #endif /* _ASM_X86_PRCTL_H */
+ diff --git a/arch/x86/kernel/Makefile b/arch/x86/kernel/Makefile
+@@ -105,24 +116,22 @@ index e9cc2551573b..0b621e2afbdc 100644
+  ###
+  # 64 bit specific files
+ diff --git a/arch/x86/kernel/cet.c b/arch/x86/kernel/cet.c
+-index 736652b9b73f..b994f0a1e78e 100644
++index e7db91f8b490..2363e44eeced 100644
+ --- a/arch/x86/kernel/cet.c
+ +++ b/arch/x86/kernel/cet.c
+-@@ -145,6 +145,35 @@ static int create_rstor_token(bool ia32, unsigned long ssp,
++@@ -148,6 +148,32 @@ static int create_rstor_token(bool ia32, unsigned long ssp,
+  	return 0;
+  }
+  
+-+int cet_alloc_shstk(unsigned long *arg)
+++unsigned long cet_alloc_shstk(unsigned long addr, unsigned long len, int flags)
+ +{
+-+	unsigned long len = *arg;
+-+	unsigned long addr;
+ +	unsigned long token;
+ +	unsigned long ssp;
+ +
+-+	addr = alloc_shstk(round_up(len, PAGE_SIZE));
+++	addr = alloc_shstk(addr, round_up(len, PAGE_SIZE), flags);
+ +
+-+	if (IS_ERR((void *)addr))
+-+		return PTR_ERR((void *)addr);
+++	if (IS_ERR_VALUE(addr))
+++		return addr;
+ +
+ +	/* Restore token is 8 bytes and aligned to 8 bytes */
+ +	ssp = addr + len;
+@@ -137,8 +146,7 @@ index 736652b9b73f..b994f0a1e78e 100644
+ +		return -EINVAL;
+ +	}
+ +
+-+	*arg = addr;
+-+	return 0;
+++	return addr;
+ +}
+ +
+  int cet_setup_shstk(void)
+@@ -146,10 +154,10 @@ index 736652b9b73f..b994f0a1e78e 100644
+  	unsigned long addr, size;
+ diff --git a/arch/x86/kernel/cet_prctl.c b/arch/x86/kernel/cet_prctl.c
+ new file mode 100644
+-index 000000000000..844ff7f6d129
++index 000000000000..5a8939d48ff2
+ --- /dev/null
+ +++ b/arch/x86/kernel/cet_prctl.c
+-@@ -0,0 +1,91 @@
++@@ -0,0 +1,124 @@
+ +/* SPDX-License-Identifier: GPL-2.0 */
+ +
+ +#include <linux/errno.h>
+@@ -179,20 +187,15 @@ index 000000000000..844ff7f6d129
+ +
+ +static int handle_alloc_shstk(u64 arg2)
+ +{
+-+	int err = 0;
+-+	unsigned long arg;
+-+	unsigned long addr = 0;
+-+	unsigned long size = 0;
+++	unsigned long addr, size;
+ +
+-+	if (get_user(arg, (unsigned long __user *)arg2))
+++	if (get_user(size, (unsigned long __user *)arg2))
+ +		return -EFAULT;
+ +
+-+	size = arg;
+-+	err = cet_alloc_shstk(&arg);
+-+	if (err)
+-+		return err;
+++	addr = cet_alloc_shstk(0, size, 0);
+++	if (IS_ERR_VALUE(addr))
+++		return PTR_ERR((void *)addr);
+ +
+-+	addr = arg;
+ +	if (put_user((u64)addr, (u64 __user *)arg2)) {
+ +		vm_munmap(addr, size);
+ +		return -EFAULT;
+@@ -201,6 +204,41 @@ index 000000000000..844ff7f6d129
+ +	return 0;
+ +}
+ +
+++static int handle_mmap_shstk(u64 arg2)
+++{
+++	u64 buf[3];
+++	unsigned long addr, size;
+++	int allowed_flags;
+++
+++	if (copy_from_user(buf, (unsigned long __user *)arg2, sizeof(buf)))
+++		return -EFAULT;
+++
+++	addr = buf[0];
+++	size = buf[1];
+++
+++	/*
+++	 * Check invalid flags
+++	 */
+++	allowed_flags = MAP_ANONYMOUS | MAP_PRIVATE | MAP_32BIT | MAP_POPULATE;
+++
+++	if (buf[2] & ~allowed_flags)
+++		return -EINVAL;
+++
+++	if (!addr && (buf[2] & MAP_FIXED))
+++		return -EINVAL;
+++
+++	addr = cet_alloc_shstk(addr, size, buf[2]);
+++	if (IS_ERR_VALUE(addr))
+++		return PTR_ERR((void *)addr);
+++
+++	if (put_user(addr, (u64 __user *)arg2)) {
+++		vm_munmap(addr, size);
+++		return -EFAULT;
+++	}
+++
+++	return 0;
+++}
+++
+ +int prctl_cet(int option, u64 arg2)
+ +{
+ +	struct cet_status *cet;
+@@ -237,15 +275,18 @@ index 000000000000..844ff7f6d129
+ +	case ARCH_X86_CET_ALLOC_SHSTK:
+ +		return handle_alloc_shstk(arg2);
+ +
+++	case ARCH_X86_CET_MMAP_SHSTK:
+++		return handle_mmap_shstk(arg2);
+++
+ +	default:
+ +		return -ENOSYS;
+ +	}
+ +}
+ diff --git a/arch/x86/kernel/process.c b/arch/x86/kernel/process.c
+-index aa896833f074..c50ace4e6c52 100644
++index c5c042a338f4..b89ccc354721 100644
+ --- a/arch/x86/kernel/process.c
+ +++ b/arch/x86/kernel/process.c
+-@@ -989,14 +989,14 @@ unsigned long get_wchan(struct task_struct *p)
++@@ -967,14 +967,14 @@ unsigned long get_wchan(struct task_struct *p)
+  }
+  
+  long do_arch_prctl_common(struct task_struct *task, int option,
+@@ -264,10 +305,10 @@ index aa896833f074..c50ace4e6c52 100644
+ +	return prctl_cet(option, arg2);
+  }
+ diff --git a/tools/arch/x86/include/uapi/asm/prctl.h b/tools/arch/x86/include/uapi/asm/prctl.h
+-index 5a6aac9fa41f..d962f0ec9ccf 100644
++index 5a6aac9fa41f..ae4761566f4b 100644
+ --- a/tools/arch/x86/include/uapi/asm/prctl.h
+ +++ b/tools/arch/x86/include/uapi/asm/prctl.h
+-@@ -14,4 +14,9 @@
++@@ -14,4 +14,10 @@
+  #define ARCH_MAP_VDSO_32	0x2002
+  #define ARCH_MAP_VDSO_64	0x2003
+  
+@@ -275,6 +316,7 @@ index 5a6aac9fa41f..d962f0ec9ccf 100644
+ +#define ARCH_X86_CET_DISABLE		0x3002
+ +#define ARCH_X86_CET_LOCK		0x3003
+ +#define ARCH_X86_CET_ALLOC_SHSTK	0x3004
+++#define ARCH_X86_CET_MMAP_SHSTK		0x3005
+ +
+  #endif /* _ASM_X86_PRCTL_H */
+ -- 
+-- 
+2.26.2
+
