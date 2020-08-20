@@ -1,0 +1,65 @@
+From 81325e64aa5eda90a42b0d82a6c62b03282ed3f3 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Wed, 19 Aug 2020 16:18:00 -0700
+Subject: [PATCH 8/8] Apply WRMSR(PL3_SSP) after XRSTORS
+
+---
+ 0001-WRMSR-PL3_SSP-after-XRSTORS.patch | 32 ++++++++++++++++++++++++++
+ kernel.spec                            |  2 ++
+ 2 files changed, 34 insertions(+)
+ create mode 100644 0001-WRMSR-PL3_SSP-after-XRSTORS.patch
+
+diff --git a/0001-WRMSR-PL3_SSP-after-XRSTORS.patch b/0001-WRMSR-PL3_SSP-after-XRSTORS.patch
+new file mode 100644
+index 000000000..9f8bcdb23
+--- /dev/null
++++ b/0001-WRMSR-PL3_SSP-after-XRSTORS.patch
+@@ -0,0 +1,32 @@
++From 4ca2a20a31868451245dc8eb3d9777571f1877ee Mon Sep 17 00:00:00 2001
++From: Yu-cheng Yu <yu-cheng.yu@intel.com>
++Date: Wed, 19 Aug 2020 14:47:14 -0700
++Subject: [PATCH] WRMSR(PL3_SSP) after XRSTORS
++
++Signed-off-by: Yu-cheng Yu <yu-cheng.yu@intel.com>
++---
++ arch/x86/include/asm/fpu/internal.h | 7 +++++++
++ 1 file changed, 7 insertions(+)
++
++diff --git a/arch/x86/include/asm/fpu/internal.h b/arch/x86/include/asm/fpu/internal.h
++index cd4249b37f45..887f6d98e876 100644
++--- a/arch/x86/include/asm/fpu/internal.h
+++++ b/arch/x86/include/asm/fpu/internal.h
++@@ -520,7 +520,14 @@ static inline void __fpregs_load_activate(void)
++ 		return;
++ 
++ 	if (!fpregs_state_valid(fpu, cpu)) {
+++		struct cet_user_state *cet_user;
+++
++ 		copy_kernel_to_fpregs(&fpu->state);
+++
+++		cet_user = get_xsave_addr(&fpu->state.xsave, XFEATURE_CET_USER);
+++		if (cet_user)
+++			wrmsrl(MSR_IA32_PL3_SSP, cet_user->user_ssp);
+++
++ 		fpregs_activate(fpu);
++ 		fpu->last_cpu = cpu;
++ 	}
++-- 
++2.21.0
++
+diff --git a/kernel.spec b/kernel.spec
+index d3f2d50d4..03d9a0a32 100644
+--- a/kernel.spec
++++ b/kernel.spec
+@@ -41,6 +41,8 @@ Patch200040: 0040-selftest-x86-Add-CET-quick-test.patch
+ 
+ Patch300001: 0001-Update-ARCH_X86_CET_MMAP_SHSTK-with-CET-v5.9-rc1.patch
+ 
++Patch400001: 0001-WRMSR-PL3_SSP-after-XRSTORS.patch
++
+ # We have to override the new %%install behavior because, well... the kernel is special.
+ %global __spec_install_pre %{___build_pre}
+ 
+-- 
+2.26.2
+

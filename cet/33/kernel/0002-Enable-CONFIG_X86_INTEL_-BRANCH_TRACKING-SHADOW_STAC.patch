@@ -1,7 +1,7 @@
-From 2927e6c24177822300f2072f7739e2997717df2d Mon Sep 17 00:00:00 2001
+From 1edef8917cfc93eed9b02d53b66eb2ac571e85c0 Mon Sep 17 00:00:00 2001
 From: "H.J. Lu" <hjl.tools@gmail.com>
 Date: Tue, 14 Apr 2020 10:58:50 -0700
-Subject: [PATCH 4/5] Enable
+Subject: [PATCH 2/8] Enable
  CONFIG_X86_INTEL_[BRANCH_TRACKING|SHADOW_STACK]_USER
 
 ---
@@ -28,10 +28,10 @@ index 000000000..533476e17
 @@ -0,0 +1 @@
 +CONFIG_X86_INTEL_SHADOW_STACK_USER=y
 diff --git a/kernel-x86_64-debug-fedora.config b/kernel-x86_64-debug-fedora.config
-index 8003b3400..10e46cc4e 100644
+index cf2ad8ea2..58e579a93 100644
 --- a/kernel-x86_64-debug-fedora.config
 +++ b/kernel-x86_64-debug-fedora.config
-@@ -6969,11 +6969,13 @@ CONFIG_X86_DECODER_SELFTEST=y
+@@ -7155,11 +7155,13 @@ CONFIG_X86_DECODER_SELFTEST=y
  CONFIG_X86_EXTENDED_PLATFORM=y
  CONFIG_X86_GENERIC=y
  # CONFIG_X86_GOLDFISH is not set
@@ -46,10 +46,10 @@ index 8003b3400..10e46cc4e 100644
  CONFIG_X86_INTEL_TSX_MODE_OFF=y
  # CONFIG_X86_INTEL_TSX_MODE_ON is not set
 diff --git a/kernel-x86_64-fedora.config b/kernel-x86_64-fedora.config
-index 2c43bc5eb..595d98719 100644
+index 16f9c10e4..79222712f 100644
 --- a/kernel-x86_64-fedora.config
 +++ b/kernel-x86_64-fedora.config
-@@ -6949,11 +6949,13 @@ CONFIG_X86_DECODER_SELFTEST=y
+@@ -7134,11 +7134,13 @@ CONFIG_X86_DECODER_SELFTEST=y
  CONFIG_X86_EXTENDED_PLATFORM=y
  CONFIG_X86_GENERIC=y
  # CONFIG_X86_GOLDFISH is not set
@@ -64,5 +64,5 @@ index 2c43bc5eb..595d98719 100644
  CONFIG_X86_INTEL_TSX_MODE_OFF=y
  # CONFIG_X86_INTEL_TSX_MODE_ON is not set
 -- 
-2.26.0
+2.26.2
 

@@ -1,7 +1,7 @@
-From 33c85b8c06f40bf2d758338176e7ddaf22a0930c Mon Sep 17 00:00:00 2001
+From a339847a6bd682d4e0209f4b46422a9350ba4b12 Mon Sep 17 00:00:00 2001
 From: "H.J. Lu" <hjl.tools@gmail.com>
 Date: Tue, 28 Apr 2020 11:28:32 -0700
-Subject: [PATCH 2/3] Add add-cet-patches and remove-cet-patches
+Subject: [PATCH 3/8] Add add-cet-patches and remove-cet-patches
 
 Used for updating CET kernel patches
 ---
