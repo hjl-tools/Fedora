@@ -1,0 +1,131 @@
+From 9165a4778b6b9f4fad51d341fdcfb46f786a5415 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Thu, 20 Aug 2020 11:21:29 -0700
+Subject: [PATCH] Apply Add cet_serializing_after_xrstors()
+
+---
+ 0001-Add-cet_serializing_after_xrstors.patch | 98 ++++++++++++++++++++
+ kernel.spec                                  |  2 +
+ 2 files changed, 100 insertions(+)
+ create mode 100644 0001-Add-cet_serializing_after_xrstors.patch
+
+diff --git a/0001-Add-cet_serializing_after_xrstors.patch b/0001-Add-cet_serializing_after_xrstors.patch
+new file mode 100644
+index 000000000..82ecea6ef
+--- /dev/null
++++ b/0001-Add-cet_serializing_after_xrstors.patch
+@@ -0,0 +1,98 @@
++From a5f9e9ef907f6eb870d7e7d0c5ddbab211832967 Mon Sep 17 00:00:00 2001
++From: Yu-cheng Yu <yu-cheng.yu@intel.com>
++Date: Wed, 19 Aug 2020 14:47:14 -0700
++Subject: [PATCH] Add cet_serializing_after_xrstors()
++
++Call cet_serializing_after_xrstors() after XRSTORS.  Use WRMSR(PL3_SSP)
++as the serializing instruction.
++
++Signed-off-by: H.J. Lu <hjl.tools@gmail.com>
++---
++ arch/x86/include/asm/cet.h          |  1 +
++ arch/x86/include/asm/fpu/internal.h | 18 +++++++++++++++++-
++ arch/x86/kernel/cet.c               |  5 ++++-
++ 3 files changed, 22 insertions(+), 2 deletions(-)
++
++diff --git a/arch/x86/include/asm/cet.h b/arch/x86/include/asm/cet.h
++index 916ac2a0404c..3d85e0b7d77f 100644
++--- a/arch/x86/include/asm/cet.h
+++++ b/arch/x86/include/asm/cet.h
++@@ -14,6 +14,7 @@ struct sc_ext;
++ struct cet_status {
++ 	unsigned long	shstk_base;
++ 	unsigned long	shstk_size;
+++	unsigned int	serializing_after_xrstors:1;
++ 	unsigned int	locked:1;
++ 	unsigned int	ibt_enabled:1;
++ };
++diff --git a/arch/x86/include/asm/fpu/internal.h b/arch/x86/include/asm/fpu/internal.h
++index 8bf59b5b82b7..4c731c7f1d50 100644
++--- a/arch/x86/include/asm/fpu/internal.h
+++++ b/arch/x86/include/asm/fpu/internal.h
++@@ -74,6 +74,19 @@ static __always_inline __pure bool use_fxsr(void)
++ 	return static_cpu_has(X86_FEATURE_FXSR);
++ }
++ 
+++static inline void cet_serializing_after_xrstors(void)
+++{
+++#ifdef CONFIG_X86_INTEL_SHADOW_STACK_USER
+++	if (current->thread.cet.serializing_after_xrstors) {
+++		struct cet_user_state *cet_user;
+++		cet_user = get_xsave_addr(&current->thread.fpu.state.xsave,
+++					  XFEATURE_CET_USER);
+++		wrmsrl(MSR_IA32_PL3_SSP, cet_user->user_ssp);
+++		current->thread.cet.serializing_after_xrstors = 0;
+++	}
+++#endif
+++}
+++
++ /*
++  * fpstate handling functions:
++  */
++@@ -342,6 +355,7 @@ static inline void copy_kernel_to_xregs(struct xregs_state *xstate, u64 mask)
++ 	u32 hmask = mask >> 32;
++ 
++ 	XSTATE_XRESTORE(xstate, lmask, hmask);
+++	cet_serializing_after_xrstors();
++ }
++ 
++ /*
++@@ -400,8 +414,10 @@ static inline int copy_kernel_to_xregs_err(struct xregs_state *xstate, u64 mask)
++ 	u32 hmask = mask >> 32;
++ 	int err;
++ 
++-	if (static_cpu_has(X86_FEATURE_XSAVES))
+++	if (static_cpu_has(X86_FEATURE_XSAVES)) {
++ 		XSTATE_OP(XRSTORS, xstate, lmask, hmask, err);
+++		cet_serializing_after_xrstors();
+++	}
++ 	else
++ 		XSTATE_OP(XRSTOR, xstate, lmask, hmask, err);
++ 
++diff --git a/arch/x86/kernel/cet.c b/arch/x86/kernel/cet.c
++index 92b81560eafc..71e30c6fe7d1 100644
++--- a/arch/x86/kernel/cet.c
+++++ b/arch/x86/kernel/cet.c
++@@ -238,6 +238,7 @@ int cet_setup_thread_shstk(struct task_struct *tsk)
++ 	state->user_ssp = (u64)(addr + size);
++ 	cet->shstk_base = addr;
++ 	cet->shstk_size = size;
+++	cet->serializing_after_xrstors = 1;
++ 	return 0;
++ }
++ 
++@@ -301,8 +302,10 @@ void cet_restore_signal(struct sc_ext *sc_ext)
++ 		return;
++ 
++ 	if (cet->shstk_size) {
++-		if (test_thread_flag(TIF_NEED_FPU_LOAD))
+++		if (test_thread_flag(TIF_NEED_FPU_LOAD)) {
++ 			cet_user_state->user_ssp = sc_ext->ssp;
+++			cet->serializing_after_xrstors = 1;
+++		}
++ 		else
++ 			wrmsrl(MSR_IA32_PL3_SSP, sc_ext->ssp);
++ 
++-- 
++2.26.2
++
+diff --git a/kernel.spec b/kernel.spec
+index d3f2d50d4..634a99ed9 100644
+--- a/kernel.spec
++++ b/kernel.spec
+@@ -41,6 +41,8 @@ Patch200040: 0040-selftest-x86-Add-CET-quick-test.patch
+ 
+ Patch300001: 0001-Update-ARCH_X86_CET_MMAP_SHSTK-with-CET-v5.9-rc1.patch
+ 
++Patch400001: 0001-Add-cet_serializing_after_xrstors.patch
++
+ # We have to override the new %%install behavior because, well... the kernel is special.
+ %global __spec_install_pre %{___build_pre}
+ 
+-- 
+2.26.2
+
