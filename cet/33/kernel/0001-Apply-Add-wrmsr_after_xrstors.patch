@@ -1,0 +1,81 @@
+From e1e36baacd825e433872371e30a0c658efb006fa Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Thu, 20 Aug 2020 21:48:41 -0700
+Subject: [PATCH] Apply Add wrmsr_after_xrstors()
+
+---
+ 0001-Add-wrmsr_after_xrstors.patch | 48 ++++++++++++++++++++++++++++++
+ kernel.spec                        |  2 ++
+ 2 files changed, 50 insertions(+)
+ create mode 100644 0001-Add-wrmsr_after_xrstors.patch
+
+diff --git a/0001-Add-wrmsr_after_xrstors.patch b/0001-Add-wrmsr_after_xrstors.patch
+new file mode 100644
+index 000000000..349d39705
+--- /dev/null
++++ b/0001-Add-wrmsr_after_xrstors.patch
+@@ -0,0 +1,48 @@
++From 618a867d9261571c4cd807eeeff1b32a877a82ab Mon Sep 17 00:00:00 2001
++From: Yu-cheng Yu <yu-cheng.yu@intel.com>
++Date: Wed, 19 Aug 2020 14:47:14 -0700
++Subject: [PATCH] Add wrmsr_after_xrstors()
++
++Call wrmsr_after_xrstors() in switch_fpu_return.
++---
++ arch/x86/include/asm/fpu/internal.h | 11 +++++++++++
++ arch/x86/kernel/fpu/core.c          |  1 +
++ 2 files changed, 12 insertions(+)
++
++diff --git a/arch/x86/include/asm/fpu/internal.h b/arch/x86/include/asm/fpu/internal.h
++index 8bf59b5b82b7..8ca2ca245efa 100644
++--- a/arch/x86/include/asm/fpu/internal.h
+++++ b/arch/x86/include/asm/fpu/internal.h
++@@ -74,6 +74,17 @@ static __always_inline __pure bool use_fxsr(void)
++ 	return static_cpu_has(X86_FEATURE_FXSR);
++ }
++ 
+++static inline void wrmsr_after_xrstors(void)
+++{
+++#ifdef CONFIG_X86_INTEL_SHADOW_STACK_USER
+++	struct cet_user_state *cet_user;
+++	cet_user = get_xsave_addr(&current->thread.fpu.state.xsave,
+++				  XFEATURE_CET_USER);
+++	if (cet_user)
+++		wrmsrl(MSR_IA32_PL3_SSP, cet_user->user_ssp);
+++#endif
+++}
+++
++ /*
++  * fpstate handling functions:
++  */
++diff --git a/arch/x86/kernel/fpu/core.c b/arch/x86/kernel/fpu/core.c
++index 15247b96c6ea..073ba71893fc 100644
++--- a/arch/x86/kernel/fpu/core.c
+++++ b/arch/x86/kernel/fpu/core.c
++@@ -364,6 +364,7 @@ void switch_fpu_return(void)
++ 		return;
++ 
++ 	__fpregs_load_activate();
+++	wrmsr_after_xrstors();
++ }
++ EXPORT_SYMBOL_GPL(switch_fpu_return);
++ 
++-- 
++2.26.2
++
+diff --git a/kernel.spec b/kernel.spec
+index d3f2d50d4..2c1684924 100644
+--- a/kernel.spec
++++ b/kernel.spec
+@@ -41,6 +41,8 @@ Patch200040: 0040-selftest-x86-Add-CET-quick-test.patch
+ 
+ Patch300001: 0001-Update-ARCH_X86_CET_MMAP_SHSTK-with-CET-v5.9-rc1.patch
+ 
++Patch400001: 0001-Add-wrmsr_after_xrstors.patch
++
+ # We have to override the new %%install behavior because, well... the kernel is special.
+ %global __spec_install_pre %{___build_pre}
+ 
+-- 
+2.26.2
+
