@@ -1,0 +1,57 @@
+From 07f25112a52c6115d829a4b969b1ed29e17ff20c Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Fri, 21 Aug 2020 17:54:36 -0700
+Subject: [PATCH] Update Apply Add wrmsr_after_xrstors()
+
+Also call wrmsr_after_xrstors in copy_fpstate_to_sigframe.
+---
+ 0001-Add-wrmsr_after_xrstors.patch | 21 +++++++++++++++++++--
+ 1 file changed, 19 insertions(+), 2 deletions(-)
+
+diff --git a/0001-Add-wrmsr_after_xrstors.patch b/0001-Add-wrmsr_after_xrstors.patch
+index 3b4ccfece..e20029d43 100644
+--- a/0001-Add-wrmsr_after_xrstors.patch
++++ b/0001-Add-wrmsr_after_xrstors.patch
+@@ -1,4 +1,4 @@
+-From 310c617efe20371750fdf31cbbbe0562b0fb41b7 Mon Sep 17 00:00:00 2001
++From ba89b0658cc7d7e0a043d304a91c05ac95e92532 Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Wed, 19 Aug 2020 14:47:14 -0700
+ Subject: [PATCH] Add wrmsr_after_xrstors()
+@@ -9,8 +9,9 @@ Call wrmsr_after_xrstors() in switch_fpu_return.
+  arch/x86/include/asm/fpu/internal.h | 14 ++++++++++++++
+  arch/x86/kernel/cet.c               | 11 +++++++++--
+  arch/x86/kernel/fpu/core.c          |  1 +
++ arch/x86/kernel/fpu/signal.c        |  4 +++-
+  arch/x86/kernel/process.c           |  4 ++--
+- 5 files changed, 30 insertions(+), 6 deletions(-)
++ 6 files changed, 33 insertions(+), 7 deletions(-)
+ 
+ diff --git a/arch/x86/include/asm/cet.h b/arch/x86/include/asm/cet.h
+ index 916ac2a0404c..08fa511cb3f4 100644
+@@ -117,6 +118,22 @@ index 15247b96c6ea..073ba71893fc 100644
+  }
+  EXPORT_SYMBOL_GPL(switch_fpu_return);
+  
++diff --git a/arch/x86/kernel/fpu/signal.c b/arch/x86/kernel/fpu/signal.c
++index ffd34a9f5e67..cd73cac85a8e 100644
++--- a/arch/x86/kernel/fpu/signal.c
+++++ b/arch/x86/kernel/fpu/signal.c
++@@ -256,8 +256,10 @@ int copy_fpstate_to_sigframe(void __user *buf, void __user *buf_fx, int size)
++ 	 * resolve the fault in the user memory and try again.
++ 	 */
++ 	fpregs_lock();
++-	if (test_thread_flag(TIF_NEED_FPU_LOAD))
+++	if (test_thread_flag(TIF_NEED_FPU_LOAD)) {
++ 		__fpregs_load_activate();
+++		wrmsr_after_xrstors();
+++	}
++ 
++ 	pagefault_disable();
++ 	ret = copy_fpregs_to_sigframe(buf_fx);
+ diff --git a/arch/x86/kernel/process.c b/arch/x86/kernel/process.c
+ index 426557c89b21..bc099a10fe8d 100644
+ --- a/arch/x86/kernel/process.c
+-- 
+2.26.2
+
