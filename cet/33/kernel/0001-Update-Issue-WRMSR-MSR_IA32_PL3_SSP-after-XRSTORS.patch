@@ -1,0 +1,49 @@
+From e87e91e168a805c4233596bd81190aa01fbfcb31 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Sun, 23 Aug 2020 06:36:35 -0700
+Subject: [PATCH] Update Issue WRMSR(MSR_IA32_PL3_SSP) after XRSTORS
+
+---
+ ...cet-shstk-Issue-WRMSR-MSR_IA32_PL3_SSP-after-XRS.patch | 8 +++++---
+ kernel.spec                                               | 2 +-
+ 2 files changed, 6 insertions(+), 4 deletions(-)
+ rename 0001-Add-wrmsr_after_xrstors.patch => 0001-x86-cet-shstk-Issue-WRMSR-MSR_IA32_PL3_SSP-after-XRS.patch (94%)
+
+diff --git a/0001-Add-wrmsr_after_xrstors.patch b/0001-x86-cet-shstk-Issue-WRMSR-MSR_IA32_PL3_SSP-after-XRS.patch
+similarity index 94%
+rename from 0001-Add-wrmsr_after_xrstors.patch
+rename to 0001-x86-cet-shstk-Issue-WRMSR-MSR_IA32_PL3_SSP-after-XRS.patch
+index e20029d43..50d3a3bb7 100644
+--- a/0001-Add-wrmsr_after_xrstors.patch
++++ b/0001-x86-cet-shstk-Issue-WRMSR-MSR_IA32_PL3_SSP-after-XRS.patch
+@@ -1,9 +1,11 @@
+-From ba89b0658cc7d7e0a043d304a91c05ac95e92532 Mon Sep 17 00:00:00 2001
++From 268455137ba06617084ccbf43f21785ed3b2eb51 Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Wed, 19 Aug 2020 14:47:14 -0700
+-Subject: [PATCH] Add wrmsr_after_xrstors()
++Subject: [PATCH] x86/cet/shstk: Issue WRMSR(MSR_IA32_PL3_SSP) after XRSTORS
+ 
+-Call wrmsr_after_xrstors() in switch_fpu_return.
++Issue WRMSR(MSR_IA32_PL3_SSP) after updating PL3 SSP with XRSTORS to
++discard the results of speculatively executed instructions with PL3
++SSP read.
+ ---
+  arch/x86/include/asm/cet.h          |  6 ++++--
+  arch/x86/include/asm/fpu/internal.h | 14 ++++++++++++++
+diff --git a/kernel.spec b/kernel.spec
+index c4bac79c4..148f1cef6 100644
+--- a/kernel.spec
++++ b/kernel.spec
+@@ -41,7 +41,7 @@ Patch200040: 0040-selftest-x86-Add-CET-quick-test.patch
+ 
+ Patch300001: 0001-Update-ARCH_X86_CET_MMAP_SHSTK-with-CET-v5.9-rc1.patch
+ 
+-Patch400001: 0001-Add-wrmsr_after_xrstors.patch
++Patch400001: 0001-x86-cet-shstk-Issue-WRMSR-MSR_IA32_PL3_SSP-after-XRS.patch
+ 
+ # We have to override the new %%install behavior because, well... the kernel is special.
+ %global __spec_install_pre %{___build_pre}
+-- 
+2.26.2
+
