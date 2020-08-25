@@ -109,8 +109,8 @@ URL: https://sourceware.org/binutils
 # too many controversial patches so we stick with the official FSF version
 # instead.
 
-%global DATE 20200802
-Epoch: 284
+%global DATE 20200825
+Epoch: 291
 Source: binutils-%{version}-%{DATE}.tar.bz2
 Source2: binutils-2.19.50.0.1-output-format.sed
 
@@ -187,21 +187,21 @@ Patch09: binutils-do-not-link-with-static-libstdc++.patch
 #Patch10: binutils-attach-to-group.patch
 
 # Purpose:  Allow OS specific sections in section groups.
-# Lifetime: Fixed in 2.35 (maybe)
+# Lifetime: Fixed in 2.36 (maybe)
 Patch12: binutils-special-sections-in-groups.patch
 
 # Purpose:  Fix linker testsuite failures.
-# Lifetime: Fixed in 2.35 (maybe)
+# Lifetime: Fixed in 2.36 (maybe)
 #Patch13: binutils-fix-testsuite-failures.patch
 
 # Purpose:  Stop gold from aborting when input sections with the same name
 #            have different flags.
-# Lifetime: Fixed in 2.35 (maybe)
+# Lifetime: Fixed in 2.36 (maybe)
 Patch14: binutils-gold-mismatched-section-flags.patch
 
 # Purpose:  Add a check to the GOLD linker for a corrupt input file
 #            with a fuzzed section offset.
-# Lifetime: Fixed in 2.35 (maybe)
+# Lifetime: Fixed in 2.36 (maybe)
 Patch15: binutils-CVE-2019-1010204.patch
 
 # Purpose:  Change the gold configuration script to only warn about
@@ -238,6 +238,14 @@ Patch22: binutils-gcc-10-fixes.patch
 # Lifetime: Fixed in 2.36
 #Patch25: binutils-add-sym-cache-to-elf-link-hash.patch
 #Patch26: binutils-elf-add-objects.patch
+
+# Purpose:  Rename the PPC xvcvbf16sp instruction to xvcvbf16spn
+# Lifetime: Fixed in 2.36
+#Patch27: binutils-ppc-rename-xvcvbf16sp-to-xvcvbf16spn.patch
+
+# Purpose:  Fixes for handling DWARF-5 debug information.
+# Lifetime: Fixed in 2.36
+#Patch28: binutils-dwarf-5-fixes.patch
 
 #----------------------------------------------------------------------------
 
@@ -819,6 +827,12 @@ exit 0
 
 #----------------------------------------------------------------------------
 %changelog
+* Tue Aug 25 2020 Nick Clifton  <nickc@redhat.com> - 2.35-12
+- Import fixes from GNU binutils mainline for handling DWARF-5 debug information.
+
+* Mon Aug 24 2020 Nick Clifton  <nickc@redhat.com> - 2.35-11
+- Rename the PPC xvcvbf16sp instruction to xvcvbf16spn.
+
 * Fri Jul 31 2020 Jeff Law  <nickc@redhat.com> - 2.35-10
 - Re-enable LTO
 
