@@ -1,0 +1,61 @@
+From 8d2713f1517b4aa87136bdd44f1530b64e2f4731 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Mon, 31 Aug 2020 12:03:34 -0700
+Subject: [PATCH 2/2] Update x86/cet/shstk: Issue WRMSR(MSR_IA32_PL3_SSP) after
+ XRSTORS
+
+long arch_prctl(ARCH_X86_CET_MMAP_SHSTK, unsigned long size, int flags);
+---
+ ...tk-Issue-WRMSR-MSR_IA32_PL3_SSP-after-XRS.patch | 14 +++++++-------
+ 1 file changed, 7 insertions(+), 7 deletions(-)
+
+diff --git a/0001-x86-cet-shstk-Issue-WRMSR-MSR_IA32_PL3_SSP-after-XRS.patch b/0001-x86-cet-shstk-Issue-WRMSR-MSR_IA32_PL3_SSP-after-XRS.patch
+index 50d3a3bb7..a8c735916 100644
+--- a/0001-x86-cet-shstk-Issue-WRMSR-MSR_IA32_PL3_SSP-after-XRS.patch
++++ b/0001-x86-cet-shstk-Issue-WRMSR-MSR_IA32_PL3_SSP-after-XRS.patch
+@@ -1,11 +1,11 @@
+-From 268455137ba06617084ccbf43f21785ed3b2eb51 Mon Sep 17 00:00:00 2001
++From 1d552872a71dc71c89d43ca05b823be9178dc311 Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Wed, 19 Aug 2020 14:47:14 -0700
+ Subject: [PATCH] x86/cet/shstk: Issue WRMSR(MSR_IA32_PL3_SSP) after XRSTORS
+ 
+-Issue WRMSR(MSR_IA32_PL3_SSP) after updating PL3 SSP with XRSTORS to
+-discard the results of speculatively executed instructions with PL3
+-SSP read.
++Issue WRMSR(MSR_IA32_PL3_SSP) after updating PL3 SSP with XRSTORS for
++clone, fork, vfork and signal to discard the results of speculatively
++executed instructions with PL3 SSP read.
+ ---
+  arch/x86/include/asm/cet.h          |  6 ++++--
+  arch/x86/include/asm/fpu/internal.h | 14 ++++++++++++++
+@@ -16,7 +16,7 @@ SSP read.
+  6 files changed, 33 insertions(+), 7 deletions(-)
+ 
+ diff --git a/arch/x86/include/asm/cet.h b/arch/x86/include/asm/cet.h
+-index 916ac2a0404c..08fa511cb3f4 100644
++index 8f13000f6d4a..ce958d76b1c8 100644
+ --- a/arch/x86/include/asm/cet.h
+ +++ b/arch/x86/include/asm/cet.h
+ @@ -14,6 +14,7 @@ struct sc_ext;
+@@ -29,7 +29,7 @@ index 916ac2a0404c..08fa511cb3f4 100644
+  };
+ @@ -21,7 +22,7 @@ struct cet_status {
+  #ifdef CONFIG_X86_INTEL_CET
+- int prctl_cet(int option, u64 arg2);
++ long prctl_cet(int option, unsigned long arg2, unsigned long arg3);
+  int cet_setup_shstk(void);
+ -int cet_setup_thread_shstk(struct task_struct *p);
+ +int cet_setup_thread_shstk(struct task_struct *p, unsigned long clone_flags);
+@@ -137,7 +137,7 @@ index ffd34a9f5e67..cd73cac85a8e 100644
+  	pagefault_disable();
+  	ret = copy_fpregs_to_sigframe(buf_fx);
+ diff --git a/arch/x86/kernel/process.c b/arch/x86/kernel/process.c
+-index 426557c89b21..bc099a10fe8d 100644
++index 66739435dc82..4b8ad11b7dd7 100644
+ --- a/arch/x86/kernel/process.c
+ +++ b/arch/x86/kernel/process.c
+ @@ -182,8 +182,8 @@ int copy_thread_tls(unsigned long clone_flags, unsigned long sp,
+-- 
+2.26.2
+

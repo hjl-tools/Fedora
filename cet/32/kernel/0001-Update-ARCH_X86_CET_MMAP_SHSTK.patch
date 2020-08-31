@@ -1,0 +1,235 @@
+From ab0979c7afc52227b10df704bfe255f264a32454 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Mon, 31 Aug 2020 12:02:09 -0700
+Subject: [PATCH 1/2] Update ARCH_X86_CET_MMAP_SHSTK
+
+long arch_prctl(ARCH_X86_CET_MMAP_SHSTK, unsigned long size, int flags);
+---
+ ...-5-arguments-for-long-arch_prctl-int.patch | 128 ++++++++++++++++++
+ 0002-Update-ARCH_X86_CET_MMAP_SHSTK.patch     |  65 +++++++++
+ kernel.spec                                   |   2 +
+ 3 files changed, 195 insertions(+)
+ create mode 100644 0001-x86-Support-5-arguments-for-long-arch_prctl-int.patch
+ create mode 100644 0002-Update-ARCH_X86_CET_MMAP_SHSTK.patch
+
+diff --git a/0001-x86-Support-5-arguments-for-long-arch_prctl-int.patch b/0001-x86-Support-5-arguments-for-long-arch_prctl-int.patch
+new file mode 100644
+index 000000000..ca7627268
+--- /dev/null
++++ b/0001-x86-Support-5-arguments-for-long-arch_prctl-int.patch
+@@ -0,0 +1,128 @@
++From 9dfcadd793c59a84ae955e7b7cec285eeac535c2 Mon Sep 17 00:00:00 2001
++From: "H.J. Lu" <hjl.tools@gmail.com>
++Date: Thu, 27 Aug 2020 04:21:47 -0700
++Subject: [PATCH 1/2] x86: Support 5 arguments for long arch_prctl (int, ...)
++
++Signed-off-by: H.J. Lu <hjl.tools@gmail.com>
++---
++ arch/x86/include/asm/cet.h   |  2 +-
++ arch/x86/include/asm/proto.h |  3 ++-
++ arch/x86/kernel/cet_prctl.c  |  2 +-
++ arch/x86/kernel/process.c    |  5 +++--
++ arch/x86/kernel/process_32.c |  6 ++++--
++ arch/x86/kernel/process_64.c | 12 ++++++++----
++ 6 files changed, 19 insertions(+), 11 deletions(-)
++
++diff --git a/arch/x86/include/asm/cet.h b/arch/x86/include/asm/cet.h
++index 916ac2a0404c..8f13000f6d4a 100644
++--- a/arch/x86/include/asm/cet.h
+++++ b/arch/x86/include/asm/cet.h
++@@ -19,7 +19,7 @@ struct cet_status {
++ };
++ 
++ #ifdef CONFIG_X86_INTEL_CET
++-int prctl_cet(int option, u64 arg2);
+++long prctl_cet(int option, unsigned long arg2, unsigned long arg3);
++ int cet_setup_shstk(void);
++ int cet_setup_thread_shstk(struct task_struct *p);
++ unsigned long cet_alloc_shstk(unsigned long size, int flags);
++diff --git a/arch/x86/include/asm/proto.h b/arch/x86/include/asm/proto.h
++index 6e81788a30c1..7218b2bfce6a 100644
++--- a/arch/x86/include/asm/proto.h
+++++ b/arch/x86/include/asm/proto.h
++@@ -36,6 +36,7 @@ void x86_report_nx(void);
++ extern int reboot_force;
++ 
++ long do_arch_prctl_common(struct task_struct *task, int option,
++-			  unsigned long cpuid_enabled);
+++			  unsigned long cpuid_enabled, unsigned long arg3,
+++			  unsigned long arg4, unsigned long arg5);
++ 
++ #endif /* _ASM_X86_PROTO_H */
++diff --git a/arch/x86/kernel/cet_prctl.c b/arch/x86/kernel/cet_prctl.c
++index f12b9d448181..67d96b0cc5ee 100644
++--- a/arch/x86/kernel/cet_prctl.c
+++++ b/arch/x86/kernel/cet_prctl.c
++@@ -78,7 +78,7 @@ static int handle_mmap_shstk(u64 arg2)
++ 	return 0;
++ }
++ 
++-int prctl_cet(int option, u64 arg2)
+++long prctl_cet(int option, unsigned long arg2, unsigned long arg3)
++ {
++ 	struct cet_status *cet;
++ 
++diff --git a/arch/x86/kernel/process.c b/arch/x86/kernel/process.c
++index 426557c89b21..66739435dc82 100644
++--- a/arch/x86/kernel/process.c
+++++ b/arch/x86/kernel/process.c
++@@ -978,7 +978,8 @@ unsigned long get_wchan(struct task_struct *p)
++ }
++ 
++ long do_arch_prctl_common(struct task_struct *task, int option,
++-			  unsigned long arg2)
+++			  unsigned long arg2, unsigned long arg3,
+++			  unsigned long arg4, unsigned long arg5)
++ {
++ 	switch (option) {
++ 	case ARCH_GET_CPUID:
++@@ -987,5 +988,5 @@ long do_arch_prctl_common(struct task_struct *task, int option,
++ 		return set_cpuid_mode(task, arg2);
++ 	}
++ 
++-	return prctl_cet(option, arg2);
+++	return prctl_cet(option, arg2, arg3);
++ }
++diff --git a/arch/x86/kernel/process_32.c b/arch/x86/kernel/process_32.c
++index acfd6d2a0cbf..88da0220d67a 100644
++--- a/arch/x86/kernel/process_32.c
+++++ b/arch/x86/kernel/process_32.c
++@@ -220,7 +220,9 @@ __switch_to(struct task_struct *prev_p, struct task_struct *next_p)
++ 	return prev_p;
++ }
++ 
++-SYSCALL_DEFINE2(arch_prctl, int, option, unsigned long, arg2)
+++SYSCALL_DEFINE5(arch_prctl, int, option, unsigned long, arg2,
+++		unsigned long, arg3, unsigned long, arg4,
+++		unsigned long, arg5)
++ {
++-	return do_arch_prctl_common(current, option, arg2);
+++	return do_arch_prctl_common(current, option, arg2, arg3, arg4, arg5);
++ }
++diff --git a/arch/x86/kernel/process_64.c b/arch/x86/kernel/process_64.c
++index fc5db9b9677e..27c2bfd0e288 100644
++--- a/arch/x86/kernel/process_64.c
+++++ b/arch/x86/kernel/process_64.c
++@@ -707,21 +707,25 @@ long do_arch_prctl_64(struct task_struct *task, int option, unsigned long arg2)
++ 	return ret;
++ }
++ 
++-SYSCALL_DEFINE2(arch_prctl, int, option, unsigned long, arg2)
+++SYSCALL_DEFINE5(arch_prctl, int, option, unsigned long, arg2,
+++		unsigned long, arg3, unsigned long, arg4,
+++		unsigned long, arg5)
++ {
++ 	long ret;
++ 
++ 	ret = do_arch_prctl_64(current, option, arg2);
++ 	if (ret == -EINVAL)
++-		ret = do_arch_prctl_common(current, option, arg2);
+++		ret = do_arch_prctl_common(current, option, arg2, arg3, arg4, arg5);
++ 
++ 	return ret;
++ }
++ 
++ #ifdef CONFIG_IA32_EMULATION
++-COMPAT_SYSCALL_DEFINE2(arch_prctl, int, option, unsigned long, arg2)
+++COMPAT_SYSCALL_DEFINE5(arch_prctl, int, option, unsigned long, arg2,
+++		       unsigned long, arg3, unsigned long, arg4,
+++		       unsigned long, arg5)
++ {
++-	return do_arch_prctl_common(current, option, arg2);
+++	return do_arch_prctl_common(current, option, arg2, arg3, arg4, arg5);
++ }
++ #endif
++ 
++-- 
++2.26.2
++
+diff --git a/0002-Update-ARCH_X86_CET_MMAP_SHSTK.patch b/0002-Update-ARCH_X86_CET_MMAP_SHSTK.patch
+new file mode 100644
+index 000000000..b44bcdbf4
+--- /dev/null
++++ b/0002-Update-ARCH_X86_CET_MMAP_SHSTK.patch
+@@ -0,0 +1,65 @@
++From 956e652dcd4684115a6fffb23ddd34e7a2717a82 Mon Sep 17 00:00:00 2001
++From: "H.J. Lu" <hjl.tools@gmail.com>
++Date: Thu, 27 Aug 2020 04:50:57 -0700
++Subject: [PATCH 2/2] Update ARCH_X86_CET_MMAP_SHSTK
++
++long arch_prctl(ARCH_X86_CET_MMAP_SHSTK, unsigned long size, int flags);
++---
++ arch/x86/kernel/cet_prctl.c | 24 ++++--------------------
++ 1 file changed, 4 insertions(+), 20 deletions(-)
++
++diff --git a/arch/x86/kernel/cet_prctl.c b/arch/x86/kernel/cet_prctl.c
++index 67d96b0cc5ee..a1bf0b096516 100644
++--- a/arch/x86/kernel/cet_prctl.c
+++++ b/arch/x86/kernel/cet_prctl.c
++@@ -47,35 +47,19 @@ static int handle_alloc_shstk(u64 arg2)
++ 	return 0;
++ }
++ 
++-static int handle_mmap_shstk(u64 arg2)
+++static long handle_mmap_shstk(unsigned long size, int flags)
++ {
++-	u64 buf[3];
++-	unsigned long addr, size;
++ 	int allowed_flags;
++ 
++-	if (copy_from_user(buf, (unsigned long __user *)arg2, sizeof(buf)))
++-		return -EFAULT;
++-
++-	size = buf[0];
++-
++ 	/*
++ 	 * Check invalid flags
++ 	 */
++ 	allowed_flags = MAP_ANONYMOUS | MAP_PRIVATE | MAP_32BIT | MAP_POPULATE;
++ 
++-	if (buf[1] & ~allowed_flags)
+++	if (flags & ~allowed_flags)
++ 		return -EINVAL;
++ 
++-	addr = cet_alloc_shstk(size, buf[1]);
++-	if (IS_ERR_VALUE(addr))
++-		return PTR_ERR((void *)addr);
++-
++-	if (put_user(addr, (u64 __user *)arg2)) {
++-		vm_munmap(addr, size);
++-		return -EFAULT;
++-	}
++-
++-	return 0;
+++	return cet_alloc_shstk(size, flags);
++ }
++ 
++ long prctl_cet(int option, unsigned long arg2, unsigned long arg3)
++@@ -118,7 +102,7 @@ long prctl_cet(int option, unsigned long arg2, unsigned long arg3)
++ 		return handle_alloc_shstk(arg2);
++ 
++ 	case ARCH_X86_CET_MMAP_SHSTK:
++-		return handle_mmap_shstk(arg2);
+++		return handle_mmap_shstk(arg2, arg3);
++ 
++ 	default:
++ 		return -ENOSYS;
++-- 
++2.26.2
++
+diff --git a/kernel.spec b/kernel.spec
+index e3f5fe171..cacec5750 100644
+--- a/kernel.spec
++++ b/kernel.spec
+@@ -40,6 +40,8 @@ Patch200039: 0039-selftest-x86-Fix-sysret_rip-with-ENDBR.patch
+ Patch200040: 0040-selftest-x86-Add-CET-quick-test.patch
+ 
+ Patch300001: 0001-Update-ARCH_X86_CET_MMAP_SHSTK-with-CET-v5.9-rc1.patch
++Patch300002: 0001-x86-Support-5-arguments-for-long-arch_prctl-int.patch
++Patch300003: 0002-Update-ARCH_X86_CET_MMAP_SHSTK.patch
+ 
+ Patch400001: 0001-x86-cet-shstk-Issue-WRMSR-MSR_IA32_PL3_SSP-after-XRS.patch
+ 
+-- 
+2.26.2
+
