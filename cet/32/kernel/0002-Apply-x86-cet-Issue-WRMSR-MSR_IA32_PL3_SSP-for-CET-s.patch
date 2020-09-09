@@ -1,0 +1,59 @@
+From dec4d7591cefddb83d3e95392f4bbaa1b8acd174 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Wed, 9 Sep 2020 12:20:37 -0700
+Subject: [PATCH 2/2] Apply x86/cet: Issue WRMSR(MSR_IA32_PL3_SSP) for CET set
+ with PTRACE
+
+---
+ ...MSR-MSR_IA32_PL3_SSP-for-CET-set-wit.patch | 26 +++++++++++++++++++
+ kernel.spec                                   |  1 +
+ 2 files changed, 27 insertions(+)
+ create mode 100644 0001-x86-cet-Issue-WRMSR-MSR_IA32_PL3_SSP-for-CET-set-wit.patch
+
+diff --git a/0001-x86-cet-Issue-WRMSR-MSR_IA32_PL3_SSP-for-CET-set-wit.patch b/0001-x86-cet-Issue-WRMSR-MSR_IA32_PL3_SSP-for-CET-set-wit.patch
+new file mode 100644
+index 000000000..9a09119e8
+--- /dev/null
++++ b/0001-x86-cet-Issue-WRMSR-MSR_IA32_PL3_SSP-for-CET-set-wit.patch
+@@ -0,0 +1,26 @@
++From 54a0a3517d7c1eb71349f2b089a1e236be87d9de Mon Sep 17 00:00:00 2001
++From: "H.J. Lu" <hjl.tools@gmail.com>
++Date: Wed, 9 Sep 2020 12:08:32 -0700
++Subject: [PATCH] x86/cet: Issue WRMSR(MSR_IA32_PL3_SSP) for CET set with
++ PTRACE
++
++---
++ arch/x86/kernel/fpu/regset.c | 2 ++
++ 1 file changed, 2 insertions(+)
++
++diff --git a/arch/x86/kernel/fpu/regset.c b/arch/x86/kernel/fpu/regset.c
++index dcb86ccd2b7e..43f541a97525 100644
++--- a/arch/x86/kernel/fpu/regset.c
+++++ b/arch/x86/kernel/fpu/regset.c
++@@ -198,6 +198,8 @@ int cetregs_set(struct task_struct *target, const struct user_regset *regset,
++ 	if (!cetregs)
++ 		return -EFAULT;
++ 
+++	target->thread.cet.wrmsr_after_xrstors = 1;
+++
++ 	return user_regset_copyin(&pos, &count, &kbuf, &ubuf, cetregs, 0, -1);
++ }
++ 
++-- 
++2.26.2
++
+diff --git a/kernel.spec b/kernel.spec
+index f77dd2173..6c9985de2 100644
+--- a/kernel.spec
++++ b/kernel.spec
+@@ -44,6 +44,7 @@ Patch300002: 0001-x86-Support-5-arguments-for-long-arch_prctl-int.patch
+ Patch300003: 0002-Update-ARCH_X86_CET_MMAP_SHSTK.patch
+ 
+ Patch400001: 0001-x86-cet-shstk-Issue-WRMSR-MSR_IA32_PL3_SSP-after-XRS.patch
++Patch400002: 0001-x86-cet-Issue-WRMSR-MSR_IA32_PL3_SSP-for-CET-set-wit.patch
+ 
+ # We have to override the new %%install behavior because, well... the kernel is special.
+ %global __spec_install_pre %{___build_pre}
+-- 
+2.26.2
+

@@ -1,0 +1,71 @@
+From c62484f0a1bf503871a6bb693202b433d488019d Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Wed, 9 Sep 2020 12:14:55 -0700
+Subject: [PATCH 1/2] Update x86/cet/shstk: Issue WRMSR(MSR_IA32_PL3_SSP) after
+ XRSTORS
+
+Don't do it for signal.
+---
+ ...sue-WRMSR-MSR_IA32_PL3_SSP-after-XRS.patch | 24 +++++--------------
+ 1 file changed, 6 insertions(+), 18 deletions(-)
+
+diff --git a/0001-x86-cet-shstk-Issue-WRMSR-MSR_IA32_PL3_SSP-after-XRS.patch b/0001-x86-cet-shstk-Issue-WRMSR-MSR_IA32_PL3_SSP-after-XRS.patch
+index a8c735916..b44c7a671 100644
+--- a/0001-x86-cet-shstk-Issue-WRMSR-MSR_IA32_PL3_SSP-after-XRS.patch
++++ b/0001-x86-cet-shstk-Issue-WRMSR-MSR_IA32_PL3_SSP-after-XRS.patch
+@@ -1,19 +1,19 @@
+-From 1d552872a71dc71c89d43ca05b823be9178dc311 Mon Sep 17 00:00:00 2001
++From 7527ed0fa00811c4234f9bfe658cbaa6f1a62087 Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Wed, 19 Aug 2020 14:47:14 -0700
+ Subject: [PATCH] x86/cet/shstk: Issue WRMSR(MSR_IA32_PL3_SSP) after XRSTORS
+ 
+ Issue WRMSR(MSR_IA32_PL3_SSP) after updating PL3 SSP with XRSTORS for
+-clone, fork, vfork and signal to discard the results of speculatively
+-executed instructions with PL3 SSP read.
++clone, fork and vfork to discard the results of speculatively executed
++instructions with PL3 SSP read.
+ ---
+  arch/x86/include/asm/cet.h          |  6 ++++--
+  arch/x86/include/asm/fpu/internal.h | 14 ++++++++++++++
+- arch/x86/kernel/cet.c               | 11 +++++++++--
++ arch/x86/kernel/cet.c               |  7 ++++++-
+  arch/x86/kernel/fpu/core.c          |  1 +
+  arch/x86/kernel/fpu/signal.c        |  4 +++-
+  arch/x86/kernel/process.c           |  4 ++--
+- 6 files changed, 33 insertions(+), 7 deletions(-)
++ 6 files changed, 30 insertions(+), 6 deletions(-)
+ 
+ diff --git a/arch/x86/include/asm/cet.h b/arch/x86/include/asm/cet.h
+ index 8f13000f6d4a..ce958d76b1c8 100644
+@@ -72,7 +72,7 @@ index 8bf59b5b82b7..8e63e9776ae6 100644
+   * fpstate handling functions:
+   */
+ diff --git a/arch/x86/kernel/cet.c b/arch/x86/kernel/cet.c
+-index 92b81560eafc..9f7279ce387f 100644
++index 92b81560eafc..9153b69a023b 100644
+ --- a/arch/x86/kernel/cet.c
+ +++ b/arch/x86/kernel/cet.c
+ @@ -200,7 +200,7 @@ int cet_setup_shstk(void)
+@@ -96,18 +96,6 @@ index 92b81560eafc..9f7279ce387f 100644
+  	state = get_xsave_addr(&tsk->thread.fpu.state.xsave,
+  			       XFEATURE_CET_USER);
+  
+-@@ -301,8 +306,10 @@ void cet_restore_signal(struct sc_ext *sc_ext)
+- 		return;
+- 
+- 	if (cet->shstk_size) {
+--		if (test_thread_flag(TIF_NEED_FPU_LOAD))
+-+		if (test_thread_flag(TIF_NEED_FPU_LOAD)) {
+- 			cet_user_state->user_ssp = sc_ext->ssp;
+-+			cet->wrmsr_after_xrstors = 1;
+-+		}
+- 		else
+- 			wrmsrl(MSR_IA32_PL3_SSP, sc_ext->ssp);
+- 
+ diff --git a/arch/x86/kernel/fpu/core.c b/arch/x86/kernel/fpu/core.c
+ index 15247b96c6ea..073ba71893fc 100644
+ --- a/arch/x86/kernel/fpu/core.c
+-- 
+2.26.2
+
