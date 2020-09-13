@@ -1,0 +1,93 @@
+From 02008d8519410d1d12928234d2e8f2943dc14d07 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Sun, 13 Sep 2020 07:40:01 -0700
+Subject: [PATCH] Apply Clear XFEATURE_CET_USER state when killed
+
+---
+ ...-XFEATURE_CET_USER-state-when-killed.patch | 61 +++++++++++++++++++
+ kernel.spec                                   |  1 +
+ 2 files changed, 62 insertions(+)
+ create mode 100644 0001-Clear-XFEATURE_CET_USER-state-when-killed.patch
+
+diff --git a/0001-Clear-XFEATURE_CET_USER-state-when-killed.patch b/0001-Clear-XFEATURE_CET_USER-state-when-killed.patch
+new file mode 100644
+index 000000000..50fc1260c
+--- /dev/null
++++ b/0001-Clear-XFEATURE_CET_USER-state-when-killed.patch
+@@ -0,0 +1,61 @@
++From 50361f2539de307a350bcd4ce12864fac8fbc7e4 Mon Sep 17 00:00:00 2001
++From: "H.J. Lu" <hjl.tools@gmail.com>
++Date: Sun, 13 Sep 2020 07:16:12 -0700
++Subject: [PATCH] Clear XFEATURE_CET_USER state when killed
++
++GDB tests use PTRACE_SETREGSET to update XFEATURE_CET_USER state with
++random values and then issue a signal to kill the process.  Clear
++XFEATURE_CET_USER state in cet_disable_free_shstk() when killed to avoid
++XRSTORS corruption due to invalid XFEATURE_CET_USER state.
++---
++ arch/x86/kernel/cet.c | 25 +++++++++++++++++++++----
++ 1 file changed, 21 insertions(+), 4 deletions(-)
++
++diff --git a/arch/x86/kernel/cet.c b/arch/x86/kernel/cet.c
++index 9f7279ce387f..f99c44bc24fd 100644
++--- a/arch/x86/kernel/cet.c
+++++ b/arch/x86/kernel/cet.c
++@@ -249,6 +249,8 @@ int cet_setup_thread_shstk(struct task_struct *tsk, unsigned long clone_flags)
++ void cet_disable_free_shstk(struct task_struct *tsk)
++ {
++ 	struct cet_status *cet = &tsk->thread.cet;
+++	struct cet_user_state *cet_user_state;
+++	bool killed;
++ 
++ 	if (!static_cpu_has(X86_FEATURE_SHSTK) ||
++ 	    !cet->shstk_size || !cet->shstk_base)
++@@ -257,12 +259,27 @@ void cet_disable_free_shstk(struct task_struct *tsk)
++ 	if (!tsk->mm || (tsk->mm != current->mm))
++ 		return;
++ 
++-	if (tsk == current) {
++-		u64 msr_val;
+++	cet_user_state = get_xsave_addr(&tsk->thread.fpu.state.xsave,
+++					XFEATURE_CET_USER);
+++	if (!cet_user_state)
+++		return;
++ 
+++	killed = (tsk->flags & PF_SIGNALED) != 0;
+++	if (killed) {
+++		cet->ibt_enabled = 0;
+++		cet_user_state->user_cet = 0;
+++		cet_user_state->user_ssp = 0;
+++	}
+++
+++	if (tsk == current) {
++ 		start_update_msrs();
++-		rdmsrl(MSR_IA32_U_CET, msr_val);
++-		wrmsrl(MSR_IA32_U_CET, msr_val & ~CET_SHSTK_EN);
+++		if (killed) {
+++			wrmsrl(MSR_IA32_U_CET, 0);
+++		} else {
+++			u64 msr_val;
+++			rdmsrl(MSR_IA32_U_CET, msr_val);
+++			wrmsrl(MSR_IA32_U_CET, msr_val & ~CET_SHSTK_EN);
+++		}
++ 		wrmsrl(MSR_IA32_PL3_SSP, 0);
++ 		end_update_msrs();
++ 	}
++-- 
++2.26.2
++
+diff --git a/kernel.spec b/kernel.spec
+index 32b2513f9..dbeceffda 100644
+--- a/kernel.spec
++++ b/kernel.spec
+@@ -44,6 +44,7 @@ Patch300002: 0001-x86-Support-5-arguments-for-long-arch_prctl-int.patch
+ Patch300003: 0002-Update-ARCH_X86_CET_MMAP_SHSTK.patch
+ 
+ Patch400001: 0001-x86-cet-shstk-Issue-WRMSR-MSR_IA32_PL3_SSP-after-XRS.patch
++Patch400002: 0001-Clear-XFEATURE_CET_USER-state-when-killed.patch
+ 
+ # We have to override the new %%install behavior because, well... the kernel is special.
+ %global __spec_install_pre %{___build_pre}
+-- 
+2.26.2
+
