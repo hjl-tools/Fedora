@@ -1,0 +1,179 @@
+From 1630f4ca82849cb2bf2db4f002c0c7262f59f8c1 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Fri, 18 Sep 2020 06:11:42 -0700
+Subject: [PATCH 3/6] Revert x86/cet/shstk: Issue WRMSR(MSR_IA32_PL3_SSP) after
+ XRSTORS
+
+Will be reapplied later.
+---
+ ...sue-WRMSR-MSR_IA32_PL3_SSP-after-XRS.patch | 144 ------------------
+ kernel.spec                                   |   2 -
+ 2 files changed, 146 deletions(-)
+ delete mode 100644 0001-x86-cet-shstk-Issue-WRMSR-MSR_IA32_PL3_SSP-after-XRS.patch
+
+diff --git a/0001-x86-cet-shstk-Issue-WRMSR-MSR_IA32_PL3_SSP-after-XRS.patch b/0001-x86-cet-shstk-Issue-WRMSR-MSR_IA32_PL3_SSP-after-XRS.patch
+deleted file mode 100644
+index b44c7a671..000000000
+--- a/0001-x86-cet-shstk-Issue-WRMSR-MSR_IA32_PL3_SSP-after-XRS.patch
++++ /dev/null
+@@ -1,144 +0,0 @@
+-From 7527ed0fa00811c4234f9bfe658cbaa6f1a62087 Mon Sep 17 00:00:00 2001
+-From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+-Date: Wed, 19 Aug 2020 14:47:14 -0700
+-Subject: [PATCH] x86/cet/shstk: Issue WRMSR(MSR_IA32_PL3_SSP) after XRSTORS
+-
+-Issue WRMSR(MSR_IA32_PL3_SSP) after updating PL3 SSP with XRSTORS for
+-clone, fork and vfork to discard the results of speculatively executed
+-instructions with PL3 SSP read.
+----
+- arch/x86/include/asm/cet.h          |  6 ++++--
+- arch/x86/include/asm/fpu/internal.h | 14 ++++++++++++++
+- arch/x86/kernel/cet.c               |  7 ++++++-
+- arch/x86/kernel/fpu/core.c          |  1 +
+- arch/x86/kernel/fpu/signal.c        |  4 +++-
+- arch/x86/kernel/process.c           |  4 ++--
+- 6 files changed, 30 insertions(+), 6 deletions(-)
+-
+-diff --git a/arch/x86/include/asm/cet.h b/arch/x86/include/asm/cet.h
+-index 8f13000f6d4a..ce958d76b1c8 100644
+---- a/arch/x86/include/asm/cet.h
+-+++ b/arch/x86/include/asm/cet.h
+-@@ -14,6 +14,7 @@ struct sc_ext;
+- struct cet_status {
+- 	unsigned long	shstk_base;
+- 	unsigned long	shstk_size;
+-+	unsigned int	wrmsr_after_xrstors:1;
+- 	unsigned int	locked:1;
+- 	unsigned int	ibt_enabled:1;
+- };
+-@@ -21,7 +22,7 @@ struct cet_status {
+- #ifdef CONFIG_X86_INTEL_CET
+- long prctl_cet(int option, unsigned long arg2, unsigned long arg3);
+- int cet_setup_shstk(void);
+--int cet_setup_thread_shstk(struct task_struct *p);
+-+int cet_setup_thread_shstk(struct task_struct *p, unsigned long clone_flags);
+- unsigned long cet_alloc_shstk(unsigned long size, int flags);
+- void cet_disable_free_shstk(struct task_struct *p);
+- int cet_verify_rstor_token(bool ia32, unsigned long ssp, unsigned long *new_ssp);
+-@@ -31,7 +32,8 @@ int cet_setup_ibt(void);
+- void cet_disable_ibt(void);
+- #else
+- static inline int prctl_cet(int option, u64 arg2) { return -EINVAL; }
+--static inline int cet_setup_thread_shstk(struct task_struct *p) { return 0; }
+-+static inline int cet_setup_thread_shstk(struct task_struct *p,
+-+					 unsigned long clone_flags) { return 0; }
+- static inline void cet_disable_free_shstk(struct task_struct *p) {}
+- static inline void cet_restore_signal(struct sc_ext *sc) { return; }
+- static inline int cet_setup_signal(bool ia32, unsigned long rstor,
+-diff --git a/arch/x86/include/asm/fpu/internal.h b/arch/x86/include/asm/fpu/internal.h
+-index 8bf59b5b82b7..8e63e9776ae6 100644
+---- a/arch/x86/include/asm/fpu/internal.h
+-+++ b/arch/x86/include/asm/fpu/internal.h
+-@@ -74,6 +74,20 @@ static __always_inline __pure bool use_fxsr(void)
+- 	return static_cpu_has(X86_FEATURE_FXSR);
+- }
+- 
+-+static inline void wrmsr_after_xrstors(void)
+-+{
+-+#ifdef CONFIG_X86_INTEL_SHADOW_STACK_USER
+-+	if (current->thread.cet.wrmsr_after_xrstors) {
+-+		struct cet_user_state *cet_user;
+-+		current->thread.cet.wrmsr_after_xrstors = 0;
+-+		cet_user = get_xsave_addr(&current->thread.fpu.state.xsave,
+-+					  XFEATURE_CET_USER);
+-+		if (cet_user)
+-+			wrmsrl(MSR_IA32_PL3_SSP, cet_user->user_ssp);
+-+	}
+-+#endif
+-+}
+-+
+- /*
+-  * fpstate handling functions:
+-  */
+-diff --git a/arch/x86/kernel/cet.c b/arch/x86/kernel/cet.c
+-index 92b81560eafc..9153b69a023b 100644
+---- a/arch/x86/kernel/cet.c
+-+++ b/arch/x86/kernel/cet.c
+-@@ -200,7 +200,7 @@ int cet_setup_shstk(void)
+- 	return 0;
+- }
+- 
+--int cet_setup_thread_shstk(struct task_struct *tsk)
+-+int cet_setup_thread_shstk(struct task_struct *tsk, unsigned long clone_flags)
+- {
+- 	unsigned long addr, size;
+- 	struct cet_user_state *state;
+-@@ -209,6 +209,11 @@ int cet_setup_thread_shstk(struct task_struct *tsk)
+- 	if (!cet->shstk_size)
+- 		return 0;
+- 
+-+	cet->wrmsr_after_xrstors = 1;
+-+
+-+	if ((clone_flags & (CLONE_VFORK | CLONE_VM)) != CLONE_VM)
+-+		return 0;
+-+
+- 	state = get_xsave_addr(&tsk->thread.fpu.state.xsave,
+- 			       XFEATURE_CET_USER);
+- 
+-diff --git a/arch/x86/kernel/fpu/core.c b/arch/x86/kernel/fpu/core.c
+-index 15247b96c6ea..073ba71893fc 100644
+---- a/arch/x86/kernel/fpu/core.c
+-+++ b/arch/x86/kernel/fpu/core.c
+-@@ -364,6 +364,7 @@ void switch_fpu_return(void)
+- 		return;
+- 
+- 	__fpregs_load_activate();
+-+	wrmsr_after_xrstors();
+- }
+- EXPORT_SYMBOL_GPL(switch_fpu_return);
+- 
+-diff --git a/arch/x86/kernel/fpu/signal.c b/arch/x86/kernel/fpu/signal.c
+-index ffd34a9f5e67..cd73cac85a8e 100644
+---- a/arch/x86/kernel/fpu/signal.c
+-+++ b/arch/x86/kernel/fpu/signal.c
+-@@ -256,8 +256,10 @@ int copy_fpstate_to_sigframe(void __user *buf, void __user *buf_fx, int size)
+- 	 * resolve the fault in the user memory and try again.
+- 	 */
+- 	fpregs_lock();
+--	if (test_thread_flag(TIF_NEED_FPU_LOAD))
+-+	if (test_thread_flag(TIF_NEED_FPU_LOAD)) {
+- 		__fpregs_load_activate();
+-+		wrmsr_after_xrstors();
+-+	}
+- 
+- 	pagefault_disable();
+- 	ret = copy_fpregs_to_sigframe(buf_fx);
+-diff --git a/arch/x86/kernel/process.c b/arch/x86/kernel/process.c
+-index 66739435dc82..4b8ad11b7dd7 100644
+---- a/arch/x86/kernel/process.c
+-+++ b/arch/x86/kernel/process.c
+-@@ -182,8 +182,8 @@ int copy_thread_tls(unsigned long clone_flags, unsigned long sp,
+- 
+- #ifdef CONFIG_X86_64
+- 	/* Allocate a new shadow stack for pthread */
+--	if (!ret && (clone_flags & (CLONE_VFORK | CLONE_VM)) == CLONE_VM)
+--		ret = cet_setup_thread_shstk(p);
+-+	if (!ret)
+-+		ret = cet_setup_thread_shstk(p, clone_flags);
+- #endif
+- 
+- 	if (!ret && unlikely(test_tsk_thread_flag(current, TIF_IO_BITMAP)))
+--- 
+-2.26.2
+-
+diff --git a/kernel.spec b/kernel.spec
+index eeb7501b3..8ca101aa9 100644
+--- a/kernel.spec
++++ b/kernel.spec
+@@ -39,8 +39,6 @@ Patch200038: 0038-selftest-x86-Fix-sigreturn_64-test.patch
+ Patch200039: 0039-selftest-x86-Fix-sysret_rip-with-ENDBR.patch
+ Patch200040: 0040-selftest-x86-Add-CET-quick-test.patch
+ 
+-Patch400001: 0001-x86-cet-shstk-Issue-WRMSR-MSR_IA32_PL3_SSP-after-XRS.patch
+-
+ # We have to override the new %%install behavior because, well... the kernel is special.
+ %global __spec_install_pre %{___build_pre}
+ 
+-- 
+2.26.2
+

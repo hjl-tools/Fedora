@@ -1,0 +1,94 @@
+From 7b4ab375f06b156fa227d6fc2b7d7671da702fae Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Fri, 18 Sep 2020 06:15:42 -0700
+Subject: [PATCH 4/6] Apply cetregs_set: Validate IA32_U_CET bits
+
+---
+ ...cetregs_set-Validate-IA32_U_CET-bits.patch | 61 +++++++++++++++++++
+ kernel.spec                                   |  2 +
+ 2 files changed, 63 insertions(+)
+ create mode 100644 0001-cetregs_set-Validate-IA32_U_CET-bits.patch
+
+diff --git a/0001-cetregs_set-Validate-IA32_U_CET-bits.patch b/0001-cetregs_set-Validate-IA32_U_CET-bits.patch
+new file mode 100644
+index 000000000..626ef85a8
+--- /dev/null
++++ b/0001-cetregs_set-Validate-IA32_U_CET-bits.patch
+@@ -0,0 +1,61 @@
++From aa59008488826b3cb1912199db826076aefa1f23 Mon Sep 17 00:00:00 2001
++From: Yu-cheng Yu <yu-cheng.yu@intel.com>
++Date: Mon, 14 Sep 2020 09:25:24 -0700
++Subject: [PATCH] cetregs_set: Validate IA32_U_CET bits
++
++1. Disallow CET_RESERVED bits.
++2. Disallow CET_SUPPRESS == 1 and CET_WAIT_ENDBR == 1.
++---
++ arch/x86/include/asm/msr-index.h |  3 +++
++ arch/x86/kernel/fpu/regset.c     | 14 ++++++++++++--
++ 2 files changed, 15 insertions(+), 2 deletions(-)
++
++diff --git a/arch/x86/include/asm/msr-index.h b/arch/x86/include/asm/msr-index.h
++index 3a71a072d8d3..9d08c4403384 100644
++--- a/arch/x86/include/asm/msr-index.h
+++++ b/arch/x86/include/asm/msr-index.h
++@@ -907,6 +907,9 @@
++ #define CET_ENDBR_EN		BIT_ULL(2)
++ #define CET_LEG_IW_EN		BIT_ULL(3)
++ #define CET_NO_TRACK_EN		BIT_ULL(4)
+++#define CET_SUPPRESS_DIS	BIT_ULL(5)
+++#define CET_RESERVED		(BIT_ULL(6) | BIT_ULL(7) | BIT_ULL(8) | BIT_ULL(9))
+++#define CET_SUPPRESS		BIT_ULL(10)
++ #define CET_WAIT_ENDBR		BIT_ULL(11)
++ 
++ #endif /* _ASM_X86_MSR_INDEX_H */
++diff --git a/arch/x86/kernel/fpu/regset.c b/arch/x86/kernel/fpu/regset.c
++index dcb86ccd2b7e..77fb9c372c15 100644
++--- a/arch/x86/kernel/fpu/regset.c
+++++ b/arch/x86/kernel/fpu/regset.c
++@@ -188,7 +188,8 @@ int cetregs_set(struct task_struct *target, const struct user_regset *regset,
++ 		  const void *kbuf, const void __user *ubuf)
++ {
++ 	struct fpu *fpu = &target->thread.fpu;
++-	struct cet_user_state *cetregs;
+++	struct cet_user_state *cetregs, tmp;
+++	int r;
++ 
++ 	if (!boot_cpu_has(X86_FEATURE_SHSTK))
++ 		return -ENODEV;
++@@ -198,7 +199,16 @@ int cetregs_set(struct task_struct *target, const struct user_regset *regset,
++ 	if (!cetregs)
++ 		return -EFAULT;
++ 
++-	return user_regset_copyin(&pos, &count, &kbuf, &ubuf, cetregs, 0, -1);
+++	r = user_regset_copyin(&pos, &count, &kbuf, &ubuf, &tmp, 0, -1);
+++	if (r)
+++		return r;
+++
+++	if ((tmp.user_cet & CET_RESERVED) ||
+++	    (tmp.user_cet & (CET_SUPPRESS | CET_WAIT_ENDBR)
+++	     == (CET_SUPPRESS | CET_WAIT_ENDBR)))
+++		return -EINVAL;
+++	memmove(cetregs, &tmp, sizeof(tmp));
+++	return 0;
++ }
++ 
++ #if defined CONFIG_X86_32 || defined CONFIG_IA32_EMULATION
++-- 
++2.26.2
++
+diff --git a/kernel.spec b/kernel.spec
+index 8ca101aa9..e1c867a04 100644
+--- a/kernel.spec
++++ b/kernel.spec
+@@ -39,6 +39,8 @@ Patch200038: 0038-selftest-x86-Fix-sigreturn_64-test.patch
+ Patch200039: 0039-selftest-x86-Fix-sysret_rip-with-ENDBR.patch
+ Patch200040: 0040-selftest-x86-Add-CET-quick-test.patch
+ 
++Patch300001: 0001-cetregs_set-Validate-IA32_U_CET-bits.patch
++
+ # We have to override the new %%install behavior because, well... the kernel is special.
+ %global __spec_install_pre %{___build_pre}
+ 
+-- 
+2.26.2
+
