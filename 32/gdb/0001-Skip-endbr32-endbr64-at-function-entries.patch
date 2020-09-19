@@ -1,0 +1,448 @@
+From c58ba68be0af2c3ae74b5afca4a95abdfcd6a69d Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Fri, 18 Sep 2020 17:48:42 -0700
+Subject: [PATCH 1/2] Skip endbr32/endbr64 at function entries
+
+---
+ ...64-instruction-in-amd64_analyze_prol.patch | 250 ++++++++++++++++++
+ ...386_analyze_prologue-to-skip-endbr32.patch | 149 +++++++++++
+ gdb.spec                                      |   6 +
+ 3 files changed, 405 insertions(+)
+ create mode 100644 0001-gdb-handle-endbr64-instruction-in-amd64_analyze_prol.patch
+ create mode 100644 0002-gdb-Update-i386_analyze_prologue-to-skip-endbr32.patch
+
+diff --git a/0001-gdb-handle-endbr64-instruction-in-amd64_analyze_prol.patch b/0001-gdb-handle-endbr64-instruction-in-amd64_analyze_prol.patch
+new file mode 100644
+index 0000000..12e92ac
+--- /dev/null
++++ b/0001-gdb-handle-endbr64-instruction-in-amd64_analyze_prol.patch
+@@ -0,0 +1,250 @@
++From 83feed26739ffde41004c12bbd7b750bbcaac588 Mon Sep 17 00:00:00 2001
++From: Simon Marchi <simon.marchi@efficios.com>
++Date: Wed, 6 May 2020 12:01:37 -0400
++Subject: [PATCH 1/2] gdb: handle endbr64 instruction in amd64_analyze_prologue
++
++v2:
++  - test: build full executable instead of object
++  - test: add and use supports_fcf_protection
++  - test: use gdb_test_multiple's -wrap option
++  - test: don't execute gdb_assert if failed to get breakpoint address
++
++Some GCCs now enable -fcf-protection by default.  This is the case, for
++example, with GCC 9.3.0 on Ubuntu 20.04.  Enabling it causes the
++`endbr64` instruction to be inserted at the beginning of all functions
++and that breaks GDB's prologue analysis.
++
++I noticed this because it gives many failures in gdb.base/break.exp.
++But let's take this dummy program and put a breakpoint on main:
++
++    int main(void)
++    {
++        return 0;
++    }
++
++Without -fcf-protection, the breakpoint is correctly put after the prologue:
++
++    $ gcc test.c -g3 -O0 -fcf-protection=none
++    $ ./gdb -q -nx --data-directory=data-directory a.out
++    Reading symbols from a.out...
++    (gdb) disassemble main
++    Dump of assembler code for function main:
++       0x0000000000001129 <+0>:     push   %rbp
++       0x000000000000112a <+1>:     mov    %rsp,%rbp
++       0x000000000000112d <+4>:     mov    $0x0,%eax
++       0x0000000000001132 <+9>:     pop    %rbp
++       0x0000000000001133 <+10>:    retq
++    End of assembler dump.
++    (gdb) b main
++    Breakpoint 1 at 0x112d: file test.c, line 3.
++
++With -fcf-protection, the breakpoint is incorrectly put on the first
++byte of the function:
++
++    $ gcc test.c -g3 -O0 -fcf-protection=full
++    $ ./gdb -q -nx --data-directory=data-directory a.out
++    Reading symbols from a.out...
++    (gdb) disassemble main
++    Dump of assembler code for function main:
++       0x0000000000001129 <+0>:     endbr64
++       0x000000000000112d <+4>:     push   %rbp
++       0x000000000000112e <+5>:     mov    %rsp,%rbp
++       0x0000000000001131 <+8>:     mov    $0x0,%eax
++       0x0000000000001136 <+13>:    pop    %rbp
++       0x0000000000001137 <+14>:    retq
++    End of assembler dump.
++    (gdb) b main
++    Breakpoint 1 at 0x1129: file test.c, line 2.
++
++Stepping in amd64_skip_prologue, we can see that the prologue analysis,
++for GCC-compiled programs, is done in amd64_analyze_prologue by decoding
++the instructions and looking for typical patterns.  This patch changes
++the analysis to check for a prologue starting with the `endbr64`
++instruction, and skip it if it's there.
++
++gdb/ChangeLog:
++
++	* amd64-tdep.c (amd64_analyze_prologue): Check for `endbr64`
++	instruction, skip it if it's there.
++
++gdb/testsuite/ChangeLog:
++
++	* gdb.arch/amd64-prologue-skip-cf-protection.exp: New file.
++	* gdb.arch/amd64-prologue-skip-cf-protection.c: New file.
++
++(cherry picked from commit ac4a4f1cd7dceeeb17d0b8c077c874f2247acbf0)
++---
++ gdb/amd64-tdep.c                              | 19 ++++++
++ .../amd64-prologue-skip-cf-protection.c       | 21 ++++++
++ .../amd64-prologue-skip-cf-protection.exp     | 65 +++++++++++++++++++
++ gdb/testsuite/lib/gdb.exp                     | 11 ++++
++ 4 files changed, 116 insertions(+)
++ create mode 100644 gdb/testsuite/gdb.arch/amd64-prologue-skip-cf-protection.c
++ create mode 100644 gdb/testsuite/gdb.arch/amd64-prologue-skip-cf-protection.exp
++
++diff --git a/gdb/amd64-tdep.c b/gdb/amd64-tdep.c
++index 14f1f8a684..6716a70704 100644
++--- a/gdb/amd64-tdep.c
+++++ b/gdb/amd64-tdep.c
++@@ -2361,6 +2361,9 @@ amd64_x32_analyze_stack_align (CORE_ADDR pc, CORE_ADDR current_pc,
++       pushq %rbp        0x55
++       movl %esp, %ebp   0x89 0xe5 (or 0x8b 0xec)
++ 
+++   The `endbr64` instruction can be found before these sequences, and will be
+++   skipped if found.
+++
++    Any function that doesn't start with one of these sequences will be
++    assumed to have no prologue and thus no valid frame pointer in
++    %rbp.  */
++@@ -2371,6 +2374,8 @@ amd64_analyze_prologue (struct gdbarch *gdbarch,
++ 			struct amd64_frame_cache *cache)
++ {
++   enum bfd_endian byte_order = gdbarch_byte_order (gdbarch);
+++  /* The `endbr64` instruction.  */
+++  static const gdb_byte endbr64[4] = { 0xf3, 0x0f, 0x1e, 0xfa };
++   /* There are two variations of movq %rsp, %rbp.  */
++   static const gdb_byte mov_rsp_rbp_1[3] = { 0x48, 0x89, 0xe5 };
++   static const gdb_byte mov_rsp_rbp_2[3] = { 0x48, 0x8b, 0xec };
++@@ -2391,6 +2396,20 @@ amd64_analyze_prologue (struct gdbarch *gdbarch,
++ 
++   op = read_code_unsigned_integer (pc, 1, byte_order);
++ 
+++  /* Check for the `endbr64` instruction, skip it if found.  */
+++  if (op == endbr64[0])
+++    {
+++      read_code (pc + 1, buf, 3);
+++
+++      if (memcmp (buf, &endbr64[1], 3) == 0)
+++	pc += 4;
+++
+++      op = read_code_unsigned_integer (pc, 1, byte_order);
+++    }
+++
+++  if (current_pc <= pc)
+++    return current_pc;
+++
++   if (op == 0x55)		/* pushq %rbp */
++     {
++       /* Take into account that we've executed the `pushq %rbp' that
++diff --git a/gdb/testsuite/gdb.arch/amd64-prologue-skip-cf-protection.c b/gdb/testsuite/gdb.arch/amd64-prologue-skip-cf-protection.c
++new file mode 100644
++index 0000000000..a6505857e1
++--- /dev/null
+++++ b/gdb/testsuite/gdb.arch/amd64-prologue-skip-cf-protection.c
++@@ -0,0 +1,21 @@
+++/* This testcase is part of GDB, the GNU debugger.
+++
+++   Copyright 2020 Free Software Foundation, Inc.
+++
+++   This program is free software; you can redistribute it and/or modify
+++   it under the terms of the GNU General Public License as published by
+++   the Free Software Foundation; either version 3 of the License, or
+++   (at your option) any later version.
+++
+++   This program is distributed in the hope that it will be useful,
+++   but WITHOUT ANY WARRANTY; without even the implied warranty of
+++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+++   GNU General Public License for more details.
+++
+++   You should have received a copy of the GNU General Public License
+++   along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
+++
+++int main (void)
+++{
+++  return 0;
+++}
++diff --git a/gdb/testsuite/gdb.arch/amd64-prologue-skip-cf-protection.exp b/gdb/testsuite/gdb.arch/amd64-prologue-skip-cf-protection.exp
++new file mode 100644
++index 0000000000..3c51fd3035
++--- /dev/null
+++++ b/gdb/testsuite/gdb.arch/amd64-prologue-skip-cf-protection.exp
++@@ -0,0 +1,65 @@
+++# Copyright 2020 Free Software Foundation, Inc.
+++
+++# This program is free software; you can redistribute it and/or modify
+++# it under the terms of the GNU General Public License as published by
+++# the Free Software Foundation; either version 3 of the License, or
+++# (at your option) any later version.
+++#
+++# This program is distributed in the hope that it will be useful,
+++# but WITHOUT ANY WARRANTY; without even the implied warranty of
+++# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+++# GNU General Public License for more details.
+++#
+++# You should have received a copy of the GNU General Public License
+++# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+++
+++# Test skipping a prologue that was generated with gcc's -fcf-protection=full
+++# (control flow protection) option.
+++#
+++# This option places an `endbr64` instruction at the start of all functions,
+++# which can interfere with prologue analysis.
+++
+++standard_testfile .c
+++set binfile ${binfile}
+++
+++if { ![istarget x86_64-*-* ] || ![is_lp64_target] } {
+++    verbose "Skipping ${testfile}."
+++    return
+++}
+++
+++if { ![supports_fcf_protection] } {
+++    untested "-fcf-protection not supported"
+++    return
+++}
+++
+++set opts {debug additional_flags=-fcf-protection=full}
+++
+++if { [gdb_compile "${srcdir}/${subdir}/${srcfile}" "${binfile}" executable $opts] != "" } {
+++    untested "failed to compile"
+++    return
+++}
+++
+++clean_restart ${binfile}
+++
+++# Get start address of function main.
+++set main_addr [get_integer_valueof &main -1]
+++gdb_assert {$main_addr != -1}
+++
+++set bp_addr -1
+++
+++# Put breakpoint on main, get the address where the breakpoint was installed.
+++gdb_test_multiple "break main" "break on main, get address" {
+++    -re -wrap "Breakpoint $decimal at ($hex).*" {
+++	set bp_addr $expect_out(1,string)
+++
+++	# Convert to decimal.
+++	set bp_addr [expr $bp_addr]
+++
+++	pass $gdb_test_name
+++    }
+++}
+++
+++if { $bp_addr != -1 } {
+++    # Make sure some prologue was skipped.
+++    gdb_assert {$bp_addr > $main_addr}
+++}
++diff --git a/gdb/testsuite/lib/gdb.exp b/gdb/testsuite/lib/gdb.exp
++index cb5a3f7aea..58cff91819 100644
++--- a/gdb/testsuite/lib/gdb.exp
+++++ b/gdb/testsuite/lib/gdb.exp
++@@ -6834,5 +6834,16 @@ gdb_caching_proc skip_ctf_tests {
++     } executable "additional_flags=-gt"]
++ }
++ 
+++# Return 1 if compiler supports -fcf-protection=.  Otherwise,
+++# return 0.
+++
+++gdb_caching_proc supports_fcf_protection {
+++    return [gdb_can_simple_compile supports_fcf_protection {
+++	int main () {
+++	    return 0;
+++	}
+++  } executable "additional_flags=-fcf-protection=full"]
+++}
+++
++ # Always load compatibility stuff.
++ load_lib future.exp
++-- 
++2.26.2
++
+diff --git a/0002-gdb-Update-i386_analyze_prologue-to-skip-endbr32.patch b/0002-gdb-Update-i386_analyze_prologue-to-skip-endbr32.patch
+new file mode 100644
+index 0000000..3f379bd
+--- /dev/null
++++ b/0002-gdb-Update-i386_analyze_prologue-to-skip-endbr32.patch
+@@ -0,0 +1,149 @@
++From ddfc76989033c20b160263c77374c2a4ebcc378b Mon Sep 17 00:00:00 2001
++From: Victor Collod <vcollod@nvidia.com>
++Date: Tue, 23 Jun 2020 18:28:51 -0700
++Subject: [PATCH 2/2] gdb: Update i386_analyze_prologue to skip endbr32
++
++With -m32 -fcf-protection, GCC generates an `endbr32` instruction at the
++function entry:
++
++[hjl@gnu-cfl-2 gdb]$ cat /tmp/x.c
++int
++main(void)
++{
++  return 0;
++}
++[hjl@gnu-cfl-2 gdb]$ gcc -g -fcf-protection /tmp/x.c -m32
++(gdb) b main
++Breakpoint 1 at 0x8049176: file /tmp/x.c, line 3.
++(gdb) r
++Breakpoint 1, main () at /tmp/x.c:3
++3	{
++(gdb) disass
++Dump of assembler code for function main:
++=> 0x08049176 <+0>:	endbr32
++   0x0804917a <+4>:	push   %ebp
++   0x0804917b <+5>:	mov    %esp,%ebp
++   0x0804917d <+7>:	mov    $0x0,%eax
++   0x08049182 <+12>:	pop    %ebp
++   0x08049183 <+13>:	ret
++End of assembler dump.
++(gdb)
++
++Update i386_analyze_prologue to skip `endbr32`:
++
++(gdb) b main
++Breakpoint 1 at 0x804917d: file /tmp/x.c, line 4.
++(gdb) r
++Breakpoint 1, main () at /tmp/x.c:4
++4	  return 0;
++(gdb) disass
++Dump of assembler code for function main:
++   0x08049176 <+0>:	endbr32
++   0x0804917a <+4>:	push   %ebp
++   0x0804917b <+5>:	mov    %esp,%ebp
++=> 0x0804917d <+7>:	mov    $0x0,%eax
++   0x08049182 <+12>:	pop    %ebp
++   0x08049183 <+13>:	ret
++End of assembler dump.
++(gdb)
++
++Tested with
++
++$ make check RUNTESTFLAGS="--target_board='unix{-m32,}' i386-prologue-skip-cf-protection.exp"
++
++on Fedora 32/x86-64.
++
++2020-0X-YY  Victor Collod  <vcollod@nvidia.com>
++
++gdb/ChangeLog:
++
++	PR gdb/26635
++	* i386-tdep.c (i386_skip_endbr): Add a helper function to skip endbr.
++	(i386_analyze_prologue): Call i386_skip_endbr.
++
++gdb/testsuite/ChangeLog:
++
++	PR gdb/26635
++	* gdb.arch/amd64-prologue-skip-cf-protection.exp: Make the test
++	compatible with i386, and move it to...
++	* gdb.arch/i386-prologue-skip-cf-protection.exp: ... here.
++	* gdb.arch/amd64-prologue-skip-cf-protection.c: Move to...
++	* gdb.arch/i386-prologue-skip-cf-protection.c: ... here.
++
++(cherry picked from commit 14f9473ca225290680c8b21240cdca49f8d3b332)
++---
++ gdb/i386-tdep.c                               | 19 +++++++++++++++++++
++ ...n.c => i386-prologue-skip-cf-protection.c} |  0
++ ...p => i386-prologue-skip-cf-protection.exp} |  6 +++---
++ 3 files changed, 22 insertions(+), 3 deletions(-)
++ rename gdb/testsuite/gdb.arch/{amd64-prologue-skip-cf-protection.c => i386-prologue-skip-cf-protection.c} (100%)
++ rename gdb/testsuite/gdb.arch/{amd64-prologue-skip-cf-protection.exp => i386-prologue-skip-cf-protection.exp} (90%)
++
++diff --git a/gdb/i386-tdep.c b/gdb/i386-tdep.c
++index f290b8a87c..24bdc31b50 100644
++--- a/gdb/i386-tdep.c
+++++ b/gdb/i386-tdep.c
++@@ -1535,6 +1535,24 @@ struct i386_insn i386_frame_setup_skip_insns[] =
++   { 0 }
++ };
++ 
+++/* Check whether PC points to an endbr32 instruction.  */
+++static CORE_ADDR
+++i386_skip_endbr (CORE_ADDR pc)
+++{
+++  static const gdb_byte endbr32[] = { 0xf3, 0x0f, 0x1e, 0xfb };
+++
+++  gdb_byte buf[sizeof (endbr32)];
+++
+++  /* Stop there if we can't read the code */
+++  if (target_read_code (pc, buf, sizeof (endbr32)))
+++    return pc;
+++
+++  /* If the instruction isn't an endbr32, stop */
+++  if (memcmp (buf, endbr32, sizeof (endbr32)) != 0)
+++    return pc;
+++
+++  return pc + sizeof (endbr32);
+++}
++ 
++ /* Check whether PC points to a no-op instruction.  */
++ static CORE_ADDR
++@@ -1812,6 +1830,7 @@ i386_analyze_prologue (struct gdbarch *gdbarch,
++ 		       CORE_ADDR pc, CORE_ADDR current_pc,
++ 		       struct i386_frame_cache *cache)
++ {
+++  pc = i386_skip_endbr (pc);
++   pc = i386_skip_noop (pc);
++   pc = i386_follow_jump (gdbarch, pc);
++   pc = i386_analyze_struct_return (pc, current_pc, cache);
++diff --git a/gdb/testsuite/gdb.arch/amd64-prologue-skip-cf-protection.c b/gdb/testsuite/gdb.arch/i386-prologue-skip-cf-protection.c
++similarity index 100%
++rename from gdb/testsuite/gdb.arch/amd64-prologue-skip-cf-protection.c
++rename to gdb/testsuite/gdb.arch/i386-prologue-skip-cf-protection.c
++diff --git a/gdb/testsuite/gdb.arch/amd64-prologue-skip-cf-protection.exp b/gdb/testsuite/gdb.arch/i386-prologue-skip-cf-protection.exp
++similarity index 90%
++rename from gdb/testsuite/gdb.arch/amd64-prologue-skip-cf-protection.exp
++rename to gdb/testsuite/gdb.arch/i386-prologue-skip-cf-protection.exp
++index 3c51fd3035..9ba64f9c37 100644
++--- a/gdb/testsuite/gdb.arch/amd64-prologue-skip-cf-protection.exp
+++++ b/gdb/testsuite/gdb.arch/i386-prologue-skip-cf-protection.exp
++@@ -16,13 +16,13 @@
++ # Test skipping a prologue that was generated with gcc's -fcf-protection=full
++ # (control flow protection) option.
++ #
++-# This option places an `endbr64` instruction at the start of all functions,
++-# which can interfere with prologue analysis.
+++# This option places an `endbr32`/`endbr64` instruction at the start of
+++# all functions, which can interfere with prologue analysis.
++ 
++ standard_testfile .c
++ set binfile ${binfile}
++ 
++-if { ![istarget x86_64-*-* ] || ![is_lp64_target] } {
+++if { ![istarget x86_64-*-*] && ![istarget i?86-*-*] } {
++     verbose "Skipping ${testfile}."
++     return
++ }
++-- 
++2.26.2
++
+diff --git a/gdb.spec b/gdb.spec
+index 2b7f909..00ca659 100644
+--- a/gdb.spec
++++ b/gdb.spec
+@@ -1,3 +1,6 @@
++Patch100001: 0001-gdb-handle-endbr64-instruction-in-amd64_analyze_prol.patch
++Patch100002: 0002-gdb-Update-i386_analyze_prologue-to-skip-endbr32.patch
++
+ # This package depends on automagic byte compilation
+ # https://fedoraproject.org/wiki/Changes/No_more_automagic_Python_bytecompilation_phase_2
+ %global _python_bytecompile_extra 1
+@@ -480,6 +483,9 @@ done
+ %patch1119 -p1
+ %endif
+ 
++%patch100001 -p1
++%patch100002 -p1
++
+ find -name "*.orig" | xargs rm -f
+ ! find -name "*.rej" # Should not happen.
+ 
+-- 
+2.26.2
+
