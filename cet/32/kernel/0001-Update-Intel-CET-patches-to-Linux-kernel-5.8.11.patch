@@ -1,0 +1,39 @@
+From 2f853324d4225be10e08c44766c8f9d0f6290d44 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Wed, 23 Sep 2020 06:55:44 -0700
+Subject: [PATCH] Update Intel CET patches to Linux kernel 5.8.11
+
+---
+ 0019-x86-cet-shstk-User-mode-shadow-stack-support.patch | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/0019-x86-cet-shstk-User-mode-shadow-stack-support.patch b/0019-x86-cet-shstk-User-mode-shadow-stack-support.patch
+index 87de7dded..57d0f6d07 100644
+--- a/0019-x86-cet-shstk-User-mode-shadow-stack-support.patch
++++ b/0019-x86-cet-shstk-User-mode-shadow-stack-support.patch
+@@ -1,4 +1,4 @@
+-From 844e0c15e87fa8c0a1a21b2a0b88b78c93b9c143 Mon Sep 17 00:00:00 2001
++From e6c3731b2e51ba6d81d21f27355ec0d85f19541f Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Thu, 22 Aug 2019 10:06:11 -0700
+ Subject: [PATCH 19/40] x86/cet/shstk: User-mode shadow stack support
+@@ -336,13 +336,13 @@ index 95c090a45b4b..44d51d8008cc 100644
+  	/*
+  	 * Clear/Set all flags overridden by options, need do it
+ diff --git a/arch/x86/kernel/process.c b/arch/x86/kernel/process.c
+-index fe67dbd76e51..9b2c84cbf805 100644
++index bff502e779e4..fedda3f7be19 100644
+ --- a/arch/x86/kernel/process.c
+ +++ b/arch/x86/kernel/process.c
+-@@ -42,6 +42,7 @@
+- #include <asm/spec-ctrl.h>
++@@ -43,6 +43,7 @@
+  #include <asm/io_bitmap.h>
+  #include <asm/proto.h>
++ #include <asm/frame.h>
+ +#include <asm/cet.h>
+  
+  #include "process.h"
+-- 
+2.26.2
+
