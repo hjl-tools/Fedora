@@ -109,8 +109,8 @@ URL: https://sourceware.org/binutils
 # too many controversial patches so we stick with the official FSF version
 # instead.
 
-%global DATE 20200825
-Epoch: 291
+%global DATE 20200925
+Epoch: 299
 Source: binutils-%{version}-%{DATE}.tar.bz2
 Source2: binutils-2.19.50.0.1-output-format.sed
 
@@ -212,40 +212,32 @@ Patch15: binutils-CVE-2019-1010204.patch
 
 # Purpose:  Fix compile time warning messages building s390 target with gcc-10.
 # Lifetime: Should be fixed in 2.36.
-Patch19: binutils-s390-build.patch
+#Patch19: binutils-s390-build.patch
 
 # Purpose:  Fix LTO problems running config mini-builds.
 # Lifetime: Should be fixed in 2.36.
-Patch20: binutils-config.patch
+#Patch20: binutils-config.patch
 
 # Purpose:  Fix compile time warning messages building with gcc-10.
 # Lifetime: Should be fixed in 2.36.
-Patch21: binutils-warnings.patch
+#Patch21: binutils-warnings.patch
 
 # Purpose:  Fix compile time warning messages building with gcc-10. (part 2).
 # Lifetime: Should be fixed in 2.36.
-Patch22: binutils-gcc-10-fixes.patch
-
-# Purpose:  Default to DWARF level 3 in the assembler.
-# Lifetime: Fixed in 2.36.
-#Patch23: binutils-gas-dwarf-level-4.patch
-
-# Purpose:  Set the sh_entsize of the AArch64's PLT section to 0.
-# Lifetime: Fixed in 2.36.
-#Patch24: binutils-aarch64-plt-sh_entsize.patch
+#Patch22: binutils-gcc-10-fixes.patch
 
 # Purpose:  Fixes for linking LTO objects.
 # Lifetime: Fixed in 2.36
-#Patch25: binutils-add-sym-cache-to-elf-link-hash.patch
-#Patch26: binutils-elf-add-objects.patch
+#Patch23: binutils-add-sym-cache-to-elf-link-hash.patch
+#Patch24: binutils-elf-add-objects.patch
 
-# Purpose:  Rename the PPC xvcvbf16sp instruction to xvcvbf16spn
+# Purpose:  Fix handling of relocations for AArch64 conditional branches.
 # Lifetime: Fixed in 2.36
-#Patch27: binutils-ppc-rename-xvcvbf16sp-to-xvcvbf16spn.patch
+#Patch25: binutils-aarch64-condbranch-relocs.patch
 
-# Purpose:  Fixes for handling DWARF-5 debug information.
+# Purpose:  Fix the PowerPC disassembler so that it ignores annobin symbols.
 # Lifetime: Fixed in 2.36
-#Patch28: binutils-dwarf-5-fixes.patch
+#Patch26: binutils-ppc-annobin-disassembly.patch
 
 #----------------------------------------------------------------------------
 
@@ -827,6 +819,19 @@ exit 0
 
 #----------------------------------------------------------------------------
 %changelog
+* Mon Sep 21 2020 Nick Clifton  <nickc@redhat.com> - 2.35.1-1
+- Rebase to GNU Binutils 2.35.1 release.
+- Retire: binutils-gas-dwarf-level-4.patch
+- Retire: binutils-aarch64-plt-sh_entsize.patch
+- Retire: binutils-ppc-rename-xvcvbf16sp-to-xvcvbf16spn.patch
+- Retire: binutils-dwarf-5-fixes.patch
+
+* Fri Sep 11 2020 Nick Clifton  <nickc@redhat.com> - 2.35-14
+- Fix the PowerPC disassembler so that it ignores annobin symbols.
+
+* Thu Sep 10 2020 Nick Clifton  <nickc@redhat.com> - 2.35-13
+- Fix the handling of relocations for AArch64 conditional branches.
+
 * Tue Aug 25 2020 Nick Clifton  <nickc@redhat.com> - 2.35-12
 - Import fixes from GNU binutils mainline for handling DWARF-5 debug information.
 
