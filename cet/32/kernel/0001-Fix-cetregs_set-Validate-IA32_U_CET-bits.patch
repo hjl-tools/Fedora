@@ -1,0 +1,40 @@
+From 8d4b2e458fefcf98f4934d06f02acc54fd4c7ef7 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Mon, 28 Sep 2020 06:28:27 -0700
+Subject: [PATCH] Fix cetregs_set: Validate IA32_U_CET bits
+
+---
+ 0001-cetregs_set-Validate-IA32_U_CET-bits.patch | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/0001-cetregs_set-Validate-IA32_U_CET-bits.patch b/0001-cetregs_set-Validate-IA32_U_CET-bits.patch
+index 626ef85a8..a19350f76 100644
+--- a/0001-cetregs_set-Validate-IA32_U_CET-bits.patch
++++ b/0001-cetregs_set-Validate-IA32_U_CET-bits.patch
+@@ -1,4 +1,4 @@
+-From aa59008488826b3cb1912199db826076aefa1f23 Mon Sep 17 00:00:00 2001
++From 26b9d0f5a3f5d23d4ca7fcf66e8a25590fb7c6e3 Mon Sep 17 00:00:00 2001
+ From: Yu-cheng Yu <yu-cheng.yu@intel.com>
+ Date: Mon, 14 Sep 2020 09:25:24 -0700
+ Subject: [PATCH] cetregs_set: Validate IA32_U_CET bits
+@@ -25,7 +25,7 @@ index 3a71a072d8d3..9d08c4403384 100644
+  
+  #endif /* _ASM_X86_MSR_INDEX_H */
+ diff --git a/arch/x86/kernel/fpu/regset.c b/arch/x86/kernel/fpu/regset.c
+-index dcb86ccd2b7e..77fb9c372c15 100644
++index dcb86ccd2b7e..7380441d3d5f 100644
+ --- a/arch/x86/kernel/fpu/regset.c
+ +++ b/arch/x86/kernel/fpu/regset.c
+ @@ -188,7 +188,8 @@ int cetregs_set(struct task_struct *target, const struct user_regset *regset,
+@@ -48,7 +48,7 @@ index dcb86ccd2b7e..77fb9c372c15 100644
+ +		return r;
+ +
+ +	if ((tmp.user_cet & CET_RESERVED) ||
+-+	    (tmp.user_cet & (CET_SUPPRESS | CET_WAIT_ENDBR)
+++	    ((tmp.user_cet & (CET_SUPPRESS | CET_WAIT_ENDBR))
+ +	     == (CET_SUPPRESS | CET_WAIT_ENDBR)))
+ +		return -EINVAL;
+ +	memmove(cetregs, &tmp, sizeof(tmp));
+-- 
+2.26.2
+
