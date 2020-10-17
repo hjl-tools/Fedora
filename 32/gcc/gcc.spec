@@ -1,14 +1,17 @@
 Patch100001: 0001-i386-Allow-SI-DI-and-TImode-pushes-from-XMM-register.patch
 Patch100002: 0002-x86-Allow-V1TI-vector-register-pushes.patch
 Patch100003: 0003-Fix-a-typo-in-pushsi2_rex64.patch
+Patch200001: 0001-x86-Pass-a-copy-of-the-string-length-to-cmpstrnqi.patch
+Patch200002: 0002-x86-Replace-__glibc_unlikely-with-__builtin_expect.patch
+Patch200003: 0003-x86-Add-cmpmemsi-for-minline-all-stringops.patch
 
-%global DATE 20200723
-%global gitrev 3fc88aa16f1bf661db4518d6d62869f081981981
+%global DATE 20201016
+%global gitrev b55a9d01144097312b48281486c03e83cf03fde5
 %global gcc_version 10.2.1
 %global gcc_major 10
 # Note, gcc_release must be integer, if you want to add suffixes to
 # %%{release}, append them after %%{gcc_release} on Release: line.
-%global gcc_release 1
+%global gcc_release 6
 %global nvptx_tools_gitrev 5f6f343a302d620b0868edab376c00b15741e39e
 %global newlib_cygwin_gitrev 50e2a63b04bdd018484605fbb954fd1bd5147fa0
 %global _unpackaged_files_terminate_build 0
@@ -91,7 +94,11 @@ Patch100003: 0003-Fix-a-typo-in-pushsi2_rex64.patch
 %else
 %global build_libitm 0
 %endif
+%if 0%{?rhel} > 8
+%global build_isl 0
+%else
 %global build_isl 1
+%endif
 %global build_libstdcxx_docs 1
 %ifarch %{ix86} x86_64 ppc ppc64 ppc64le ppc64p7 s390 s390x %{arm} aarch64 %{mips}
 %global attr_ifunc 1
@@ -174,7 +181,7 @@ BuildRequires: glibc-static
 BuildRequires: zlib-devel, gettext, dejagnu, bison, flex, sharutils
 BuildRequires: texinfo, texinfo-tex, /usr/bin/pod2man
 BuildRequires: systemtap-sdt-devel >= 1.3
-BuildRequires: gmp-devel >= 4.1.2-8, mpfr-devel >= 2.2.1, libmpc-devel >= 0.8.1
+BuildRequires: gmp-devel >= 4.1.2-8, mpfr-devel >= 3.1.0, libmpc-devel >= 0.8.1
 BuildRequires: python3-devel, /usr/bin/python
 BuildRequires: gcc, gcc-c++
 %if %{build_go}
@@ -276,6 +283,10 @@ Patch8: gcc10-foffload-default.patch
 Patch9: gcc10-Wno-format-security.patch
 Patch10: gcc10-rh1574936.patch
 Patch11: gcc10-d-shared-libphobos.patch
+Patch12: gcc10-pr96383.patch
+Patch13: gcc10-pr96939.patch
+Patch14: gcc10-pr96939-2.patch
+Patch15: gcc10-pr96939-3.patch
 
 # On ARM EABI systems, we do want -gnueabi to be part of the
 # target triple.
@@ -749,7 +760,7 @@ This package contains static Go libraries.
 %package plugin-devel
 Summary: Support for compiling GCC plugins
 Requires: gcc = %{version}-%{release}
-Requires: gmp-devel >= 4.1.2-8, mpfr-devel >= 2.2.1, libmpc-devel >= 0.8.1
+Requires: gmp-devel >= 4.1.2-8, mpfr-devel >= 3.1.0, libmpc-devel >= 0.8.1
 
 %description plugin-devel
 This package contains header files and other support files
@@ -787,10 +798,18 @@ to NVidia PTX capable devices if available.
 %patch10 -p0 -b .rh1574936~
 %endif
 %patch11 -p0 -b .d-shared-libphobos~
+%patch12 -p0 -b .pr96383~
+%patch13 -p0 -b .pr96939~
+%patch14 -p0 -b .pr96939-2~
+%patch15 -p0 -b .pr96939-3~
+find gcc/testsuite -name \*.pr96939~ | xargs rm -f
 
 %patch100001 -p1 -b .pushxmm
 %patch100002 -p1 -b .pushv1ti2
 %patch100003 -p1 -b .pushsi2_rex64
+%patch200001 -p1 -b .pr95443.1
+%patch200002 -p1 -b .pr95443.2
+%patch200003 -p1 -b .pr95151
 
 echo 'Red Hat %{version}-%{gcc_release}' > gcc/DEV-PHASE
 
@@ -830,7 +849,7 @@ export CONFIG_SITE=NONE
 CC=gcc
 CXX=g++
 OPT_FLAGS=`echo %{optflags}|sed -e 's/\(-Wp,\)\?-D_FORTIFY_SOURCE=[12]//g'`
-OPT_FLAGS=`echo $OPT_FLAGS|sed -e 's/-flto//g;s/-ffat-lto-objects//g'`
+OPT_FLAGS=`echo $OPT_FLAGS|sed -e 's/-flto=auto//g;s/-flto//g;s/-ffat-lto-objects//g'`
 OPT_FLAGS=`echo $OPT_FLAGS|sed -e 's/-m64//g;s/-m32//g;s/-m31//g'`
 OPT_FLAGS=`echo $OPT_FLAGS|sed -e 's/-mfpmath=sse/-mfpmath=sse -msse2/g'`
 OPT_FLAGS=`echo $OPT_FLAGS|sed -e 's/ -pipe / /g'`
@@ -1001,7 +1020,7 @@ CONFIGURE_OPTS="\
 %ifarch s390 s390x
 %if 0%{?rhel} >= 7
 %if 0%{?rhel} > 7
-	--with-arch=zEC12 --with-tune=z13 \
+	--with-arch=z13 --with-tune=z14 \
 %else
 	--with-arch=z196 --with-tune=zEC12 \
 %endif
@@ -2024,8 +2043,39 @@ LC_ALL=C make %{?_smp_mflags} -k check ALT_CC_UNDER_TEST=gcc ALT_CXX_UNDER_TEST=
 %else
      RUNTESTFLAGS="--target_board=unix/'{,-fstack-protector}'" || :
 %endif
+if [ -f %{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/plugin/annobin.so ]; then
+  # Test whether current annobin plugin won't fail miserably with the newly built gcc.
+  echo -e '#include <stdio.h>\nint main () { printf ("Hello, world!\\n"); return 0; }' > annobin-test.c
+  echo -e '#include <iostream>\nint main () { std::cout << "Hello, world!" << std::endl; return 0; }' > annobin-test.C
+  `%{gcc_target_platform}/libstdc++-v3/scripts/testsuite_flags --build-cc` \
+  -O2 -g -Wall -Werror=format-security -Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS \
+  -fexceptions -fstack-protector-strong -grecord-gcc-switches -o annobin-test{c,.c} \
+  -Wl,-rpath,%{gcc_target_platform}/libgcc/ \
+  -fplugin=%{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/plugin/annobin.so \
+  2> ANNOBINOUT1 || echo Annobin test 1 FAIL > ANNOBINOUT2;
+  `%{gcc_target_platform}/libstdc++-v3/scripts/testsuite_flags --build-cxx` \
+  `%{gcc_target_platform}/libstdc++-v3/scripts/testsuite_flags --build-includes` \
+  -O2 -g -Wall -Werror=format-security -Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS \
+  -fexceptions -fstack-protector-strong -grecord-gcc-switches -o annobin-test{C,.C} \
+  -Wl,-rpath,%{gcc_target_platform}/libgcc/:%{gcc_target_platform}/libstdc++-v3/src/.libs/ \
+  -fplugin=%{_prefix}/lib/gcc/%{gcc_target_platform}/%{gcc_major}/plugin/annobin.so \
+  -B %{gcc_target_platform}/libstdc++-v3/src/.libs/ \
+  2> ANNOBINOUT3 || echo Annobin test 2 FAIL > ANNOBINOUT4;
+  [ -f ./annobin-testc ] || echo Annobin test 1 MISSING > ANNOBINOUT5;
+  [ -f ./annobin-testc ] && \
+  ( ./annobin-testc > ANNOBINRES1 2>&1 || echo Annobin test 1 RUNFAIL > ANNOBINOUT6 );
+  [ -f ./annobin-testC ] || echo Annobin test 2 MISSING > ANNOBINOUT7;
+  [ -f ./annobin-testC ] && \
+  ( ./annobin-testC > ANNOBINRES2 2>&1 || echo Annobin test 2 RUNFAIL > ANNOBINOUT8 );
+  cat ANNOBINOUT[1-8] > ANNOBINOUT
+  touch ANNOBINRES1 ANNOBINRES2
+  [ -s ANNOBINOUT ] && echo Annobin testing FAILed > ANNOBINRES
+  cat ANNOBINOUT ANNOBINRES[12] >> ANNOBINRES
+  rm -f ANNOBINOUT* ANNOBINRES[12] annobin-test{c,C}
+fi
 echo ====================TESTING=========================
 ( LC_ALL=C ../contrib/test_summary || : ) 2>&1 | sed -n '/^cat.*EOF/,/^EOF/{/^cat.*EOF/d;/^EOF/d;/^LAST_UPDATED:/d;p;}'
+[ -f ANNOBINRES ] && cat ANNOBINRES
 echo ====================TESTING END=====================
 mkdir testlogs-%{_target_platform}-%{version}-%{release}
 for i in `find . -name \*.log | grep -F testsuite/ | grep -v 'config.log\|acats.*/tests/'`; do
@@ -3264,6 +3314,75 @@ end
 %endif
 
 %changelog
+* Fri Oct 16 2020 Jakub Jelinek <jakub@redhat.com> 10.2.1-6
+- update from releases/gcc-10 branch
+  - PRs c++/88115, c++/96229, fortran/97272, libstdc++/95788, libstdc++/97273,
+	lto/97290, middle-end/95189, middle-end/95886, rtl-optimization/97313,
+	target/96313, target/96456, target/97150, target/97251, target/97302,
+	target/97349, tree-optimization/97236, tree-optimization/97255,
+	tree-optimization/97357
+  - fix ICE on building Firefox with LTO+PGO (#1886399, PR ipa/97295)
+
+* Mon Oct  5 2020 Jakub Jelinek <jakub@redhat.com> 10.2.1-5
+- update from releases/gcc-10 branch
+  - PRs bootstrap/97163, bootstrap/97183, c++/96994, c++/97145, c++/97195,
+	fortran/93423, fortran/95614, fortran/96041, gcov-profile/64636,
+	gcov-profile/96913, gcov-profile/97069, gcov-profile/97193,
+	libstdc++/94160, libstdc++/94681, libstdc++/96803, libstdc++/97101,
+	libstdc++/97167, middle-end/95464, middle-end/97054, middle-end/97073,
+	preprocessor/96935, target/71233, target/96683, target/96795,
+	target/96827, target/97166, target/97184, target/97231, target/97247,
+	tree-optimization/96979, tree-optimization/97053
+
+* Wed Sep 16 2020 Jakub Jelinek <jakub@redhat.com> 10.2.1-4
+- update from releases/gcc-10 branch
+  - PRs bootstrap/96203, c++/95164, c++/96862, c++/96901, d/96157, d/96924,
+	debug/93865, debug/94235, debug/96729, fortran/94690, fortran/95109,
+	fortran/95398, fortran/95882, fortran/96859, libstdc++/71960,
+	libstdc++/92978, libstdc++/96766, libstdc++/96851, lto/94311,
+	middle-end/87256, middle-end/96369, target/85830, target/94538,
+	target/96357, target/96551, target/96574, target/96744, target/96808,
+	target/97028, tree-optimization/88240, tree-optimization/96349,
+	tree-optimization/96370, tree-optimization/96514,
+	tree-optimization/96522, tree-optimization/96579,
+	tree-optimization/96597, tree-optimization/96820,
+	tree-optimization/96854, tree-optimization/97043
+- fix up ARM target attribute/pragma handling (#1875814, PR target/96939)
+- don't ICE on sp clobbers with -mincoming-stack-boundary=2 on ia32
+  (#1862029, PR target/97032)
+
+* Wed Aug 26 2020 Jakub Jelinek <jakub@redhat.com> 10.2.1-3
+- update from releases/gcc-10 branch
+  - PRs c++/95428, c++/96082, c++/96106, c++/96164, c++/96199, c++/96497,
+	c/96545, c/96549, c/96571, d/96250, d/96254, d/96301, debug/96354,
+	fortran/93553, fortran/96312, fortran/96486, ipa/95320, ipa/96291,
+	ipa/96482, libstdc++/89760, libstdc++/95749, libstdc++/96303,
+	libstdc++/96484, libstdc++/96718, lto/95362, lto/95548,
+	middle-end/96426, middle-end/96459, target/93897, target/95450,
+	target/96191, target/96243, target/96446, target/96493, target/96506,
+	target/96525, target/96530, target/96536, target/96562, target/96682,
+	tree-optimization/96483, tree-optimization/96535,
+	tree-optimization/96722, tree-optimization/96730,
+	tree-optimization/96758
+- mangle some further symbols needed for debug info during early dwarf
+  (#1862029, PR debug/96690)
+- during %%check perform tests whether annobin is usable with the newly built
+  compiler or whether it might need to be rebuilt
+- disable graphite for ELN
+
+* Tue Aug  4 2020 Jakub Jelinek <jakub@redhat.com> 10.2.1-2
+- update from releases/gcc-10 branch
+  - PRs c++/95591, c++/95599, c++/95823, c++/95824, c++/95895, c/96377,
+	d/96140, fortran/89574, fortran/93567, fortran/93592, fortran/95585,
+	fortran/95612, fortran/95980, fortran/96018, fortran/96086,
+	fortran/96220, fortran/96319, lto/45375, middle-end/96335,
+	target/95435, target/96190, target/96236, target/96260, target/96402,
+	tree-optimization/96058
+- emit debug info for C/C++ external function declarations used in the TU
+  (PR debug/96383)
+- discard SHN_UNDEF global symbols from LTO debuginfo (PR lto/96385)
+- strip also -flto=auto from optflags
+
 * Thu Jul 23 2020 Jakub Jelinek <jakub@redhat.com> 10.2.1-1
 - update from releases/gcc-10 branch
   - GCC 10.2 release
