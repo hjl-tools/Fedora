@@ -1,0 +1,25 @@
+From 7abea050ee2ab8acb74b52673e95c19e241bf718 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Mon, 21 Dec 2020 19:09:04 -0800
+Subject: [PATCH 2/2] Release: Apppend .0
+
+---
+ libffi.spec | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/libffi.spec b/libffi.spec
+index c38e863..a066607 100644
+--- a/libffi.spec
++++ b/libffi.spec
+@@ -12,7 +12,7 @@ Patch1000007: 0007-Use-FFI_EXEC_TRAMPOLINE_TABLE-on-CET-enabled-Linux-x.patch
+ 
+ Name:		libffi
+ Version:	3.1
+-Release:	26%{?dist}
++Release:	26.0%{?dist}
+ Summary:	A portable foreign function interface library
+ License:	MIT
+ URL:		http://sourceware.org/libffi
+-- 
+2.29.2
+

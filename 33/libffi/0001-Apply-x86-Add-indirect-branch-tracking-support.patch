@@ -1,0 +1,2090 @@
+From 144acdbbe904a14f4aea1b51e19004f54db25077 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Mon, 21 Dec 2020 19:08:03 -0800
+Subject: [PATCH 1/2] Apply x86: Add indirect branch tracking support
+
+Use trampoline table with compatible closure.
+---
+ ...entry-points-for-interacting-with-Go.patch |  45 ++
+ 0002-Add-ffi_cfi.h.patch                      |  76 ++
+ 0003-x86-64-Support-go-closures.patch         | 687 ++++++++++++++++++
+ ...sary-instruction-from-ffi_call_unix6.patch |  47 ++
+ ...olute-value-using-fabs-instead-of-ab.patch |  28 +
+ ...Add-indirect-branch-tracking-support.patch | 519 +++++++++++++
+ ...MPOLINE_TABLE-on-CET-enabled-Linux-x.patch | 588 +++++++++++++++
+ libffi.spec                                   |  16 +
+ 8 files changed, 2006 insertions(+)
+ create mode 100644 0001-Add-entry-points-for-interacting-with-Go.patch
+ create mode 100644 0002-Add-ffi_cfi.h.patch
+ create mode 100644 0003-x86-64-Support-go-closures.patch
+ create mode 100644 0004-Removing-unnecessary-instruction-from-ffi_call_unix6.patch
+ create mode 100644 0005-Take-a-float-absolute-value-using-fabs-instead-of-ab.patch
+ create mode 100644 0006-x86-Add-indirect-branch-tracking-support.patch
+ create mode 100644 0007-Use-FFI_EXEC_TRAMPOLINE_TABLE-on-CET-enabled-Linux-x.patch
+
+diff --git a/0001-Add-entry-points-for-interacting-with-Go.patch b/0001-Add-entry-points-for-interacting-with-Go.patch
+new file mode 100644
+index 0000000..699abe7
+--- /dev/null
++++ b/0001-Add-entry-points-for-interacting-with-Go.patch
+@@ -0,0 +1,45 @@
++From a08f126d2890c34f5ebcebd207c7396974c341e5 Mon Sep 17 00:00:00 2001
++From: Richard Henderson <rth@twiddle.net>
++Date: Fri, 17 Oct 2014 10:12:25 -0700
++Subject: [PATCH 1/7] Add entry points for interacting with Go
++
++A "ffi_go_closure" is intended to be compatible with the
++function descriptors used by Go, and ffi_call_go sets up
++the static chain parameter for calling a Go function.
++
++The entry points are disabled when a backend has not been
++updated, much like we do for "normal" closures.
++---
++ include/ffi.h.in | 16 ++++++++++++++++
++ 1 file changed, 16 insertions(+)
++
++diff --git a/include/ffi.h.in b/include/ffi.h.in
++index 93c776f..70360fc 100644
++--- a/include/ffi.h.in
+++++ b/include/ffi.h.in
++@@ -418,6 +418,22 @@ ffi_prep_java_raw_closure_loc (ffi_java_raw_closure*,
++ 
++ #endif /* FFI_CLOSURES */
++ 
+++#if FFI_GO_CLOSURES
+++
+++typedef struct {
+++  void      *tramp;
+++  ffi_cif   *cif;
+++  void     (*fun)(ffi_cif*,void*,void**,void*);
+++} ffi_go_closure;
+++
+++ffi_status ffi_prep_go_closure (ffi_go_closure*, ffi_cif *,
+++				void (*fun)(ffi_cif*,void*,void**,void*));
+++
+++void ffi_call_go (ffi_cif *cif, void (*fn)(void), void *rvalue,
+++		  void **avalue, void *closure);
+++
+++#endif /* FFI_GO_CLOSURES */
+++
++ /* ---- Public interface definition -------------------------------------- */
++ 
++ ffi_status ffi_prep_cif(ffi_cif *cif,
++-- 
++2.29.2
++
+diff --git a/0002-Add-ffi_cfi.h.patch b/0002-Add-ffi_cfi.h.patch
+new file mode 100644
+index 0000000..6addb78
+--- /dev/null
++++ b/0002-Add-ffi_cfi.h.patch
+@@ -0,0 +1,76 @@
++From c1422be56a2ba5b15a49fa811fbe56368ec55109 Mon Sep 17 00:00:00 2001
++From: Richard Henderson <rth@twiddle.net>
++Date: Fri, 17 Oct 2014 10:55:11 -0700
++Subject: [PATCH 2/7] Add ffi_cfi.h
++
++Have one copy of the HAVE_AS_CFI_PSEUDO_OP code
++to share between all backends.
++---
++ include/ffi_cfi.h | 55 +++++++++++++++++++++++++++++++++++++++++++++++
++ 1 file changed, 55 insertions(+)
++ create mode 100644 include/ffi_cfi.h
++
++diff --git a/include/ffi_cfi.h b/include/ffi_cfi.h
++new file mode 100644
++index 0000000..244ce57
++--- /dev/null
+++++ b/include/ffi_cfi.h
++@@ -0,0 +1,55 @@
+++/* -----------------------------------------------------------------------
+++   ffi_cfi.h - Copyright (c) 2014  Red Hat, Inc.
+++
+++   Conditionally assemble cfi directives. Only necessary for building libffi.
+++   ----------------------------------------------------------------------- */
+++
+++#ifndef FFI_CFI_H
+++#define FFI_CFI_H
+++
+++#ifdef HAVE_AS_CFI_PSEUDO_OP
+++
+++# define cfi_startproc			.cfi_startproc
+++# define cfi_endproc			.cfi_endproc
+++# define cfi_def_cfa(reg, off)		.cfi_def_cfa reg, off
+++# define cfi_def_cfa_register(reg)	.cfi_def_cfa_register reg
+++# define cfi_def_cfa_offset(off)	.cfi_def_cfa_offset off
+++# define cfi_adjust_cfa_offset(off)	.cfi_adjust_cfa_offset off
+++# define cfi_offset(reg, off)		.cfi_offset reg, off
+++# define cfi_rel_offset(reg, off)	.cfi_rel_offset reg, off
+++# define cfi_register(r1, r2)		.cfi_register r1, r2
+++# define cfi_return_column(reg)		.cfi_return_column reg
+++# define cfi_restore(reg)		.cfi_restore reg
+++# define cfi_same_value(reg)		.cfi_same_value reg
+++# define cfi_undefined(reg)		.cfi_undefined reg
+++# define cfi_remember_state		.cfi_remember_state
+++# define cfi_restore_state		.cfi_restore_state
+++# define cfi_window_save		.cfi_window_save
+++# define cfi_personality(enc, exp)	.cfi_personality enc, exp
+++# define cfi_lsda(enc, exp)		.cfi_lsda enc, exp
+++# define cfi_escape(...)		.cfi_escape __VA_ARGS__
+++
+++#else
+++
+++# define cfi_startproc
+++# define cfi_endproc
+++# define cfi_def_cfa(reg, off)
+++# define cfi_def_cfa_register(reg)
+++# define cfi_def_cfa_offset(off)
+++# define cfi_adjust_cfa_offset(off)
+++# define cfi_offset(reg, off)
+++# define cfi_rel_offset(reg, off)
+++# define cfi_register(r1, r2)
+++# define cfi_return_column(reg)
+++# define cfi_restore(reg)
+++# define cfi_same_value(reg)
+++# define cfi_undefined(reg)
+++# define cfi_remember_state
+++# define cfi_restore_state
+++# define cfi_window_save
+++# define cfi_personality(enc, exp)
+++# define cfi_lsda(enc, exp)
+++# define cfi_escape(...)
+++
+++#endif /* HAVE_AS_CFI_PSEUDO_OP */
+++#endif /* FFI_CFI_H */
++-- 
++2.29.2
++
+diff --git a/0003-x86-64-Support-go-closures.patch b/0003-x86-64-Support-go-closures.patch
+new file mode 100644
+index 0000000..b2a1ae5
+--- /dev/null
++++ b/0003-x86-64-Support-go-closures.patch
+@@ -0,0 +1,687 @@
++From 6a12cbf39e0d6a1733137e99c172de93a90c5580 Mon Sep 17 00:00:00 2001
++From: Richard Henderson <rth@twiddle.net>
++Date: Fri, 17 Oct 2014 11:11:58 -0700
++Subject: [PATCH 3/7] x86-64: Support go closures
++
++Dumps all of the hand-coded unwind info for gas generated.  Move jump
++table data into .rodata.  Adjust ffi_call_unix64 to load the static
++chain.  Split out sse portions of ffi_closure_unix64 to
++ffi_closure_unix64_sse rather than test cif->flags at runtime.
++---
++ src/x86/ffi64.c     | 103 +++++++++-----
++ src/x86/ffitarget.h |   2 +
++ src/x86/unix64.S    | 323 +++++++++++++++++++++-----------------------
++ 3 files changed, 230 insertions(+), 198 deletions(-)
++
++diff --git a/src/x86/ffi64.c b/src/x86/ffi64.c
++index 5a5e043..384a93a 100644
++--- a/src/x86/ffi64.c
+++++ b/src/x86/ffi64.c
++@@ -32,6 +32,7 @@
++ 
++ #include <stdlib.h>
++ #include <stdarg.h>
+++#include <stdint.h>
++ 
++ #ifdef __x86_64__
++ 
++@@ -62,10 +63,12 @@ struct register_args
++   /* Registers for argument passing.  */
++   UINT64 gpr[MAX_GPR_REGS];
++   union big_int_union sse[MAX_SSE_REGS];
+++  UINT64 rax;	/* ssecount */
+++  UINT64 r10;	/* static chain */
++ };
++ 
++ extern void ffi_call_unix64 (void *args, unsigned long bytes, unsigned flags,
++-			     void *raddr, void (*fnaddr)(void), unsigned ssecount);
+++			     void *raddr, void (*fnaddr)(void)) FFI_HIDDEN;
++ 
++ /* All reference to register classes here is identical to the code in
++    gcc/config/i386/i386.c. Do *not* change one without the other.  */
++@@ -358,6 +361,9 @@ ffi_prep_cif_machdep (ffi_cif *cif)
++   enum x86_64_reg_class classes[MAX_CLASSES];
++   size_t bytes, n;
++ 
+++  if (cif->abi != FFI_UNIX64)
+++    return FFI_BAD_ABI;
+++
++   gprcount = ssecount = 0;
++ 
++   flags = cif->rtype->type;
++@@ -419,8 +425,9 @@ ffi_prep_cif_machdep (ffi_cif *cif)
++   return FFI_OK;
++ }
++ 
++-void
++-ffi_call (ffi_cif *cif, void (*fn)(void), void *rvalue, void **avalue)
+++static void
+++ffi_call_int (ffi_cif *cif, void (*fn)(void), void *rvalue,
+++	      void **avalue, void *closure)
++ {
++   enum x86_64_reg_class classes[MAX_CLASSES];
++   char *stack, *argp;
++@@ -445,6 +452,8 @@ ffi_call (ffi_cif *cif, void (*fn)(void), void *rvalue, void **avalue)
++   reg_args = (struct register_args *) stack;
++   argp = stack + sizeof (struct register_args);
++ 
+++  reg_args->r10 = (uintptr_t) closure;
+++
++   gprcount = ssecount = 0;
++ 
++   /* If the return value is passed in memory, add the pointer as the
++@@ -521,13 +530,27 @@ ffi_call (ffi_cif *cif, void (*fn)(void), void *rvalue, void **avalue)
++ 	    }
++ 	}
++     }
+++  reg_args->rax = ssecount;
++ 
++   ffi_call_unix64 (stack, cif->bytes + sizeof (struct register_args),
++-		   cif->flags, rvalue, fn, ssecount);
+++		   cif->flags, rvalue, fn);
++ }
++ 
+++void
+++ffi_call (ffi_cif *cif, void (*fn)(void), void *rvalue, void **avalue)
+++{
+++  ffi_call_int (cif, fn, rvalue, avalue, NULL);
+++}
+++
+++void
+++ffi_call_go (ffi_cif *cif, void (*fn)(void), void *rvalue,
+++	     void **avalue, void *closure)
+++{
+++  ffi_call_int (cif, fn, rvalue, avalue, closure);
+++}
++ 
++-extern void ffi_closure_unix64(void);
+++extern void ffi_closure_unix64(void) FFI_HIDDEN;
+++extern void ffi_closure_unix64_sse(void) FFI_HIDDEN;
++ 
++ ffi_status
++ ffi_prep_closure_loc (ffi_closure* closure,
++@@ -536,29 +559,26 @@ ffi_prep_closure_loc (ffi_closure* closure,
++ 		      void *user_data,
++ 		      void *codeloc)
++ {
++-  volatile unsigned short *tramp;
++-
++-  /* Sanity check on the cif ABI.  */
++-  {
++-    int abi = cif->abi;
++-    if (UNLIKELY (! (abi > FFI_FIRST_ABI && abi < FFI_LAST_ABI)))
++-      return FFI_BAD_ABI;
++-  }
++-
++-  tramp = (volatile unsigned short *) &closure->tramp[0];
+++  static const unsigned char trampoline[16] = {
+++    /* leaq  -0x7(%rip),%r10   # 0x0  */
+++    0x4c, 0x8d, 0x15, 0xf9, 0xff, 0xff, 0xff,
+++    /* jmpq  *0x3(%rip)        # 0x10 */
+++    0xff, 0x25, 0x03, 0x00, 0x00, 0x00,
+++    /* nopl  (%rax) */
+++    0x0f, 0x1f, 0x00
+++  };
+++  void (*dest)(void);
++ 
++-  tramp[0] = 0xbb49;		/* mov <code>, %r11	*/
++-  *((unsigned long long * volatile) &tramp[1])
++-    = (unsigned long) ffi_closure_unix64;
++-  tramp[5] = 0xba49;		/* mov <data>, %r10	*/
++-  *((unsigned long long * volatile) &tramp[6])
++-    = (unsigned long) codeloc;
+++  if (cif->abi != FFI_UNIX64)
+++    return FFI_BAD_ABI;
++ 
++-  /* Set the carry bit iff the function uses any sse registers.
++-     This is clc or stc, together with the first byte of the jmp.  */
++-  tramp[10] = cif->flags & (1 << 11) ? 0x49f9 : 0x49f8;
+++  if (cif->flags & (1 << 11))
+++    dest = ffi_closure_unix64_sse;
+++  else
+++    dest = ffi_closure_unix64;
++ 
++-  tramp[11] = 0xe3ff;			/* jmp *%r11    */
+++  memcpy (closure->tramp, trampoline, sizeof(trampoline));
+++  *(UINT64 *)(closure->tramp + 16) = (uintptr_t)dest;
++ 
++   closure->cif = cif;
++   closure->fun = fun;
++@@ -567,18 +587,20 @@ ffi_prep_closure_loc (ffi_closure* closure,
++   return FFI_OK;
++ }
++ 
++-int
++-ffi_closure_unix64_inner(ffi_closure *closure, void *rvalue,
++-			 struct register_args *reg_args, char *argp)
+++int FFI_HIDDEN
+++ffi_closure_unix64_inner(ffi_cif *cif,
+++			 void (*fun)(ffi_cif*, void*, void**, void*),
+++			 void *user_data,
+++			 void *rvalue,
+++			 struct register_args *reg_args,
+++			 char *argp)
++ {
++-  ffi_cif *cif;
++   void **avalue;
++   ffi_type **arg_types;
++   long i, avn;
++   int gprcount, ssecount, ngpr, nsse;
++   int ret;
++ 
++-  cif = closure->cif;
++   avalue = alloca(cif->nargs * sizeof(void *));
++   gprcount = ssecount = 0;
++ 
++@@ -667,10 +689,29 @@ ffi_closure_unix64_inner(ffi_closure *closure, void *rvalue,
++     }
++ 
++   /* Invoke the closure.  */
++-  closure->fun (cif, rvalue, avalue, closure->user_data);
+++  fun (cif, rvalue, avalue, user_data);
++ 
++   /* Tell assembly how to perform return type promotions.  */
++   return ret;
++ }
++ 
+++extern void ffi_go_closure_unix64(void) FFI_HIDDEN;
+++extern void ffi_go_closure_unix64_sse(void) FFI_HIDDEN;
+++
+++ffi_status
+++ffi_prep_go_closure (ffi_go_closure* closure, ffi_cif* cif,
+++		     void (*fun)(ffi_cif*, void*, void**, void*))
+++{
+++  if (cif->abi != FFI_UNIX64)
+++    return FFI_BAD_ABI;
+++
+++  closure->tramp = (cif->flags & (1 << 11)
+++		    ? ffi_go_closure_unix64_sse
+++		    : ffi_go_closure_unix64);
+++  closure->cif = cif;
+++  closure->fun = fun;
+++
+++  return FFI_OK;
+++}
+++
++ #endif /* __x86_64__ */
++diff --git a/src/x86/ffitarget.h b/src/x86/ffitarget.h
++index b2afe91..3c9837f 100644
++--- a/src/x86/ffitarget.h
+++++ b/src/x86/ffitarget.h
++@@ -114,6 +114,7 @@ typedef enum ffi_abi {
++ /* ---- Definitions for closures ----------------------------------------- */
++ 
++ #define FFI_CLOSURES 1
+++
++ #define FFI_TYPE_SMALL_STRUCT_1B (FFI_TYPE_LAST + 1)
++ #define FFI_TYPE_SMALL_STRUCT_2B (FFI_TYPE_LAST + 2)
++ #define FFI_TYPE_SMALL_STRUCT_4B (FFI_TYPE_LAST + 3)
++@@ -122,6 +123,7 @@ typedef enum ffi_abi {
++ #if defined (X86_64) || (defined (__x86_64__) && defined (X86_DARWIN))
++ #define FFI_TRAMPOLINE_SIZE 24
++ #define FFI_NATIVE_RAW_API 0
+++#define FFI_GO_CLOSURES 1
++ #else
++ #ifdef X86_WIN32
++ #define FFI_TRAMPOLINE_SIZE 52
++diff --git a/src/x86/unix64.S b/src/x86/unix64.S
++index dcd6bc7..134cb3d 100644
++--- a/src/x86/unix64.S
+++++ b/src/x86/unix64.S
++@@ -30,6 +30,7 @@
++ #define LIBFFI_ASM	
++ #include <fficonfig.h>
++ #include <ffi.h>
+++#include <ffi_cfi.h>
++ 
++ .text
++ 
++@@ -43,9 +44,10 @@
++ 	.align	2
++ 	.globl	ffi_call_unix64
++ 	.type	ffi_call_unix64,@function
+++	FFI_HIDDEN(ffi_call_unix64)
++ 
++ ffi_call_unix64:
++-.LUW0:
+++	cfi_startproc
++ 	movq	(%rsp), %r10		/* Load return address.  */
++ 	leaq	(%rdi, %rsi), %rax	/* Find local stack base.  */
++ 	movq	%rdx, (%rax)		/* Save flags.  */
++@@ -53,24 +55,36 @@ ffi_call_unix64:
++ 	movq	%rbp, 16(%rax)		/* Save old frame pointer.  */
++ 	movq	%r10, 24(%rax)		/* Relocate return address.  */
++ 	movq	%rax, %rbp		/* Finalize local stack frame.  */
++-.LUW1:
+++
+++	/* New stack frame based off rbp.  This is a itty bit of unwind
+++	   trickery in that the CFA *has* changed.  There is no easy way
+++	   to describe it correctly on entry to the function.  Fortunately,
+++	   it doesn't matter too much since at all points we can correctly
+++	   unwind back to ffi_call.  Note that the location to which we
+++	   moved the return address is (the new) CFA-8, so from the
+++	   perspective of the unwind info, it hasn't moved.  */
+++	cfi_def_cfa(%rbp, 32)
+++	cfi_rel_offset(%rbp, 16)
+++
++ 	movq	%rdi, %r10		/* Save a copy of the register area. */
++ 	movq	%r8, %r11		/* Save a copy of the target fn.  */
++ 	movl	%r9d, %eax		/* Set number of SSE registers.  */
++ 
++ 	/* Load up all argument registers.  */
++ 	movq	(%r10), %rdi
++-	movq	8(%r10), %rsi
++-	movq	16(%r10), %rdx
++-	movq	24(%r10), %rcx
++-	movq	32(%r10), %r8
++-	movq	40(%r10), %r9
+++	movq	0x08(%r10), %rsi
+++	movq	0x10(%r10), %rdx
+++	movq	0x18(%r10), %rcx
+++	movq	0x20(%r10), %r8
+++	movq	0x28(%r10), %r9
+++	movl	0xb0(%r10), %eax
++ 	testl	%eax, %eax
++ 	jnz	.Lload_sse
++ .Lret_from_load_sse:
++ 
++-	/* Deallocate the reg arg area.  */
++-	leaq	176(%r10), %rsp
+++	/* Deallocate the reg arg area, except for r10, then load via pop.  */
+++	leaq	0xb8(%r10), %rsp
+++	popq	%r10
++ 
++ 	/* Call the user function.  */
++ 	call	*%r11
++@@ -81,7 +95,9 @@ ffi_call_unix64:
++ 	movq	0(%rbp), %rcx		/* Reload flags.  */
++ 	movq	8(%rbp), %rdi		/* Reload raddr.  */
++ 	movq	16(%rbp), %rbp		/* Reload old frame pointer.  */
++-.LUW2:
+++	cfi_remember_state
+++	cfi_def_cfa(%rsp, 8)
+++	cfi_restore(%rbp)
++ 
++ 	/* The first byte of the flags contains the FFI_TYPE.  */
++ 	movzbl	%cl, %r10d
++@@ -90,6 +106,8 @@ ffi_call_unix64:
++ 	addq	%r11, %r10
++ 	jmp	*%r10
++ 
+++	.section .rodata
+++	.align	2
++ .Lstore_table:
++ 	.long	.Lst_void-.Lstore_table		/* FFI_TYPE_VOID */
++ 	.long	.Lst_sint32-.Lstore_table	/* FFI_TYPE_INT */
++@@ -106,6 +124,7 @@ ffi_call_unix64:
++ 	.long	.Lst_int64-.Lstore_table	/* FFI_TYPE_SINT64 */
++ 	.long	.Lst_struct-.Lstore_table	/* FFI_TYPE_STRUCT */
++ 	.long	.Lst_int64-.Lstore_table	/* FFI_TYPE_POINTER */
+++	.previous
++ 
++ 	.align 2
++ .Lst_void:
++@@ -188,49 +207,83 @@ ffi_call_unix64:
++ 	   It's not worth an indirect jump to load the exact set of
++ 	   SSE registers needed; zero or all is a good compromise.  */
++ 	.align 2
++-.LUW3:
+++	cfi_restore_state
++ .Lload_sse:
++-	movdqa	48(%r10), %xmm0
++-	movdqa	64(%r10), %xmm1
++-	movdqa	80(%r10), %xmm2
++-	movdqa	96(%r10), %xmm3
++-	movdqa	112(%r10), %xmm4
++-	movdqa	128(%r10), %xmm5
++-	movdqa	144(%r10), %xmm6
++-	movdqa	160(%r10), %xmm7
+++	movdqa	0x30(%r10), %xmm0
+++	movdqa	0x40(%r10), %xmm1
+++	movdqa	0x50(%r10), %xmm2
+++	movdqa	0x60(%r10), %xmm3
+++	movdqa	0x70(%r10), %xmm4
+++	movdqa	0x80(%r10), %xmm5
+++	movdqa	0x90(%r10), %xmm6
+++	movdqa	0xa0(%r10), %xmm7
++ 	jmp	.Lret_from_load_sse
++ 
++-.LUW4:
+++	cfi_endproc
++ 	.size    ffi_call_unix64,.-ffi_call_unix64
++ 
+++/* 6 general registers, 8 vector registers,
+++   16 bytes of rvalue, 8 bytes of alignment.  */
+++#define ffi_closure_OFS_G	0
+++#define ffi_closure_OFS_V	(6*8)
+++#define ffi_closure_OFS_RVALUE	(ffi_closure_OFS_V + 8*16)
+++#define ffi_closure_FS		(ffi_closure_OFS_RVALUE + 16 + 8)
+++
+++/* The location of rvalue within the red zone after deallocating the frame.  */
+++#define ffi_closure_RED_RVALUE	(ffi_closure_OFS_RVALUE - ffi_closure_FS)
+++
+++	.align	2
+++	.globl	ffi_closure_unix64_sse
+++	.type	ffi_closure_unix64_sse,@function
+++	FFI_HIDDEN(ffi_closure_unix64_sse)
+++
+++ffi_closure_unix64_sse:
+++	cfi_startproc
+++	subq	$ffi_closure_FS, %rsp
+++	cfi_adjust_cfa_offset(ffi_closure_FS)
+++
+++	movdqa	%xmm0, ffi_closure_OFS_V+0x00(%rsp)
+++	movdqa	%xmm1, ffi_closure_OFS_V+0x10(%rsp)
+++	movdqa	%xmm2, ffi_closure_OFS_V+0x20(%rsp)
+++	movdqa	%xmm3, ffi_closure_OFS_V+0x30(%rsp)
+++	movdqa	%xmm4, ffi_closure_OFS_V+0x40(%rsp)
+++	movdqa	%xmm5, ffi_closure_OFS_V+0x50(%rsp)
+++	movdqa	%xmm6, ffi_closure_OFS_V+0x60(%rsp)
+++	movdqa	%xmm7, ffi_closure_OFS_V+0x70(%rsp)
+++	jmp	0f
+++
+++	cfi_endproc
+++	.size	ffi_closure_unix64_sse,.-ffi_closure_unix64_sse
+++
++ 	.align	2
++-	.globl ffi_closure_unix64
+++	.globl	ffi_closure_unix64
++ 	.type	ffi_closure_unix64,@function
+++	FFI_HIDDEN(ffi_closure_unix64)
++ 
++ ffi_closure_unix64:
++-.LUW5:
++-	/* The carry flag is set by the trampoline iff SSE registers
++-	   are used.  Don't clobber it before the branch instruction.  */
++-	leaq    -200(%rsp), %rsp
++-.LUW6:
++-	movq	%rdi, (%rsp)
++-	movq    %rsi, 8(%rsp)
++-	movq    %rdx, 16(%rsp)
++-	movq    %rcx, 24(%rsp)
++-	movq    %r8, 32(%rsp)
++-	movq    %r9, 40(%rsp)
++-	jc      .Lsave_sse
++-.Lret_from_save_sse:
++-
++-	movq	%r10, %rdi
++-	leaq	176(%rsp), %rsi
++-	movq	%rsp, %rdx
++-	leaq	208(%rsp), %rcx
++-	call	ffi_closure_unix64_inner@PLT
+++	cfi_startproc
+++	subq	$ffi_closure_FS, %rsp
+++	cfi_adjust_cfa_offset(ffi_closure_FS)
+++0:
+++	movq	%rdi, ffi_closure_OFS_G+0x00(%rsp)
+++	movq    %rsi, ffi_closure_OFS_G+0x08(%rsp)
+++	movq    %rdx, ffi_closure_OFS_G+0x10(%rsp)
+++	movq    %rcx, ffi_closure_OFS_G+0x18(%rsp)
+++	movq    %r8,  ffi_closure_OFS_G+0x20(%rsp)
+++	movq    %r9,  ffi_closure_OFS_G+0x28(%rsp)
+++
+++	movq	24(%r10), %rdi				/* Load cif */
+++	movq	32(%r10), %rsi				/* Load fun */
+++	movq	40(%r10), %rdx				/* Load user_data */
+++.Ldo_closure:
+++	leaq	ffi_closure_OFS_RVALUE(%rsp), %rcx	/* Load rvalue */
+++	movq	%rsp, %r8				/* Load reg_args */
+++	leaq	ffi_closure_FS+8(%rsp), %r9		/* Load argp */
+++	call	ffi_closure_unix64_inner
++ 
++ 	/* Deallocate stack frame early; return value is now in redzone.  */
++-	addq	$200, %rsp
++-.LUW7:
+++	addq	$ffi_closure_FS, %rsp
+++	cfi_adjust_cfa_offset(-ffi_closure_FS)
++ 
++ 	/* The first byte of the return value contains the FFI_TYPE.  */
++ 	movzbl	%al, %r10d
++@@ -239,6 +292,8 @@ ffi_closure_unix64:
++ 	addq	%r11, %r10
++ 	jmp	*%r10
++ 
+++	.section .rodata
+++	.align	2
++ .Lload_table:
++ 	.long	.Lld_void-.Lload_table		/* FFI_TYPE_VOID */
++ 	.long	.Lld_int32-.Lload_table		/* FFI_TYPE_INT */
++@@ -255,6 +310,7 @@ ffi_closure_unix64:
++ 	.long	.Lld_int64-.Lload_table		/* FFI_TYPE_SINT64 */
++ 	.long	.Lld_struct-.Lload_table	/* FFI_TYPE_STRUCT */
++ 	.long	.Lld_int64-.Lload_table		/* FFI_TYPE_POINTER */
+++	.previous
++ 
++ 	.align 2
++ .Lld_void:
++@@ -262,32 +318,32 @@ ffi_closure_unix64:
++ 
++ 	.align 2
++ .Lld_int8:
++-	movzbl	-24(%rsp), %eax
+++	movzbl	ffi_closure_RED_RVALUE(%rsp), %eax
++ 	ret
++ 	.align 2
++ .Lld_int16:
++-	movzwl	-24(%rsp), %eax
+++	movzwl	ffi_closure_RED_RVALUE(%rsp), %eax
++ 	ret
++ 	.align 2
++ .Lld_int32:
++-	movl	-24(%rsp), %eax
+++	movl	ffi_closure_RED_RVALUE(%rsp), %eax
++ 	ret
++ 	.align 2
++ .Lld_int64:
++-	movq	-24(%rsp), %rax
+++	movq	ffi_closure_RED_RVALUE(%rsp), %rax
++ 	ret
++ 
++ 	.align 2
++ .Lld_float:
++-	movss	-24(%rsp), %xmm0
+++	movss	ffi_closure_RED_RVALUE(%rsp), %xmm0
++ 	ret
++ 	.align 2
++ .Lld_double:
++-	movsd	-24(%rsp), %xmm0
+++	movsd	ffi_closure_RED_RVALUE(%rsp), %xmm0
++ 	ret
++ 	.align 2
++ .Lld_ldouble:
++-	fldt	-24(%rsp)
+++	fldt	ffi_closure_RED_RVALUE(%rsp)
++ 	ret
++ 
++ 	.align 2
++@@ -297,136 +353,69 @@ ffi_closure_unix64:
++ 	   both rdx and xmm1 with the second word.  For the remaining,
++ 	   bit 8 set means xmm0 gets the second word, and bit 9 means
++ 	   that rax gets the second word.  */
++-	movq	-24(%rsp), %rcx
++-	movq	-16(%rsp), %rdx
++-	movq	-16(%rsp), %xmm1
+++	movq	ffi_closure_RED_RVALUE(%rsp), %rcx
+++	movq	ffi_closure_RED_RVALUE+8(%rsp), %rdx
+++	movq	ffi_closure_RED_RVALUE+8(%rsp), %xmm1
++ 	testl	$0x100, %eax
++ 	cmovnz	%rdx, %rcx
++ 	movd	%rcx, %xmm0
++ 	testl	$0x200, %eax
++-	movq	-24(%rsp), %rax
+++	movq	ffi_closure_RED_RVALUE(%rsp), %rax
++ 	cmovnz	%rdx, %rax
++ 	ret
++ 
++-	/* See the comment above .Lload_sse; the same logic applies here.  */
++-	.align 2
++-.LUW8:
++-.Lsave_sse:
++-	movdqa	%xmm0, 48(%rsp)
++-	movdqa	%xmm1, 64(%rsp)
++-	movdqa	%xmm2, 80(%rsp)
++-	movdqa	%xmm3, 96(%rsp)
++-	movdqa	%xmm4, 112(%rsp)
++-	movdqa	%xmm5, 128(%rsp)
++-	movdqa	%xmm6, 144(%rsp)
++-	movdqa	%xmm7, 160(%rsp)
++-	jmp	.Lret_from_save_sse
++-
++-.LUW9:
+++	cfi_endproc
++ 	.size	ffi_closure_unix64,.-ffi_closure_unix64
++ 
++-#ifdef __GNUC__
++-/* Only emit DWARF unwind info when building with the GNU toolchain.  */
++-
++-#ifdef HAVE_AS_X86_64_UNWIND_SECTION_TYPE
++-	.section	.eh_frame,"a",@unwind
++-#else
++-	.section	.eh_frame,"a",@progbits
++-#endif
++-.Lframe1:
++-	.long	.LECIE1-.LSCIE1		/* CIE Length */
++-.LSCIE1:
++-	.long	0			/* CIE Identifier Tag */
++-	.byte	1			/* CIE Version */
++-	.ascii "zR\0"			/* CIE Augmentation */
++-	.uleb128 1			/* CIE Code Alignment Factor */
++-	.sleb128 -8			/* CIE Data Alignment Factor */
++-	.byte	0x10			/* CIE RA Column */
++-	.uleb128 1			/* Augmentation size */
++-	.byte	0x1b			/* FDE Encoding (pcrel sdata4) */
++-	.byte	0xc			/* DW_CFA_def_cfa, %rsp offset 8 */
++-	.uleb128 7
++-	.uleb128 8
++-	.byte	0x80+16			/* DW_CFA_offset, %rip offset 1*-8 */
++-	.uleb128 1
++-	.align 8
++-.LECIE1:
++-.LSFDE1:
++-	.long	.LEFDE1-.LASFDE1	/* FDE Length */
++-.LASFDE1:
++-	.long	.LASFDE1-.Lframe1	/* FDE CIE offset */
++-#if HAVE_AS_X86_PCREL
++-	.long	.LUW0-.			/* FDE initial location */
++-#else
++-	.long	.LUW0@rel
++-#endif
++-	.long	.LUW4-.LUW0		/* FDE address range */
++-	.uleb128 0x0			/* Augmentation size */
++-
++-	.byte	0x4			/* DW_CFA_advance_loc4 */
++-	.long	.LUW1-.LUW0
++-
++-	/* New stack frame based off rbp.  This is a itty bit of unwind
++-	   trickery in that the CFA *has* changed.  There is no easy way
++-	   to describe it correctly on entry to the function.  Fortunately,
++-	   it doesn't matter too much since at all points we can correctly
++-	   unwind back to ffi_call.  Note that the location to which we
++-	   moved the return address is (the new) CFA-8, so from the
++-	   perspective of the unwind info, it hasn't moved.  */
++-	.byte	0xc			/* DW_CFA_def_cfa, %rbp offset 32 */
++-	.uleb128 6
++-	.uleb128 32
++-	.byte	0x80+6			/* DW_CFA_offset, %rbp offset 2*-8 */
++-	.uleb128 2
++-	.byte	0xa			/* DW_CFA_remember_state */
++-
++-	.byte	0x4			/* DW_CFA_advance_loc4 */
++-	.long	.LUW2-.LUW1
++-	.byte	0xc			/* DW_CFA_def_cfa, %rsp offset 8 */
++-	.uleb128 7
++-	.uleb128 8
++-	.byte	0xc0+6			/* DW_CFA_restore, %rbp */
++-
++-	.byte	0x4			/* DW_CFA_advance_loc4 */
++-	.long	.LUW3-.LUW2
++-	.byte	0xb			/* DW_CFA_restore_state */
++-
++-	.align 8
++-.LEFDE1:
++-.LSFDE3:
++-	.long	.LEFDE3-.LASFDE3	/* FDE Length */
++-.LASFDE3:
++-	.long	.LASFDE3-.Lframe1	/* FDE CIE offset */
++-#if HAVE_AS_X86_PCREL
++-	.long	.LUW5-.			/* FDE initial location */
++-#else
++-	.long	.LUW5@rel
++-#endif
++-	.long	.LUW9-.LUW5		/* FDE address range */
++-	.uleb128 0x0			/* Augmentation size */
++-
++-	.byte	0x4			/* DW_CFA_advance_loc4 */
++-	.long	.LUW6-.LUW5
++-	.byte	0xe			/* DW_CFA_def_cfa_offset */
++-	.uleb128 208
++-	.byte	0xa			/* DW_CFA_remember_state */
++-
++-	.byte	0x4			/* DW_CFA_advance_loc4 */
++-	.long	.LUW7-.LUW6
++-	.byte	0xe			/* DW_CFA_def_cfa_offset */
++-	.uleb128 8
++-
++-	.byte	0x4			/* DW_CFA_advance_loc4 */
++-	.long	.LUW8-.LUW7
++-	.byte	0xb			/* DW_CFA_restore_state */
+++	.align	2
+++	.globl	ffi_go_closure_unix64_sse
+++	.type	ffi_go_closure_unix64_sse,@function
+++	FFI_HIDDEN(ffi_go_closure_unix64_sse)
+++
+++ffi_go_closure_unix64_sse:
+++	cfi_startproc
+++	subq	$ffi_closure_FS, %rsp
+++	cfi_adjust_cfa_offset(ffi_closure_FS)
+++
+++	movdqa	%xmm0, ffi_closure_OFS_V+0x00(%rsp)
+++	movdqa	%xmm1, ffi_closure_OFS_V+0x10(%rsp)
+++	movdqa	%xmm2, ffi_closure_OFS_V+0x20(%rsp)
+++	movdqa	%xmm3, ffi_closure_OFS_V+0x30(%rsp)
+++	movdqa	%xmm4, ffi_closure_OFS_V+0x40(%rsp)
+++	movdqa	%xmm5, ffi_closure_OFS_V+0x50(%rsp)
+++	movdqa	%xmm6, ffi_closure_OFS_V+0x60(%rsp)
+++	movdqa	%xmm7, ffi_closure_OFS_V+0x70(%rsp)
+++	jmp	0f
+++
+++	cfi_endproc
+++	.size	ffi_go_closure_unix64_sse,.-ffi_go_closure_unix64_sse
++ 
++-	.align 8
++-.LEFDE3:
+++	.align	2
+++	.globl	ffi_go_closure_unix64
+++	.type	ffi_go_closure_unix64,@function
+++	FFI_HIDDEN(ffi_go_closure_unix64)
+++
+++ffi_go_closure_unix64:
+++	cfi_startproc
+++	subq	$ffi_closure_FS, %rsp
+++	cfi_adjust_cfa_offset(ffi_closure_FS)
+++0:
+++	movq	%rdi, ffi_closure_OFS_G+0x00(%rsp)
+++	movq    %rsi, ffi_closure_OFS_G+0x08(%rsp)
+++	movq    %rdx, ffi_closure_OFS_G+0x10(%rsp)
+++	movq    %rcx, ffi_closure_OFS_G+0x18(%rsp)
+++	movq    %r8,  ffi_closure_OFS_G+0x20(%rsp)
+++	movq    %r9,  ffi_closure_OFS_G+0x28(%rsp)
+++
+++	movq	8(%r10), %rdi		/* Load cif */
+++	movq	16(%r10), %rsi		/* Load fun */
+++	movq	%r10, %rdx		/* Load closure (user_data) */
+++	jmp	.Ldo_closure
+++
+++	cfi_endproc
+++	.size	ffi_go_closure_unix64,.-ffi_go_closure_unix64
++ 
++-#endif /* __GNUC__ */
++-	
++ #endif /* __x86_64__ */
++-
++ #if defined __ELF__ && defined __linux__
++ 	.section	.note.GNU-stack,"",@progbits
++ #endif
++-- 
++2.29.2
++
+diff --git a/0004-Removing-unnecessary-instruction-from-ffi_call_unix6.patch b/0004-Removing-unnecessary-instruction-from-ffi_call_unix6.patch
+new file mode 100644
+index 0000000..5d1a513
+--- /dev/null
++++ b/0004-Removing-unnecessary-instruction-from-ffi_call_unix6.patch
+@@ -0,0 +1,47 @@
++From 940c2d5db4e231d86ae1b5c6580e147867b93688 Mon Sep 17 00:00:00 2001
++From: petersn <schmidtnielsenpeter@gmail.com>
++Date: Tue, 27 Oct 2020 07:02:36 -0700
++Subject: [PATCH 4/7] Removing unnecessary instruction from ffi_call_unix64
++ (#588)
++
++unix64.S's `ffi_call_unix64` looks like it used to take six parameters,
++where the sixth said the number of SSE register arguments. However,
++currently the function only takes five parameters, and the number of SSE
++register arguments is encoded in the `struct register_args *` passed as
++the first parameter to `ffi_call_unix64`. This change removes an
++instruction that tries to use this missing sixth parameter as the number
++of SSE arguments.
++
++This fix should not change any behavior, nor fix any bugs, because a few
++instructions later the value moved from %r9d into %eax is overwritten by
++the correct value anyway. This change merely makes the code a tad less
++confusing, because currently the assembly moves from a register (r9)
++whose value is never set.
++---
++ src/x86/unix64.S | 3 +--
++ 1 file changed, 1 insertion(+), 2 deletions(-)
++
++diff --git a/src/x86/unix64.S b/src/x86/unix64.S
++index 134cb3d..9bfdf7c 100644
++--- a/src/x86/unix64.S
+++++ b/src/x86/unix64.S
++@@ -68,7 +68,6 @@ ffi_call_unix64:
++ 
++ 	movq	%rdi, %r10		/* Save a copy of the register area. */
++ 	movq	%r8, %r11		/* Save a copy of the target fn.  */
++-	movl	%r9d, %eax		/* Set number of SSE registers.  */
++ 
++ 	/* Load up all argument registers.  */
++ 	movq	(%r10), %rdi
++@@ -77,7 +76,7 @@ ffi_call_unix64:
++ 	movq	0x18(%r10), %rcx
++ 	movq	0x20(%r10), %r8
++ 	movq	0x28(%r10), %r9
++-	movl	0xb0(%r10), %eax
+++	movl	0xb0(%r10), %eax	/* Set number of SSE registers.  */
++ 	testl	%eax, %eax
++ 	jnz	.Lload_sse
++ .Lret_from_load_sse:
++-- 
++2.29.2
++
+diff --git a/0005-Take-a-float-absolute-value-using-fabs-instead-of-ab.patch b/0005-Take-a-float-absolute-value-using-fabs-instead-of-ab.patch
+new file mode 100644
+index 0000000..bef5574
+--- /dev/null
++++ b/0005-Take-a-float-absolute-value-using-fabs-instead-of-ab.patch
+@@ -0,0 +1,28 @@
++From 83dd47756cf41b8404aa1b89c6ba37b3f259f6d7 Mon Sep 17 00:00:00 2001
++From: Anatoly Trosinenko <anatoly.trosinenko@gmail.com>
++Date: Fri, 14 Nov 2014 14:21:35 +0300
++Subject: [PATCH 5/7] Take a float absolute value using fabs() instead of
++ abs().
++
++Replace integer abs() by floating point fabs() in the approximate
++equality check for float values.
++---
++ testsuite/libffi.call/cls_many_mixed_args.c | 2 +-
++ 1 file changed, 1 insertion(+), 1 deletion(-)
++
++diff --git a/testsuite/libffi.call/cls_many_mixed_args.c b/testsuite/libffi.call/cls_many_mixed_args.c
++index e4b1eb1..7fd6c82 100644
++--- a/testsuite/libffi.call/cls_many_mixed_args.c
+++++ b/testsuite/libffi.call/cls_many_mixed_args.c
++@@ -63,7 +63,7 @@ int main (void)
++ 
++   res = (((cls_ret_double)code))(0.1, 0.2, 0.3, 0.4, 5, 0.6, 0.7, 0.8, 0.9, 10,
++                                  1.1, 12, 1.3, 14, 1.5, 16);
++-  if (abs(res - expected) < FLT_EPSILON)
+++  if (fabs(res - expected) < FLT_EPSILON)
++     exit(0);
++   else
++     abort();
++-- 
++2.29.2
++
+diff --git a/0006-x86-Add-indirect-branch-tracking-support.patch b/0006-x86-Add-indirect-branch-tracking-support.patch
+new file mode 100644
+index 0000000..b755a98
+--- /dev/null
++++ b/0006-x86-Add-indirect-branch-tracking-support.patch
+@@ -0,0 +1,519 @@
++From 53970c81591d16ef91864168f5c7f6b3ebbe8b4c Mon Sep 17 00:00:00 2001
++From: "H.J. Lu" <hjl.tools@gmail.com>
++Date: Tue, 4 Feb 2020 11:47:42 -0800
++Subject: [PATCH 6/7] x86: Add indirect branch tracking support
++
++Intel Control-flow Enforcement Technology (CET):
++
++https://software.intel.com/en-us/articles/intel-sdm
++
++contains shadow stack (SHSTK) and indirect branch tracking (IBT).  When
++CET is enabled, ELF object files must be marked with .note.gnu.property
++section.  When Intel CET is enabled, include <cet.h> in assembly codes
++to mark Intel CET support.
++
++Also when IBT is enabled, all indirect branch targets must start with
++ENDBR instruction and notrack prefix can be used to disable IBT on
++indirect branch.  <cet.h> defines _CET_ENDBR which can be used in
++assembly codes for ENDBR instruction.  If <cet.h> isn't included,
++define _CET_ENDBR as empty so that _CET_ENDBR can be used in assembly
++codes.
++---
++ src/x86/ffitarget.h |  9 +++++++++
++ src/x86/sysv.S      | 27 +++++++++++++++++++++++++--
++ src/x86/unix64.S    | 26 ++++++++++++++++++++++++++
++ src/x86/win32.S     | 43 ++++++++++++++++++++++++++++++++++++++++---
++ 4 files changed, 100 insertions(+), 5 deletions(-)
++
++diff --git a/src/x86/ffitarget.h b/src/x86/ffitarget.h
++index 3c9837f..44122d6 100644
++--- a/src/x86/ffitarget.h
+++++ b/src/x86/ffitarget.h
++@@ -141,5 +141,14 @@ typedef enum ffi_abi {
++ #endif
++ #endif
++ 
+++#if !defined(GENERATE_LIBFFI_MAP) && defined(__ASSEMBLER__) \
+++    && defined(__CET__)
+++# include <cet.h>
+++# define _CET_NOTRACK notrack
+++#else
+++# define _CET_ENDBR
+++# define _CET_NOTRACK
+++#endif
+++
++ #endif
++ 
++diff --git a/src/x86/sysv.S b/src/x86/sysv.S
++index 3bd5477..11bae8f 100644
++--- a/src/x86/sysv.S
+++++ b/src/x86/sysv.S
++@@ -25,12 +25,12 @@
++    DEALINGS IN THE SOFTWARE.
++    ----------------------------------------------------------------------- */
++ 
++-#ifndef __x86_64__
++-
++ #define LIBFFI_ASM	
++ #include <fficonfig.h>
++ #include <ffi.h>
++ 
+++#ifndef __x86_64__
+++
++ .text
++ 
++ .globl ffi_prep_args
++@@ -41,6 +41,7 @@
++ 
++ ffi_call_SYSV:
++ .LFB1:
+++	_CET_ENDBR
++         pushl %ebp
++ .LCFI0:
++         movl  %esp,%ebp
++@@ -109,40 +110,48 @@ ffi_call_SYSV:
++ 
++ 	/* Sign/zero extend as appropriate.  */
++ retsint8:
+++	_CET_ENDBR
++ 	movsbl  %al, %eax
++ 	jmp  retint
++ 
++ retsint16:
+++	_CET_ENDBR
++ 	movswl  %ax, %eax
++ 	jmp  retint
++ 
++ retuint8:
+++	_CET_ENDBR
++ 	movzbl  %al, %eax
++ 	jmp  retint
++ 
++ retuint16:
+++	_CET_ENDBR
++ 	movzwl  %ax, %eax
++ 	jmp  retint
++ 
++ retfloat:
+++	_CET_ENDBR
++ 	/* Load %ecx with the pointer to storage for the return value  */
++ 	movl  24(%ebp),%ecx	
++ 	fstps (%ecx)
++ 	jmp   epilogue
++ 
++ retdouble:
+++	_CET_ENDBR
++ 	/* Load %ecx with the pointer to storage for the return value  */
++ 	movl  24(%ebp),%ecx	
++ 	fstpl (%ecx)
++ 	jmp   epilogue
++ 
++ retlongdouble:
+++	_CET_ENDBR
++ 	/* Load %ecx with the pointer to storage for the return value  */
++ 	movl  24(%ebp),%ecx	
++ 	fstpt (%ecx)
++ 	jmp   epilogue
++ 	
++ retint64:	
+++	_CET_ENDBR
++ 	/* Load %ecx with the pointer to storage for the return value  */
++ 	movl  24(%ebp),%ecx	
++ 	movl  %eax,0(%ecx)
++@@ -150,6 +159,7 @@ retint64:
++ 	jmp   epilogue
++ 	
++ retint:
+++	_CET_ENDBR
++ 	/* Load %ecx with the pointer to storage for the return value  */
++ 	movl  24(%ebp),%ecx	
++ 	movl  %eax,0(%ecx)
++@@ -159,6 +169,17 @@ retstruct:
++ 
++ noretval:
++ epilogue:
+++	_CET_ENDBR
+++#ifdef __CET__
+++	/* Pop shadow stack by 1 frame.  */
+++	xorl %ecx, %ecx
+++	rdsspd %ecx
+++	testl %ecx, %ecx
+++	jz 1f
+++	movl $1, %ecx
+++	incsspd %ecx
+++1:
+++#endif
++         popl %esi
++         movl %ebp,%esp
++         popl %ebp
++@@ -174,6 +195,7 @@ FFI_HIDDEN (ffi_closure_SYSV)
++ 
++ ffi_closure_SYSV:
++ .LFB2:
+++	_CET_ENDBR
++ 	pushl	%ebp
++ .LCFI2:
++ 	movl	%esp, %ebp
++@@ -279,6 +301,7 @@ FFI_HIDDEN (ffi_closure_raw_SYSV)
++ 
++ ffi_closure_raw_SYSV:
++ .LFB3:
+++	_CET_ENDBR
++ 	pushl	%ebp
++ .LCFI4:
++ 	movl	%esp, %ebp
++diff --git a/src/x86/unix64.S b/src/x86/unix64.S
++index 9bfdf7c..1e90780 100644
++--- a/src/x86/unix64.S
+++++ b/src/x86/unix64.S
++@@ -47,6 +47,7 @@
++ 	FFI_HIDDEN(ffi_call_unix64)
++ 
++ ffi_call_unix64:
+++	_CET_ENDBR
++ 	cfi_startproc
++ 	movq	(%rsp), %r10		/* Load return address.  */
++ 	leaq	(%rdi, %rsi), %rax	/* Find local stack base.  */
++@@ -127,55 +128,69 @@ ffi_call_unix64:
++ 
++ 	.align 2
++ .Lst_void:
+++	_CET_ENDBR
++ 	ret
++ 	.align 2
++ 
++ .Lst_uint8:
+++	_CET_ENDBR
++ 	movzbq	%al, %rax
++ 	movq	%rax, (%rdi)
++ 	ret
++ 	.align 2
++ .Lst_sint8:
+++	_CET_ENDBR
++ 	movsbq	%al, %rax
++ 	movq	%rax, (%rdi)
++ 	ret
++ 	.align 2
++ .Lst_uint16:
+++	_CET_ENDBR
++ 	movzwq	%ax, %rax
++ 	movq	%rax, (%rdi)
+++	ret
++ 	.align 2
++ .Lst_sint16:
+++	_CET_ENDBR
++ 	movswq	%ax, %rax
++ 	movq	%rax, (%rdi)
++ 	ret
++ 	.align 2
++ .Lst_uint32:
+++	_CET_ENDBR
++ 	movl	%eax, %eax
++ 	movq	%rax, (%rdi)
+++	ret
++ 	.align 2
++ .Lst_sint32:
+++	_CET_ENDBR
++ 	cltq
++ 	movq	%rax, (%rdi)
++ 	ret
++ 	.align 2
++ .Lst_int64:
+++	_CET_ENDBR
++ 	movq	%rax, (%rdi)
++ 	ret
++ 
++ 	.align 2
++ .Lst_float:
+++	_CET_ENDBR
++ 	movss	%xmm0, (%rdi)
++ 	ret
++ 	.align 2
++ .Lst_double:
+++	_CET_ENDBR
++ 	movsd	%xmm0, (%rdi)
++ 	ret
++ .Lst_ldouble:
+++	_CET_ENDBR
++ 	fstpt	(%rdi)
++ 	ret
++ 
++ 	.align 2
++ .Lst_struct:
+++	_CET_ENDBR
++ 	leaq	-20(%rsp), %rsi		/* Scratch area in redzone.  */
++ 
++ 	/* We have to locate the values now, and since we don't want to
++@@ -238,6 +253,7 @@ ffi_call_unix64:
++ 
++ ffi_closure_unix64_sse:
++ 	cfi_startproc
+++	_CET_ENDBR
++ 	subq	$ffi_closure_FS, %rsp
++ 	cfi_adjust_cfa_offset(ffi_closure_FS)
++ 
++@@ -261,6 +277,7 @@ ffi_closure_unix64_sse:
++ 
++ ffi_closure_unix64:
++ 	cfi_startproc
+++	_CET_ENDBR
++ 	subq	$ffi_closure_FS, %rsp
++ 	cfi_adjust_cfa_offset(ffi_closure_FS)
++ 0:
++@@ -313,40 +330,49 @@ ffi_closure_unix64:
++ 
++ 	.align 2
++ .Lld_void:
+++	_CET_ENDBR
++ 	ret
++ 
++ 	.align 2
++ .Lld_int8:
+++	_CET_ENDBR
++ 	movzbl	ffi_closure_RED_RVALUE(%rsp), %eax
++ 	ret
++ 	.align 2
++ .Lld_int16:
+++	_CET_ENDBR
++ 	movzwl	ffi_closure_RED_RVALUE(%rsp), %eax
++ 	ret
++ 	.align 2
++ .Lld_int32:
+++	_CET_ENDBR
++ 	movl	ffi_closure_RED_RVALUE(%rsp), %eax
++ 	ret
++ 	.align 2
++ .Lld_int64:
+++	_CET_ENDBR
++ 	movq	ffi_closure_RED_RVALUE(%rsp), %rax
++ 	ret
++ 
++ 	.align 2
++ .Lld_float:
+++	_CET_ENDBR
++ 	movss	ffi_closure_RED_RVALUE(%rsp), %xmm0
++ 	ret
++ 	.align 2
++ .Lld_double:
+++	_CET_ENDBR
++ 	movsd	ffi_closure_RED_RVALUE(%rsp), %xmm0
++ 	ret
++ 	.align 2
++ .Lld_ldouble:
+++	_CET_ENDBR
++ 	fldt	ffi_closure_RED_RVALUE(%rsp)
++ 	ret
++ 
++ 	.align 2
++ .Lld_struct:
+++	_CET_ENDBR
++ 	/* There are four possibilities here, %rax/%rdx, %xmm0/%rax,
++ 	   %rax/%xmm0, %xmm0/%xmm1.  We collapse two by always loading
++ 	   both rdx and xmm1 with the second word.  For the remaining,
++diff --git a/src/x86/win32.S b/src/x86/win32.S
++index daf0e79..7325027 100644
++--- a/src/x86/win32.S
+++++ b/src/x86/win32.S
++@@ -482,7 +482,7 @@ cd_epilogue:
++         pop   ebp
++         pop   ecx
++         pop   edx
++-        mov   ecx, DWORD PTR [ecx + (CLOSURE_CIF_OFFSET-10)]
+++        mov   ecx, DWORD PTR [ecx + (CLOSURE_CIF_OFFSET-FFI_TRAMPOLINE_SIZE)]
++         add   esp, DWORD PTR [ecx + CIF_BYTES_OFFSET]
++         mov   ecx, DWORD PTR [ecx + CIF_ABI_OFFSET]
++         cmp   ecx, 3
++@@ -608,46 +608,55 @@ USCORE_SYMBOL(ffi_call_win32):
++ 
++ 	/* Sign/zero extend as appropriate.  */
++ .Lretsint8:
+++	_CET_ENDBR
++ 	movsbl	%al, %eax
++ 	jmp	.Lretint
++ 
++ .Lretsint16:
+++	_CET_ENDBR
++ 	movswl	%ax, %eax
++ 	jmp	.Lretint
++ 
++ .Lretuint8:
+++	_CET_ENDBR
++ 	movzbl	%al, %eax
++ 	jmp	.Lretint
++ 
++ .Lretuint16:
+++	_CET_ENDBR
++ 	movzwl	%ax, %eax
++ 	jmp	.Lretint
++ 
++ .Lretint:
+++	_CET_ENDBR
++         # Load %ecx with the pointer to storage for the return value
++         movl  28(%ebp),%ecx
++         movl  %eax,0(%ecx)
++         jmp   .Lepilogue
++  
++ .Lretfloat:
+++	_CET_ENDBR
++          # Load %ecx with the pointer to storage for the return value
++         movl  28(%ebp),%ecx
++         fstps (%ecx)
++         jmp   .Lepilogue
++  
++ .Lretdouble:
+++	_CET_ENDBR
++         # Load %ecx with the pointer to storage for the return value
++         movl  28(%ebp),%ecx
++         fstpl (%ecx)
++         jmp   .Lepilogue
++  
++ .Lretlongdouble:
+++	_CET_ENDBR
++         # Load %ecx with the pointer to storage for the return value
++         movl  28(%ebp),%ecx
++         fstpt (%ecx)
++         jmp   .Lepilogue
++  
++ .Lretint64:
+++	_CET_ENDBR
++         # Load %ecx with the pointer to storage for the return value
++         movl  28(%ebp),%ecx
++         movl  %eax,0(%ecx)
++@@ -655,18 +664,21 @@ USCORE_SYMBOL(ffi_call_win32):
++ 	jmp   .Lepilogue
++ 
++ .Lretstruct1b:
+++	_CET_ENDBR
++         # Load %ecx with the pointer to storage for the return value
++         movl  28(%ebp),%ecx
++         movb  %al,0(%ecx)
++         jmp   .Lepilogue
++  
++ .Lretstruct2b:
+++	_CET_ENDBR
++         # Load %ecx with the pointer to storage for the return value
++         movl  28(%ebp),%ecx
++         movw  %ax,0(%ecx)
++         jmp   .Lepilogue
++ 
++ .Lretstruct4b:
+++	_CET_ENDBR
++         # Load %ecx with the pointer to storage for the return value
++         movl  28(%ebp),%ecx
++         movl  %eax,0(%ecx)
++@@ -677,6 +689,17 @@ USCORE_SYMBOL(ffi_call_win32):
++  
++ .Lnoretval:
++ .Lepilogue:
+++	_CET_ENDBR
+++#ifdef __CET__
+++	/* Pop shadow stack by 1 frame.  */
+++	xorl %ecx, %ecx
+++	rdsspd %ecx
+++	testl %ecx, %ecx
+++	jz 1f
+++	movl $1, %ecx
+++	incsspd %ecx
+++1:
+++#endif
++         movl %ebp,%esp
++         popl %ebp
++         ret
++@@ -1006,6 +1029,7 @@ FFI_HIDDEN(ffi_closure_STDCALL)
++ USCORE_SYMBOL(ffi_closure_STDCALL):
++ .ffi_closure_STDCALL_internal:
++ .LFB5:
+++	_CET_ENDBR
++ 	pushl	%ebp
++ .LCFI9:
++ 	movl	%esp, %ebp
++@@ -1062,51 +1086,63 @@ USCORE_SYMBOL(ffi_closure_STDCALL):
++ 
++ 	/* Sign/zero extend as appropriate.  */
++ .Lscls_retsint8:
+++	_CET_ENDBR
++ 	movsbl	(%ecx), %eax
++ 	jmp	.Lscls_epilogue
++ 
++ .Lscls_retsint16:
+++	_CET_ENDBR
++ 	movswl	(%ecx), %eax
++ 	jmp	.Lscls_epilogue
++ 
++ .Lscls_retuint8:
+++	_CET_ENDBR
++ 	movzbl	(%ecx), %eax
++ 	jmp	.Lscls_epilogue
++ 
++ .Lscls_retuint16:
+++	_CET_ENDBR
++ 	movzwl	(%ecx), %eax
++ 	jmp	.Lscls_epilogue
++ 
++ .Lscls_retint:
+++	_CET_ENDBR
++ 	movl	(%ecx), %eax
++ 	jmp	.Lscls_epilogue
++ 
++ .Lscls_retfloat:
+++	_CET_ENDBR
++ 	flds	(%ecx)
++ 	jmp	.Lscls_epilogue
++ 
++ .Lscls_retdouble:
+++	_CET_ENDBR
++ 	fldl	(%ecx)
++ 	jmp	.Lscls_epilogue
++ 
++ .Lscls_retldouble:
+++	_CET_ENDBR
++ 	fldt	(%ecx)
++ 	jmp	.Lscls_epilogue
++ 
++ .Lscls_retllong:
+++	_CET_ENDBR
++ 	movl	(%ecx), %eax
++ 	movl	4(%ecx), %edx
++ 	jmp	.Lscls_epilogue
++ 
++ .Lscls_retstruct1:
+++	_CET_ENDBR
++ 	movsbl	(%ecx), %eax
++ 	jmp	.Lscls_epilogue
++ 
++ .Lscls_retstruct2:
+++	_CET_ENDBR
++ 	movswl	(%ecx), %eax
++ 	jmp	.Lscls_epilogue
++ 
++ .Lscls_retstruct4:
+++	_CET_ENDBR
++ 	movl	(%ecx), %eax
++ 	jmp	.Lscls_epilogue
++ 
++@@ -1115,11 +1151,12 @@ USCORE_SYMBOL(ffi_closure_STDCALL):
++ 
++ .Lscls_noretval:
++ .Lscls_epilogue:
+++	_CET_ENDBR
++ 	movl	%ebp, %esp
++ 	popl	%ebp
++ 	popl	%ecx
++ 	popl	%edx
++-	movl	(CLOSURE_CIF_OFFSET-10)(%ecx), %ecx
+++	movl	(CLOSURE_CIF_OFFSET-FFI_TRAMPOLINE_SIZE)(%ecx), %ecx
++ 	addl	CIF_BYTES_OFFSET(%ecx), %esp
++ 	movl	CIF_ABI_OFFSET(%ecx), %ecx
++ 	cmpl	$3, %ecx /* FFI_THISCALL */
++@@ -1129,7 +1166,7 @@ USCORE_SYMBOL(ffi_closure_STDCALL):
++ 
++ 	addl	$4, %esp
++ 1:	addl	$4, %esp
++-2:	jmp	*%edx
+++2:	_CET_NOTRACK jmp *%edx
++ .ffi_closure_STDCALL_end:
++ .LFE5:
++ 
++-- 
++2.29.2
++
+diff --git a/0007-Use-FFI_EXEC_TRAMPOLINE_TABLE-on-CET-enabled-Linux-x.patch b/0007-Use-FFI_EXEC_TRAMPOLINE_TABLE-on-CET-enabled-Linux-x.patch
+new file mode 100644
+index 0000000..6bd1389
+--- /dev/null
++++ b/0007-Use-FFI_EXEC_TRAMPOLINE_TABLE-on-CET-enabled-Linux-x.patch
+@@ -0,0 +1,588 @@
++From c4877527a7589955ebd0784f8cc2b97ac1ef627e Mon Sep 17 00:00:00 2001
++From: "H.J. Lu" <hjl.tools@gmail.com>
++Date: Mon, 21 Dec 2020 07:16:40 -0800
++Subject: [PATCH 7/7] Use FFI_EXEC_TRAMPOLINE_TABLE on CET enabled Linux/x86
++
++Use trampoline table with compatible closure to enlarge trampoline to
++add ENDBR instruction when CET is enabled.
++
++Expected test failures:
++
++FAIL: libffi.call/closure_loc_fn0.c -W -Wall -O0 execution test
++FAIL: libffi.call/closure_loc_fn0.c -W -Wall -O2 execution test
++FAIL: libffi.call/closure_loc_fn0.c -W -Wall -O3 execution test
++FAIL: libffi.call/closure_loc_fn0.c -W -Wall -Os execution test
++FAIL: libffi.call/closure_loc_fn0.c -W -Wall -O2 -fomit-frame-pointer execution test
++
++due to
++
++CHECK(memcmp(pcl, codeloc, sizeof(*pcl)) == 0);
++
++since codeloc contains trampoline table configuration, not closure.
++
++In 32-bit, since EAX and EDX are used in trampoline table, FFI_FASTCALL
++passes function parameters in EDX, is unsupported.  Since the previous
++STDCALL trampoline uses CALL instruction, which updates stack pointer,
++and trampoline table doesn't, STDCALL is also unsupported.  Extra
++test failures:
++
++FAIL: libffi.call/closure_simple.c -W -Wall -O0 -DABI_NUM=FFI_STDCALL -DABI_ATTR=__STDCALL__ execution test
++FAIL: libffi.call/closure_simple.c -W -Wall -O0 -DABI_NUM=FFI_THISCALL -DABI_ATTR=__THISCALL__ output pattern test
++FAIL: libffi.call/closure_simple.c -W -Wall -O0 -DABI_NUM=FFI_FASTCALL -DABI_ATTR=__FASTCALL__ execution test
++FAIL: libffi.call/closure_simple.c -W -Wall -O2 -DABI_NUM=FFI_STDCALL -DABI_ATTR=__STDCALL__ execution test
++FAIL: libffi.call/closure_simple.c -W -Wall -O2 -DABI_NUM=FFI_THISCALL -DABI_ATTR=__THISCALL__ output pattern test
++FAIL: libffi.call/closure_simple.c -W -Wall -O2 -DABI_NUM=FFI_FASTCALL -DABI_ATTR=__FASTCALL__ execution test
++FAIL: libffi.call/closure_simple.c -W -Wall -O3 -DABI_NUM=FFI_STDCALL -DABI_ATTR=__STDCALL__ execution test
++FAIL: libffi.call/closure_simple.c -W -Wall -O3 -DABI_NUM=FFI_THISCALL -DABI_ATTR=__THISCALL__ output pattern test
++FAIL: libffi.call/closure_simple.c -W -Wall -O3 -DABI_NUM=FFI_FASTCALL -DABI_ATTR=__FASTCALL__ execution test
++FAIL: libffi.call/closure_simple.c -W -Wall -Os -DABI_NUM=FFI_STDCALL -DABI_ATTR=__STDCALL__ execution test
++FAIL: libffi.call/closure_simple.c -W -Wall -Os -DABI_NUM=FFI_THISCALL -DABI_ATTR=__THISCALL__ output pattern test
++FAIL: libffi.call/closure_simple.c -W -Wall -Os -DABI_NUM=FFI_FASTCALL -DABI_ATTR=__FASTCALL__ execution test
++FAIL: libffi.call/closure_simple.c -W -Wall -O2 -fomit-frame-pointer -DABI_NUM=FFI_STDCALL -DABI_ATTR=__STDCALL__ execution test
++FAIL: libffi.call/closure_simple.c -W -Wall -O2 -fomit-frame-pointer -DABI_NUM=FFI_THISCALL -DABI_ATTR=__THISCALL__ output pattern test
++FAIL: libffi.call/closure_simple.c -W -Wall -O2 -fomit-frame-pointer -DABI_NUM=FFI_FASTCALL -DABI_ATTR=__FASTCALL__ execution test
++---
++ configure.ac              |  14 +++
++ include/ffi.h.in          |  10 ++
++ src/x86/ffi.c             |  37 ++++++
++ src/x86/ffi64.c           |  18 +++
++ src/x86/ffitarget.h       |   9 ++
++ src/x86/tramoline-table.h | 259 ++++++++++++++++++++++++++++++++++++++
++ src/x86/unix64.S          |  12 ++
++ 7 files changed, 359 insertions(+)
++ create mode 100644 src/x86/tramoline-table.h
++
++diff --git a/configure.ac b/configure.ac
++index d3b8b99..6d4cee7 100644
++--- a/configure.ac
+++++ b/configure.ac
++@@ -448,6 +448,7 @@ if test "x$sys_symbol_underscore" = xyes; then
++ fi
++ 
++ FFI_EXEC_TRAMPOLINE_TABLE=0
+++FFI_EXEC_TRAMPOLINE_TABLE_COMPAT_CLOSURE=0
++ case "$target" in
++      *arm*-apple-darwin*)
++        FFI_EXEC_TRAMPOLINE_TABLE=1
++@@ -455,6 +456,18 @@ case "$target" in
++                  [Cannot use PROT_EXEC on this target, so, we revert to
++                    alternative means])
++      ;;
+++     i?86-*-linux* | x86_64-*-linux*)
+++       echo 'int cet = __CET__;' > conftest.c
+++       if $CC $CFLAGS -c -o conftest.o conftest.c > /dev/null 2>&1; then
+++	 FFI_EXEC_TRAMPOLINE_TABLE=1
+++	 FFI_EXEC_TRAMPOLINE_TABLE_COMPAT_CLOSURE=1
+++	 AC_DEFINE(FFI_EXEC_TRAMPOLINE_TABLE, 1,
+++		   [Use trampoline page on CET enabled Linux/x86])
+++	 AC_DEFINE(FFI_EXEC_TRAMPOLINE_TABLE_COMPAT_CLOSURE, 1,
+++		   [Use trampoline page with compatible closure on CET enabled Linux/x86])
+++       fi
+++       rm -f conftest.*
+++     ;;
++      *-apple-darwin1* | *-*-freebsd* | *-*-kfreebsd* | *-*-openbsd* | *-pc-solaris*)
++        AC_DEFINE(FFI_MMAP_EXEC_WRIT, 1,
++                  [Cannot use malloc on this target, so, we revert to
++@@ -463,6 +476,7 @@ case "$target" in
++ esac
++ AM_CONDITIONAL(FFI_EXEC_TRAMPOLINE_TABLE, test x$FFI_EXEC_TRAMPOLINE_TABLE = x1)
++ AC_SUBST(FFI_EXEC_TRAMPOLINE_TABLE)
+++AC_SUBST(FFI_EXEC_TRAMPOLINE_TABLE_COMPAT_CLOSURE)
++ 
++ if test x$TARGET = xX86_64; then
++     AC_CACHE_CHECK([toolchain supports unwind section type],
++diff --git a/include/ffi.h.in b/include/ffi.h.in
++index 70360fc..77b0072 100644
++--- a/include/ffi.h.in
+++++ b/include/ffi.h.in
++@@ -303,8 +303,18 @@ __declspec(align(8))
++ #endif
++ typedef struct {
++ #if @FFI_EXEC_TRAMPOLINE_TABLE@
+++# if @FFI_EXEC_TRAMPOLINE_TABLE_COMPAT_CLOSURE@
+++  union {
+++    struct {
+++      void *trampoline_table;
+++      void *trampoline_table_entry;
+++    };
+++    char tramp[FFI_TRAMPOLINE_SIZE];
+++  };
+++# else
++   void *trampoline_table;
++   void *trampoline_table_entry;
+++# endif
++ #else
++   char tramp[FFI_TRAMPOLINE_SIZE];
++ #endif
++diff --git a/src/x86/ffi.c b/src/x86/ffi.c
++index 64b19ec..7c4177d 100644
++--- a/src/x86/ffi.c
+++++ b/src/x86/ffi.c
++@@ -34,6 +34,10 @@
++ #include <windows.h>
++ #endif
++ 
+++#if defined __linux__ && !defined _GNU_SOURCE
+++#define _GNU_SOURCE 1
+++#endif
+++
++ #include <ffi.h>
++ #include <ffi_common.h>
++ 
++@@ -578,6 +582,9 @@ ffi_prep_incoming_args_SYSV(char *stack, void **rvalue, void **avalue,
++   return;
++ }
++ 
+++#if FFI_EXEC_TRAMPOLINE_TABLE
+++#include "tramoline-table.h"
+++#else
++ #define FFI_INIT_TRAMPOLINE_WIN64(TRAMP,FUN,CTX,MASK) \
++ { unsigned char *__tramp = (unsigned char*)(TRAMP); \
++    void*  __fun = (void*)(FUN); \
++@@ -646,6 +653,7 @@ ffi_prep_incoming_args_SYSV(char *stack, void **rvalue, void **avalue,
++    *(unsigned char *)  &__tramp[5] = 0xe8; \
++    *(unsigned int*)  &__tramp[6] = __dis; /* call __fun  */ \
++  }
+++#endif
++ 
++ /* the cif must already be prep'ed */
++ 
++@@ -656,6 +664,28 @@ ffi_prep_closure_loc (ffi_closure* closure,
++                       void *user_data,
++                       void *codeloc)
++ {
+++#if FFI_EXEC_TRAMPOLINE_TABLE
+++  void (*dest)(void);
+++
+++  switch (cif->abi)
+++    {
+++    case FFI_FASTCALL:
+++      return FFI_BAD_ABI;
+++    case FFI_SYSV:
+++    case FFI_THISCALL:
+++      dest = (void (*)(void)) ffi_closure_SYSV;
+++      break;
+++    case FFI_STDCALL:
+++      dest = (void (*)(void)) ffi_closure_STDCALL;
+++      break;
+++    default:
+++      return FFI_BAD_ABI;
+++    }
+++
+++  uint32_t *config = (uint32_t *) FFI_TRAMPOLINE_CODELOC_CONFIG(codeloc);
+++  config[0] = (uintptr_t) closure;
+++  config[1] = (uintptr_t) dest;
+++#else
++ #ifdef X86_WIN64
++ #define ISFLOAT(IDX) (cif->arg_types[IDX]->type == FFI_TYPE_FLOAT || cif->arg_types[IDX]->type == FFI_TYPE_DOUBLE)
++ #define FLAG(IDX) (cif->nargs>(IDX)&&ISFLOAT(IDX)?(1<<(IDX)):0)
++@@ -705,6 +735,7 @@ ffi_prep_closure_loc (ffi_closure* closure,
++     {
++       return FFI_BAD_ABI;
++     }
+++#endif
++     
++   closure->cif  = cif;
++   closure->user_data = user_data;
++@@ -744,6 +775,11 @@ ffi_prep_raw_closure_loc (ffi_raw_closure* closure,
++       FFI_ASSERT (cif->arg_types[i]->type != FFI_TYPE_LONGDOUBLE);
++     }
++   
+++#if FFI_EXEC_TRAMPOLINE_TABLE
+++  uint32_t *config = (uint32_t *) FFI_TRAMPOLINE_CODELOC_CONFIG(codeloc);
+++  config[0] = (uintptr_t) closure;
+++  config[1] = (uintptr_t) ffi_closure_raw_SYSV;
+++#else
++ #ifdef X86_WIN32
++   if (cif->abi == FFI_SYSV)
++     {
++@@ -756,6 +792,7 @@ ffi_prep_raw_closure_loc (ffi_raw_closure* closure,
++     {
++       FFI_INIT_TRAMPOLINE_RAW_THISCALL (&closure->tramp[0], &ffi_closure_raw_THISCALL, codeloc, cif->bytes);
++     }
+++#endif
++ #endif
++   closure->cif  = cif;
++   closure->user_data = user_data;
++diff --git a/src/x86/ffi64.c b/src/x86/ffi64.c
++index 384a93a..a50faf8 100644
++--- a/src/x86/ffi64.c
+++++ b/src/x86/ffi64.c
++@@ -27,6 +27,10 @@
++    DEALINGS IN THE SOFTWARE.
++    ----------------------------------------------------------------------- */
++ 
+++#if defined __linux__ && !defined _GNU_SOURCE
+++#define _GNU_SOURCE 1
+++#endif
+++
++ #include <ffi.h>
++ #include <ffi_common.h>
++ 
++@@ -552,6 +556,10 @@ ffi_call_go (ffi_cif *cif, void (*fn)(void), void *rvalue,
++ extern void ffi_closure_unix64(void) FFI_HIDDEN;
++ extern void ffi_closure_unix64_sse(void) FFI_HIDDEN;
++ 
+++#if FFI_EXEC_TRAMPOLINE_TABLE
+++#include "tramoline-table.h"
+++#endif
+++
++ ffi_status
++ ffi_prep_closure_loc (ffi_closure* closure,
++ 		      ffi_cif* cif,
++@@ -559,6 +567,7 @@ ffi_prep_closure_loc (ffi_closure* closure,
++ 		      void *user_data,
++ 		      void *codeloc)
++ {
+++#if !FFI_EXEC_TRAMPOLINE_TABLE
++   static const unsigned char trampoline[16] = {
++     /* leaq  -0x7(%rip),%r10   # 0x0  */
++     0x4c, 0x8d, 0x15, 0xf9, 0xff, 0xff, 0xff,
++@@ -567,6 +576,7 @@ ffi_prep_closure_loc (ffi_closure* closure,
++     /* nopl  (%rax) */
++     0x0f, 0x1f, 0x00
++   };
+++#endif
++   void (*dest)(void);
++ 
++   if (cif->abi != FFI_UNIX64)
++@@ -577,8 +587,16 @@ ffi_prep_closure_loc (ffi_closure* closure,
++   else
++     dest = ffi_closure_unix64;
++ 
+++#if FFI_EXEC_TRAMPOLINE_TABLE
+++  /* NB: Use uint64_t so that the slot size in the config page is always
+++     8 bytes for both x32 and x86-64.  */
+++  uint64_t *config = (uint64_t *) FFI_TRAMPOLINE_CODELOC_CONFIG(codeloc);
+++  config[0] = (uintptr_t) closure;
+++  config[1] = (uintptr_t) dest;
+++#else
++   memcpy (closure->tramp, trampoline, sizeof(trampoline));
++   *(UINT64 *)(closure->tramp + 16) = (uintptr_t)dest;
+++#endif
++ 
++   closure->cif = cif;
++   closure->fun = fun;
++diff --git a/src/x86/ffitarget.h b/src/x86/ffitarget.h
++index 44122d6..4a0102d 100644
++--- a/src/x86/ffitarget.h
+++++ b/src/x86/ffitarget.h
++@@ -150,5 +150,14 @@ typedef enum ffi_abi {
++ # define _CET_NOTRACK
++ #endif
++ 
+++#ifdef __CET__
+++# define FFI_EXEC_TRAMPOLINE_TABLE_PAGE_SIZE 4096
+++# ifdef __x86_64__
+++#  define FFI_EXEC_TRAMPOLINE_TABLE_TRAMPOLINE_SIZE 17
+++# else
+++#  define FFI_EXEC_TRAMPOLINE_TABLE_TRAMPOLINE_SIZE 21
+++# endif
+++#endif
+++
++ #endif
++ 
++diff --git a/src/x86/tramoline-table.h b/src/x86/tramoline-table.h
++new file mode 100644
++index 0000000..41da347
++--- /dev/null
+++++ b/src/x86/tramoline-table.h
++@@ -0,0 +1,259 @@
+++/* -----------------------------------------------------------------------
+++   tramoline-table.h
+++
+++   x86 tramoline table implementation.
+++
+++   Permission is hereby granted, free of charge, to any person obtaining
+++   a copy of this software and associated documentation files (the
+++   ``Software''), to deal in the Software without restriction, including
+++   without limitation the rights to use, copy, modify, merge, publish,
+++   distribute, sublicense, and/or sell copies of the Software, and to
+++   permit persons to whom the Software is furnished to do so, subject to
+++   the following conditions:
+++
+++   The above copyright notice and this permission notice shall be included
+++   in all copies or substantial portions of the Software.
+++
+++   THE SOFTWARE IS PROVIDED ``AS IS'', WITHOUT WARRANTY OF ANY KIND,
+++   EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+++   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+++   NONINFRINGEMENT.  IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+++   HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+++   WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+++   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+++   DEALINGS IN THE SOFTWARE.
+++   ----------------------------------------------------------------------- */
+++
+++
+++/* How to make a trampoline table.  */
+++
+++#include <stdio.h>
+++#include <stdlib.h>
+++#include <stdint.h>
+++#include <pthread.h>
+++#include <sys/mman.h>
+++
+++typedef struct ffi_trampoline_table ffi_trampoline_table;
+++typedef struct ffi_trampoline_table_entry ffi_trampoline_table_entry;
+++
+++struct ffi_trampoline_table {
+++  /* contiguous writable and executable pages */
+++  void *config_page;
+++  void *trampoline_page;
+++
+++  /* free list tracking */
+++  uint16_t free_count;
+++  ffi_trampoline_table_entry *free_list;
+++  ffi_trampoline_table_entry *free_list_pool;
+++
+++  ffi_trampoline_table *prev;
+++  ffi_trampoline_table *next;
+++};
+++
+++struct ffi_trampoline_table_entry {
+++  void *(*trampoline)();
+++  ffi_trampoline_table_entry *next;
+++};
+++
+++/* Override the standard architecture trampoline size */
+++#undef FFI_TRAMPOLINE_SIZE
+++#define FFI_TRAMPOLINE_SIZE FFI_EXEC_TRAMPOLINE_TABLE_TRAMPOLINE_SIZE
+++
+++#undef PAGE_SIZE
+++#define PAGE_SIZE FFI_EXEC_TRAMPOLINE_TABLE_PAGE_SIZE
+++
+++/* The trampoline configuration is placed at 4096 bytes prior to the
+++   trampoline's entry point */
+++#define FFI_TRAMPOLINE_CODELOC_CONFIG(codeloc) \
+++  ((void **) (((uint8_t *) codeloc) - 4096));
+++
+++/* Total number of trampolines that fit in one trampoline table */
+++#define FFI_TRAMPOLINE_COUNT (PAGE_SIZE / FFI_TRAMPOLINE_SIZE)
+++
+++static pthread_mutex_t ffi_trampoline_lock = PTHREAD_MUTEX_INITIALIZER;
+++static ffi_trampoline_table *ffi_trampoline_tables = NULL;
+++
+++static ffi_trampoline_table *
+++ffi_trampoline_table_alloc (void)
+++{
+++  ffi_trampoline_table *table = NULL;
+++  /* Trampoline to load the context argument from the config page.  */
+++  static const unsigned char trampoline[FFI_TRAMPOLINE_SIZE] = {
+++#ifdef __x86_64__
+++    /* endbr64 */
+++    0xf3, 0x0f, 0x1e, 0xfa,
+++    /* movq -4107(%rip),%r10 */
+++    0x4c, 0x8b, 0x15, 0xf5, 0xef, 0xff, 0xff,
+++    /* jmpq *-4105(%rip)  */
+++    0xff, 0x25, 0xf7, 0xef, 0xff, 0xff
+++#else
+++    /* endbr32 */
+++    0xf3, 0x0f, 0x1e, 0xfb,
+++    /* call 0 */
+++    0xe8, 0x00, 0x00, 0x00, 0x00,
+++    /* pop %edx */
+++    0x5a,
+++    /* sub $4105,%edx */
+++    0x81, 0xea, 0x09, 0x10, 0x00, 0x00,
+++    /* mov (%edx),%eax */
+++    0x8b, 0x02,
+++    /* jmp *0x4(%edx) */
+++    0xff, 0x62, 0x04
+++#endif
+++  };
+++
+++  /* Loop until we can allocate two contiguous pages */
+++  while (table == NULL) {
+++    void *config_page;
+++
+++    /* Try to allocate two pages */
+++    config_page = mmap (NULL, PAGE_SIZE*2, PROT_READ | PROT_WRITE,
+++			MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+++    if (config_page == MAP_FAILED) {
+++      fprintf(stderr, "mmap() failure: %m at %s:%d\n",
+++	      __FILE__, __LINE__);
+++      break;
+++    }
+++
+++    /* Create the trampoline table.  */
+++    void *trampoline_page = config_page+PAGE_SIZE;
+++    void *ptr = trampoline_page;
+++    unsigned int n = PAGE_SIZE / sizeof (trampoline);
+++    while (n-- > 0)
+++      ptr = mempcpy (ptr, trampoline, sizeof (trampoline));
+++
+++    /* Update protection on the trampoline table */
+++    if (mprotect (trampoline_page, PAGE_SIZE,
+++		  PROT_READ | PROT_EXEC) != 0) {
+++      fprintf(stderr, "mprotect() failure: %m at %s:%d\n",
+++	      __FILE__, __LINE__);
+++
+++      /* If we failed to update the trampoline page, drop our config
+++	 allocation mapping and retry */
+++      munmap (config_page, PAGE_SIZE * 2);
+++      continue;
+++    }
+++
+++    /* We have valid trampoline and config pages */
+++    table = calloc (1, sizeof(ffi_trampoline_table));
+++    table->free_count = FFI_TRAMPOLINE_COUNT;
+++    table->config_page = config_page;
+++    table->trampoline_page = trampoline_page;
+++
+++    /* Create and initialize the free list */
+++    table->free_list_pool = calloc(FFI_TRAMPOLINE_COUNT,
+++				   sizeof(ffi_trampoline_table_entry));
+++
+++    uint16_t i;
+++    for (i = 0; i < table->free_count; i++) {
+++      ffi_trampoline_table_entry *entry = &table->free_list_pool[i];
+++      entry->trampoline = (void *) (table->trampoline_page
+++				    + (i * FFI_TRAMPOLINE_SIZE));
+++
+++      if (i < table->free_count - 1)
+++	entry->next = &table->free_list_pool[i+1];
+++    }
+++
+++    table->free_list = table->free_list_pool;
+++  }
+++
+++  return table;
+++}
+++
+++void *
+++ffi_closure_alloc (size_t size, void **code)
+++{
+++  /* Create the closure */
+++  ffi_closure *closure = malloc(size);
+++  if (closure == NULL)
+++    return NULL;
+++
+++  pthread_mutex_lock(&ffi_trampoline_lock);
+++
+++  /* Check for an active trampoline table with available entries. */
+++  ffi_trampoline_table *table = ffi_trampoline_tables;
+++  if (table == NULL || table->free_list == NULL) {
+++    table = ffi_trampoline_table_alloc ();
+++    if (table == NULL) {
+++      free(closure);
+++      return NULL;
+++    }
+++
+++    /* Insert the new table at the top of the list */
+++    table->next = ffi_trampoline_tables;
+++    if (table->next != NULL)
+++      table->next->prev = table;
+++
+++    ffi_trampoline_tables = table;
+++  }
+++
+++  /* Claim the free entry */
+++  ffi_trampoline_table_entry *entry = ffi_trampoline_tables->free_list;
+++  ffi_trampoline_tables->free_list = entry->next;
+++  ffi_trampoline_tables->free_count--;
+++  entry->next = NULL;
+++
+++  pthread_mutex_unlock(&ffi_trampoline_lock);
+++
+++  /* Initialize the return values */
+++  *code = entry->trampoline;
+++  closure->trampoline_table = table;
+++  closure->trampoline_table_entry = entry;
+++
+++  return closure;
+++}
+++
+++void
+++ffi_closure_free (void *ptr)
+++{
+++  ffi_closure *closure = ptr;
+++
+++  pthread_mutex_lock(&ffi_trampoline_lock);
+++
+++  /* Fetch the table and entry references */
+++  ffi_trampoline_table *table = closure->trampoline_table;
+++  ffi_trampoline_table_entry *entry = closure->trampoline_table_entry;
+++
+++  /* Return the entry to the free list */
+++  entry->next = table->free_list;
+++  table->free_list = entry;
+++  table->free_count++;
+++
+++  /* If all trampolines within this table are free, and at least one
+++     other table exists, deallocate the table */
+++  if (table->free_count == FFI_TRAMPOLINE_COUNT
+++      && ffi_trampoline_tables != table) {
+++    /* Remove from the list */
+++    if (table->prev != NULL)
+++      table->prev->next = table->next;
+++
+++    if (table->next != NULL)
+++      table->next->prev = table->prev;
+++
+++    /* Deallocate pages */
+++    if (munmap (table->config_page, PAGE_SIZE) != 0)
+++      fprintf(stderr, "munmap() failure: %m at %s:%d\n",
+++	      __FILE__, __LINE__);
+++
+++    if (munmap (table->trampoline_page, PAGE_SIZE) != 0)
+++      fprintf(stderr, "munmap() failure: %m at %s:%d\n",
+++	      __FILE__, __LINE__);
+++
+++    /* Deallocate free list */
+++    free (table->free_list_pool);
+++    free (table);
+++  } else if (ffi_trampoline_tables != table) {
+++    /* Otherwise, bump this table to the top of the list */
+++    table->prev = NULL;
+++    table->next = ffi_trampoline_tables;
+++    if (ffi_trampoline_tables != NULL)
+++      ffi_trampoline_tables->prev = table;
+++
+++    ffi_trampoline_tables = table;
+++  }
+++
+++  pthread_mutex_unlock (&ffi_trampoline_lock);
+++
+++  /* Free the closure */
+++  free (closure);
+++}
++diff --git a/src/x86/unix64.S b/src/x86/unix64.S
++index 1e90780..7131a2a 100644
++--- a/src/x86/unix64.S
+++++ b/src/x86/unix64.S
++@@ -288,9 +288,15 @@ ffi_closure_unix64:
++ 	movq    %r8,  ffi_closure_OFS_G+0x20(%rsp)
++ 	movq    %r9,  ffi_closure_OFS_G+0x28(%rsp)
++ 
+++#ifdef __ILP32__
+++	movl	24(%r10), %edi				/* Load cif */
+++	movl	28(%r10), %esi				/* Load fun */
+++	movl	32(%r10), %edx				/* Load user_data */
+++#else
++ 	movq	24(%r10), %rdi				/* Load cif */
++ 	movq	32(%r10), %rsi				/* Load fun */
++ 	movq	40(%r10), %rdx				/* Load user_data */
+++#endif
++ .Ldo_closure:
++ 	leaq	ffi_closure_OFS_RVALUE(%rsp), %rcx	/* Load rvalue */
++ 	movq	%rsp, %r8				/* Load reg_args */
++@@ -432,9 +438,15 @@ ffi_go_closure_unix64:
++ 	movq    %r8,  ffi_closure_OFS_G+0x20(%rsp)
++ 	movq    %r9,  ffi_closure_OFS_G+0x28(%rsp)
++ 
+++#ifdef __ILP32__
+++	movl	4(%r10), %edi		/* Load cif */
+++	movl	8(%r10), %esi		/* Load fun */
+++	movl	%r10d, %edx		/* Load closure (user_data) */
+++#else
++ 	movq	8(%r10), %rdi		/* Load cif */
++ 	movq	16(%r10), %rsi		/* Load fun */
++ 	movq	%r10, %rdx		/* Load closure (user_data) */
+++#endif
++ 	jmp	.Ldo_closure
++ 
++ 	cfi_endproc
++-- 
++2.29.2
++
+diff --git a/libffi.spec b/libffi.spec
+index e781bae..c38e863 100644
+--- a/libffi.spec
++++ b/libffi.spec
+@@ -1,3 +1,11 @@
++Patch1000001: 0001-Add-entry-points-for-interacting-with-Go.patch
++Patch1000002: 0002-Add-ffi_cfi.h.patch
++Patch1000003: 0003-x86-64-Support-go-closures.patch
++Patch1000004: 0004-Removing-unnecessary-instruction-from-ffi_call_unix6.patch
++Patch1000005: 0005-Take-a-float-absolute-value-using-fabs-instead-of-ab.patch
++Patch1000006: 0006-x86-Add-indirect-branch-tracking-support.patch
++Patch1000007: 0007-Use-FFI_EXEC_TRAMPOLINE_TABLE-on-CET-enabled-Linux-x.patch
++
+ %bcond_with bootstrap
+ 
+ %global multilib_arches %{ix86} ppc ppc64 ppc64p7 s390 s390x x86_64
+@@ -70,6 +78,14 @@ developing applications that use %{name}.
+ %patch3 -p1 -b .aarch64execstack
+ %patch4 -p1 -b .libffitmpdir
+ 
++%patch1000001 -p1
++%patch1000002 -p1
++%patch1000003 -p1
++%patch1000004 -p1
++#%patch1000005 -p1
++%patch1000006 -p1
++%patch1000007 -p1
++
+ %build
+ %configure --disable-static
+ make %{?_smp_mflags}
+-- 
+2.29.2
+
