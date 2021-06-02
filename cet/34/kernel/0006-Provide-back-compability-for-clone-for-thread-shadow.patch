@@ -1,0 +1,67 @@
+From 656988cda67b14b4a893cc9f2f58aa7a0befe577 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Sat, 20 Feb 2021 06:59:11 -0800
+Subject: [PATCH 6/7] Provide back compability for clone() for thread shadow
+ stack
+
+---
+ ...pability-for-clone-for-thread-shadow.patch | 26 +++++++++++++++++++
+ kernel.spec                                   |  2 ++
+ 2 files changed, 28 insertions(+)
+ create mode 100644 0001-Provide-back-compability-for-clone-for-thread-shadow.patch
+
+diff --git a/0001-Provide-back-compability-for-clone-for-thread-shadow.patch b/0001-Provide-back-compability-for-clone-for-thread-shadow.patch
+new file mode 100644
+index 000000000..2db57bc7c
+--- /dev/null
++++ b/0001-Provide-back-compability-for-clone-for-thread-shadow.patch
+@@ -0,0 +1,26 @@
++From 7f82c73aceeba399afcd0805a3ce39571114cc09 Mon Sep 17 00:00:00 2001
++From: Yu-cheng Yu <yu-cheng.yu@intel.com>
++Date: Wed, 17 Feb 2021 10:32:47 -0800
++Subject: [PATCH] Provide back compability for clone() for thread shadow stack.
++
++Signed-off-by: Yu-cheng Yu <yu-cheng.yu@intel.com>
++---
++ arch/x86/kernel/shstk.c | 2 +-
++ 1 file changed, 1 insertion(+), 1 deletion(-)
++
++diff --git a/arch/x86/kernel/shstk.c b/arch/x86/kernel/shstk.c
++index 638959966aca..ffbc8fa05763 100644
++--- a/arch/x86/kernel/shstk.c
+++++ b/arch/x86/kernel/shstk.c
++@@ -91,7 +91,7 @@ int shstk_setup_thread(struct task_struct *tsk, unsigned long clone_flags,
++ 		return -EINVAL;
++ 
++ 	if (stack_size == 0)
++-		return -EINVAL;
+++		stack_size = rlimit(RLIMIT_STACK);
++ 
++ 	/* Cap shadow stack size to 4 GB */
++ 	size = min_t(unsigned long long, rlimit(RLIMIT_STACK), SZ_4G);
++-- 
++2.30.2
++
+diff --git a/kernel.spec b/kernel.spec
+index cedfd9d4c..821bbe935 100755
+--- a/kernel.spec
++++ b/kernel.spec
+@@ -42,6 +42,7 @@ Patch200041: 0041-powerpc-Keep-.rela-sections-when-CONFIG_RELOCATABLE-.patch
+ Patch200042: 0042-Discard-.note.gnu.property-sections-in-generic-NOTES.patch
+ 
+ Patch300001: 0001-Provide-back-compatibility-of-ALLOC_SHSTK.patch
++Patch300002: 0001-Provide-back-compability-for-clone-for-thread-shadow.patch
+ 
+ # Per the below section about __spec_install_pre, any rpm
+ # environment changes that affect %%install need to go
+@@ -1378,6 +1379,7 @@ ApplyOptionalPatch 0041-powerpc-Keep-.rela-sections-when-CONFIG_RELOCATABLE-.pat
+ ApplyOptionalPatch 0042-Discard-.note.gnu.property-sections-in-generic-NOTES.patch
+ 
+ ApplyOptionalPatch 0001-Provide-back-compatibility-of-ALLOC_SHSTK.patch
++ApplyOptionalPatch 0001-Provide-back-compability-for-clone-for-thread-shadow.patch
+ 
+ # All Global changes to build and install go here.
+ 
+-- 
+2.31.1
+

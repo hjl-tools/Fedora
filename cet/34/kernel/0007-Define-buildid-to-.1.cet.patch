@@ -1,0 +1,24 @@
+From 8c5b8b5ebdb9e71b4083e783d8f016c9193987fb Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Thu, 19 Mar 2020 07:57:06 -0700
+Subject: [PATCH 7/7] Define buildid to .1.cet
+
+---
+ kernel.spec | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/kernel.spec b/kernel.spec
+index 821bbe935..273be942b 100755
+--- a/kernel.spec
++++ b/kernel.spec
+@@ -143,6 +143,7 @@ Summary: The Linux kernel
+ %endif
+ 
+ # define buildid .local
++%define buildid .1.cet
+ 
+ 
+ %if 0%{?fedora}
+-- 
+2.31.1
+
