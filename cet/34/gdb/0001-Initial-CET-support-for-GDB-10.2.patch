@@ -1,0 +1,3273 @@
+From 4bcff4c53f2181c193e84fd1335db99d7afff8ee Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Wed, 9 Sep 2020 13:17:02 -0700
+Subject: [PATCH 1/2] Initial CET support for GDB 10.2
+
+---
+ ...gcc-cpuid.h-with-cpuid.h-from-gcc-10.patch |  180 ++
+ ...of-Intel-CET-registers-to-GDB-and-GD.patch | 1465 +++++++++++++++++
+ 0002-x86-Add-NT_X86_CET.patch                 |   35 +
+ ...mmand-to-print-the-shadow-stack-back.patch |  584 +++++++
+ 0004-CET-Add-info-cet-status-command.patch    |  151 ++
+ 0005-CET-Enable-return-command-with-CET.patch |  163 ++
+ 0006-CET-Enable-inferior-calls-with-CET.patch |  124 ++
+ 0007-CET-Testing.patch                        |  252 +++
+ 0008-Initial-CET-coredump-support.patch       |  202 +++
+ gdb.spec                                      |   18 +
+ 10 files changed, 3174 insertions(+)
+ create mode 100644 0001-CET-Sync-up-x86-gcc-cpuid.h-with-cpuid.h-from-gcc-10.patch
+ create mode 100644 0002-CET-Add-support-of-Intel-CET-registers-to-GDB-and-GD.patch
+ create mode 100644 0002-x86-Add-NT_X86_CET.patch
+ create mode 100644 0003-CET-Add-a-new-command-to-print-the-shadow-stack-back.patch
+ create mode 100644 0004-CET-Add-info-cet-status-command.patch
+ create mode 100644 0005-CET-Enable-return-command-with-CET.patch
+ create mode 100644 0006-CET-Enable-inferior-calls-with-CET.patch
+ create mode 100644 0007-CET-Testing.patch
+ create mode 100644 0008-Initial-CET-coredump-support.patch
+
+diff --git a/0001-CET-Sync-up-x86-gcc-cpuid.h-with-cpuid.h-from-gcc-10.patch b/0001-CET-Sync-up-x86-gcc-cpuid.h-with-cpuid.h-from-gcc-10.patch
+new file mode 100644
+index 0000000..fffc60a
+--- /dev/null
++++ b/0001-CET-Sync-up-x86-gcc-cpuid.h-with-cpuid.h-from-gcc-10.patch
+@@ -0,0 +1,180 @@
++From 43a2ad96b38d7d9e27ba16e06eaaa9dff85dac8b Mon Sep 17 00:00:00 2001
++From: Moritz Riesterer <moritz.riesterer@intel.com>
++Date: Wed, 21 Aug 2019 10:50:56 +0200
++Subject: [PATCH 1/8] CET: Sync up x86-gcc-cpuid.h with cpuid.h from gcc 10.1
++ branch.
++
++gdb/ChangeLog:
++2020-07-02  Felix Willgerodt  <felix.willgerodt@intel.com>
++
++	* nat/x86-gcc-cpuid.h: Replace with copy of cpuid.h
++	from gcc 10.01 branch.
++
++Signed-off-by: Felix Willgerodt <felix.willgerodt@intel.com>
++---
++ gdb/nat/x86-gcc-cpuid.h | 66 ++++++++++++++++++++++++++++++++++-------
++ 1 file changed, 56 insertions(+), 10 deletions(-)
++
++diff --git a/gdb/nat/x86-gcc-cpuid.h b/gdb/nat/x86-gcc-cpuid.h
++index 044b6e6fc8..a03911d07e 100644
++--- a/gdb/nat/x86-gcc-cpuid.h
+++++ b/gdb/nat/x86-gcc-cpuid.h
++@@ -1,5 +1,5 @@
++ /*
++- * Helper cpuid.h file copied from gcc-6.0.0.  Code in gdb should not
+++ * Helper cpuid.h file copied from gcc-10.1.0.  Code in gdb should not
++  * include this directly, but pull in x86-cpuid.h and use that func.
++  */
++ 
++@@ -29,6 +29,9 @@
++  * <http://www.gnu.org/licenses/>.
++  */
++ 
+++/* %eax */
+++#define bit_AVX512BF16	(1 << 5)
+++
++ /* %ecx */
++ #define bit_SSE3	(1 << 0)
++ #define bit_PCLMUL	(1 << 1)
++@@ -55,7 +58,7 @@
++ #define bit_SSE		(1 << 25)
++ #define bit_SSE2	(1 << 26)
++ 
++-/* Extended Features */
+++/* Extended Features (%eax == 0x80000001) */
++ /* %ecx */
++ #define bit_LAHF_LM	(1 << 0)
++ #define bit_ABM		(1 << 5)
++@@ -68,19 +71,19 @@
++ #define bit_MWAITX      (1 << 29)
++ 
++ /* %edx */
++-#define bit_AVX5124VNNIW (1 << 2)
++-#define bit_AVX5124FMAPS (1 << 3)
++ #define bit_MMXEXT	(1 << 22)
++ #define bit_LM		(1 << 29)
++ #define bit_3DNOWP	(1 << 30)
++-#define bit_3DNOW	(1 << 31)
+++#define bit_3DNOW	(1u << 31)
++ 
++-/* %ebx.  */
+++/* %ebx  */
++ #define bit_CLZERO	(1 << 0)
+++#define bit_WBNOINVD	(1 << 9)
++ 
++ /* Extended Features (%eax == 7) */
++ /* %ebx */
++ #define bit_FSGSBASE	(1 << 0)
+++#define bit_SGX (1 << 2)
++ #define bit_BMI	(1 << 3)
++ #define bit_HLE	(1 << 4)
++ #define bit_AVX2	(1 << 5)
++@@ -99,14 +102,34 @@
++ #define bit_AVX512CD	(1 << 28)
++ #define bit_SHA		(1 << 29)
++ #define bit_AVX512BW	(1 << 30)
++-#define bit_AVX512VL	(1 << 31)
+++#define bit_AVX512VL	(1u << 31)
++ 
++ /* %ecx */
++ #define bit_PREFETCHWT1	  (1 << 0)
++ #define bit_AVX512VBMI	(1 << 1)
++ #define bit_PKU	(1 << 3)
++ #define bit_OSPKE	(1 << 4)
+++#define bit_WAITPKG	(1 << 5)
+++#define bit_AVX512VBMI2	(1 << 6)
+++#define bit_SHSTK	(1 << 7)
+++#define bit_GFNI	(1 << 8)
+++#define bit_VAES	(1 << 9)
+++#define bit_AVX512VNNI	(1 << 11)
+++#define bit_VPCLMULQDQ	(1 << 10)
+++#define bit_AVX512BITALG	(1 << 12)
+++#define bit_AVX512VPOPCNTDQ	(1 << 14)
+++#define bit_RDPID	(1 << 22)
+++#define bit_MOVDIRI	(1 << 27)
+++#define bit_MOVDIR64B	(1 << 28)
+++#define bit_ENQCMD	(1 << 29)
+++#define bit_CLDEMOTE	(1 << 25)
++ 
+++/* %edx */
+++#define bit_AVX5124VNNIW (1 << 2)
+++#define bit_AVX5124FMAPS (1 << 3)
+++#define bit_AVX512VP2INTERSECT	(1 << 8)
+++#define bit_IBT	(1 << 20)
+++#define bit_PCONFIG	(1 << 18)
++ /* XFEATURE_ENABLED_MASK register bits (%eax == 13, %ecx == 0) */
++ #define bit_BNDREGS     (1 << 3)
++ #define bit_BNDCSR      (1 << 4)
++@@ -116,6 +139,10 @@
++ #define bit_XSAVEC	(1 << 1)
++ #define bit_XSAVES	(1 << 3)
++ 
+++/* PT sub leaf (%eax == 14, %ecx == 0) */
+++/* %ebx */
+++#define bit_PTWRITE	(1 << 4)
+++
++ /* Signatures for different CPU implementations as returned in uses
++    of cpuid with level 0.  */
++ #define signature_AMD_ebx	0x68747541
++@@ -170,10 +197,27 @@
++ #define signature_VORTEX_ecx	0x436f5320
++ #define signature_VORTEX_edx	0x36387865
++ 
+++#ifndef __x86_64__
+++/* At least one cpu (Winchip 2) does not set %ebx and %ecx
+++   for cpuid leaf 1. Forcibly zero the two registers before
+++   calling cpuid as a precaution.  */
+++#define __cpuid(level, a, b, c, d)			\
+++  do {							\
+++    if (__builtin_constant_p (level) && (level) != 1)	\
+++      __asm__ ("cpuid\n\t"				\
+++	      : "=a" (a), "=b" (b), "=c" (c), "=d" (d)	\
+++	      : "0" (level));				\
+++    else						\
+++      __asm__ ("cpuid\n\t"				\
+++	      : "=a" (a), "=b" (b), "=c" (c), "=d" (d)	\
+++	      : "0" (level), "1" (0), "2" (0));		\
+++  } while (0)
+++#else
++ #define __cpuid(level, a, b, c, d)			\
++   __asm__ ("cpuid\n\t"					\
++ 	   : "=a" (a), "=b" (b), "=c" (c), "=d" (d)	\
++ 	   : "0" (level))
+++#endif
++ 
++ #define __cpuid_count(level, count, a, b, c, d)		\
++   __asm__ ("cpuid\n\t"					\
++@@ -182,7 +226,7 @@
++ 
++ 
++ /* Return highest supported input value for cpuid instruction.  ext can
++-   be either 0x0 or 0x8000000 to return highest supported value for
+++   be either 0x0 or 0x80000000 to return highest supported value for
++    basic or extended cpuid information.  Function returns 0 if cpuid
++    is not supported or whatever cpuid returns in eax register.  If sig
++    pointer is non-null, then first four bytes of the signature
++@@ -249,8 +293,9 @@ __get_cpuid (unsigned int __leaf,
++ 	     unsigned int *__ecx, unsigned int *__edx)
++ {
++   unsigned int __ext = __leaf & 0x80000000;
+++  unsigned int __maxlevel = __get_cpuid_max (__ext, 0);
++ 
++-  if (__get_cpuid_max (__ext, 0) < __leaf)
+++  if (__maxlevel == 0 || __maxlevel < __leaf)
++     return 0;
++ 
++   __cpuid (__leaf, *__eax, *__ebx, *__ecx, *__edx);
++@@ -265,8 +310,9 @@ __get_cpuid_count (unsigned int __leaf, unsigned int __subleaf,
++ 		   unsigned int *__ecx, unsigned int *__edx)
++ {
++   unsigned int __ext = __leaf & 0x80000000;
+++  unsigned int __maxlevel = __get_cpuid_max (__ext, 0);
++ 
++-  if (__get_cpuid_max (__ext, 0) < __leaf)
+++  if (__maxlevel == 0 || __maxlevel < __leaf)
++     return 0;
++ 
++   __cpuid_count (__leaf, __subleaf, *__eax, *__ebx, *__ecx, *__edx);
++-- 
++2.28.0
++
+diff --git a/0002-CET-Add-support-of-Intel-CET-registers-to-GDB-and-GD.patch b/0002-CET-Add-support-of-Intel-CET-registers-to-GDB-and-GD.patch
+new file mode 100644
+index 0000000..1b0f605
+--- /dev/null
++++ b/0002-CET-Add-support-of-Intel-CET-registers-to-GDB-and-GD.patch
+@@ -0,0 +1,1465 @@
++From 9f062d2aeaba49098a6b0f2064fb01bba771ffa8 Mon Sep 17 00:00:00 2001
++From: "Bakhtiari, Arash" <arash.bakhtiari@intel.com>
++Date: Fri, 29 Mar 2019 16:38:50 +0100
++Subject: [PATCH 2/8] CET: Add support of Intel CET registers to GDB and
++ GDBserver.
++
++This patch adds support for the user mode registers CET_U and PL3_SSP
++added by the Control-flow Enforcement Technology (CET) feature.
++Native and remote debugging for amd64 and i386 architectures are
++covered by this patch.
++
++gdb/Changelog:
++2019-03-29  Arash Bakhtiari  <arash.bakhtiari@intel.com>
++
++	* amd64-linux-nat.c
++	(amd64_linux_gregset32_reg_offset): Add CET registers.
++	(fetch_registers): Handle CET registers.
++	(store_registers): Likewise.
++	* amd64-linux-tdep.c
++	(amd64_linux_gregset_reg_offset): Add CET registers.
++	(amd64_linux_read_description): Construct target desciption with
++	CET registers if it is supported on the target.
++	* amd64-linux-tdep.h: Likewise.
++	* amd64-tdep.c (amd64_init_abi): Init the target description with CET
++	related info.
++	* amd64-tdep.h (amd64_regnum): Add CET register numbers.
++	* arch/amd64.c (amd64_create_target_description): Add CET feature.
++	* arch/amd64.h: Likewise.
++	* arch/i386.c: Likewise.
++	* arch/i386.h: Likewise.
++	* features/Makefile (FEATURE_XMLFILES): Add CET XML files.
++	* features/i386/32bit-cet.c: Generated.
++	* features/i386/32bit-cet.xml: New file.
++	* features/i386/64bit-cet.c: Generated.
++	* features/i386/64bit-cet.xml: New file.
++	* i386-linux-nat.c
++	(fetch_registers): Handle CET registers.
++	(store_registers): Likewise.
++	* i386-linux-tdep.c
++	(i386_linux_gregset_reg_offset): Add CET registers.
++	(i386_linux_read_description): Consturct target desciption with
++	CET registers if it is supported on the target.
++	* i386-linux-tdep.h: Likewise.
++	* i386-tdep.c
++	(i386_register_reggroup_p): Handle CET registers.
++	(i386_validate_tdesc_p): Add CET feature.
++	(i386_gdbarch_init): Init CET registers.
++	* i386-tdep.h (i386_regnum): Add CET register numbers.
++	* linux-nat.c (have_ptrace_getregset_cet): New global variable.
++	* linux-nat.h: Likewise.
++	* x86-linux-nat.c (read_description): Add code to detect if CET is
++	available on the target.
++	(x86_linux_fetch_cet_regs): New function.
++	(x86_linux_store_cet_regs): Likewise.
++	* x86-linux-nat.h
++	(x86_linux_fetch_cet_regs): Likewise.
++	(x86_linux_store_cet_regs): Likewise.
++	* x86-tdep.c:
++	(x86_cet_names): Add name of CET registers.
++	(x86_is_cet_regnum): New function to validate the range of CET
++	register number.
++	(x86_supply_cet, x86_collect_cet): New functions to supply/collect
++	CET registers.
++	* x86-tdep.h: Likewise.
++	* include/elf/common.h (NT_X86_CET): New macro.
++
++testsuite/Changelog:
++2019-03-29  Arash Bakhtiari  <arash.bakhtiari@intel.com>
++
++	* lib/cet.exp: New file.
++	* gdb.arch/i386-cet-regs.exp: New file.
++
++gdbserver/Changelog:
++2019-03-29  Arash Bakhtiari  <arash.bakhtiari@intel.com>
++
++	* linux-low.c (have_ptrace_getregset_cet): Add global variable.
++	* linux-low.h: Likewise.
++	* linux-x86-low.c
++	(x86_64_regmap): Add CET registers.
++	(x86_fill_cet_regs): New Function.
++	(x86_store_cet_regs): New Function.
++	(x86_fill_gregset): Handle CET registers.
++	(x86_store_gregset): Handle CET registers.
++	(x86_linux_read_description): Add code to detect if CET is available
++	on the target.
++	* linux-x86-tdesc.c
++	(i386_linux_read_description): Consturct target desciption with
++	CET registers if it is supported on the target.
++	(amd64_linux_read_description): Likewise.
++	* linux-x86-tdesc.h: Likewise
++
++doc/Changelog:
++2019-03-29  Arash Bakhtiari  <arash.bakhtiari@intel.com>
++
++	* gdb.texinfo (i386 Features): Add description of CET registers.
++
++Signed-off-by: Bakhtiari, Arash <arash.bakhtiari@intel.com>
++---
++ gdb/amd64-linux-nat.c                    |  18 ++++
++ gdb/amd64-linux-tdep.c                   |   8 +-
++ gdb/amd64-linux-tdep.h                   |   3 +-
++ gdb/amd64-tdep.c                         |   7 ++
++ gdb/amd64-tdep.h                         |   2 +
++ gdb/arch/amd64.c                         |  10 ++-
++ gdb/arch/amd64.h                         |   3 +-
++ gdb/arch/i386.c                          |   7 +-
++ gdb/arch/i386.h                          |   3 +-
++ gdb/doc/gdb.texinfo                      |   4 +
++ gdb/features/Makefile                    |   2 +
++ gdb/features/i386/32bit-cet.c            |  31 +++++++
++ gdb/features/i386/32bit-cet.xml          |  27 ++++++
++ gdb/features/i386/64bit-cet.c            |  31 +++++++
++ gdb/features/i386/64bit-cet.xml          |  27 ++++++
++ gdb/i386-linux-nat.c                     |  23 +++++
++ gdb/i386-linux-tdep.c                    |   5 +-
++ gdb/i386-linux-tdep.h                    |   5 +-
++ gdb/i386-tdep.c                          |  31 ++++++-
++ gdb/i386-tdep.h                          |  11 +++
++ gdb/linux-nat.c                          |   3 +
++ gdb/linux-nat.h                          |   3 +
++ gdb/testsuite/gdb.arch/i386-cet-regs.exp |  86 ++++++++++++++++++
++ gdb/testsuite/lib/cet.exp                | 109 +++++++++++++++++++++++
++ gdb/x86-linux-nat.c                      |  79 +++++++++++++++-
++ gdb/x86-linux-nat.h                      |  13 +++
++ gdb/x86-tdep.c                           |  57 ++++++++++++
++ gdb/x86-tdep.h                           |  21 +++++
++ gdbserver/linux-low.cc                   |   3 +
++ gdbserver/linux-low.h                    |   3 +
++ gdbserver/linux-x86-low.cc               |  85 +++++++++++++++++-
++ gdbserver/linux-x86-tdesc.cc             |   9 +-
++ gdbserver/linux-x86-tdesc.h              |   8 +-
++ 33 files changed, 707 insertions(+), 30 deletions(-)
++ create mode 100644 gdb/features/i386/32bit-cet.c
++ create mode 100644 gdb/features/i386/32bit-cet.xml
++ create mode 100644 gdb/features/i386/64bit-cet.c
++ create mode 100644 gdb/features/i386/64bit-cet.xml
++ create mode 100644 gdb/testsuite/gdb.arch/i386-cet-regs.exp
++ create mode 100644 gdb/testsuite/lib/cet.exp
++
++diff --git a/gdb/amd64-linux-nat.c b/gdb/amd64-linux-nat.c
++index d860571c37..8597956f26 100644
++--- a/gdb/amd64-linux-nat.c
+++++ b/gdb/amd64-linux-nat.c
++@@ -33,6 +33,7 @@
++ #include "amd64-tdep.h"
++ #include "amd64-linux-tdep.h"
++ #include "i386-linux-tdep.h"
+++#include "x86-tdep.h"
++ #include "gdbsupport/x86-xstate.h"
++ 
++ #include "x86-linux-nat.h"
++@@ -85,6 +86,7 @@ static int amd64_linux_gregset32_reg_offset[] =
++   -1, -1, -1, -1, -1, -1, -1, -1, /* k0 ... k7 (AVX512)  */
++   -1, -1, -1, -1, -1, -1, -1, -1, /* zmm0 ... zmm7 (AVX512)  */
++   -1,				  /* PKEYS register PKRU  */
+++  -1, -1,			  /* CET user mode registers CET_U, PL3_SSP.  */
++   ORIG_RAX * 8			  /* "orig_eax"  */
++ };
++ 
++@@ -233,6 +235,14 @@ amd64_linux_nat_target::fetch_registers (struct regcache *regcache, int regnum)
++     {
++       elf_fpregset_t fpregs;
++ 
+++      /* Fetch CET user mode MSRs.  */
+++      if (regnum == -1 || x86_is_cet_regnum (gdbarch, regnum))
+++	{
+++	  x86_linux_fetch_cet_regs (regcache, tid);
+++	  if (regnum != -1)
+++	    return;
+++	}
+++
++       if (have_ptrace_getregset == TRIBOOL_TRUE)
++ 	{
++ 	  char xstateregs[X86_XSTATE_MAX_SIZE];
++@@ -297,6 +307,14 @@ amd64_linux_nat_target::store_registers (struct regcache *regcache, int regnum)
++     {
++       elf_fpregset_t fpregs;
++ 
+++      /* Store CET user mode MSRs.  */
+++      if (regnum == -1 || x86_is_cet_regnum (gdbarch, regnum))
+++	{
+++	  x86_linux_store_cet_regs (regcache, tid);
+++	  if (regnum != -1)
+++	    return;
+++	}
+++
++       if (have_ptrace_getregset == TRIBOOL_TRUE)
++ 	{
++ 	  char xstateregs[X86_XSTATE_MAX_SIZE];
++diff --git a/gdb/amd64-linux-tdep.c b/gdb/amd64-linux-tdep.c
++index 42000159bd..04b3c50e30 100644
++--- a/gdb/amd64-linux-tdep.c
+++++ b/gdb/amd64-linux-tdep.c
++@@ -96,6 +96,7 @@ int amd64_linux_gregset_reg_offset[] =
++   -1, -1, -1, -1, -1, -1, -1, -1,
++   -1, -1, -1, -1, -1, -1, -1, -1,
++   -1,				/* PKEYS register pkru  */
+++  -1, -1,			/* CET user mode registers CET_U, PL3_SSP.  */
++ 
++   /* End of hardware registers */
++   21 * 8, 22 * 8,		      /* fs_base and gs_base.  */
++@@ -1572,7 +1573,8 @@ amd64_linux_record_signal (struct gdbarch *gdbarch,
++ }
++ 
++ const target_desc *
++-amd64_linux_read_description (uint64_t xcr0_features_bit, bool is_x32)
+++amd64_linux_read_description (uint64_t xcr0_features_bit, bool is_x32,
+++			      bool cet_enabled)
++ {
++   static target_desc *amd64_linux_tdescs \
++     [2/*AVX*/][2/*MPX*/][2/*AVX512*/][2/*PKRU*/] = {};
++@@ -1594,8 +1596,8 @@ amd64_linux_read_description (uint64_t xcr0_features_bit, bool is_x32)
++     }
++ 
++   if (*tdesc == NULL)
++-    *tdesc = amd64_create_target_description (xcr0_features_bit, is_x32,
++-					      true, true);
+++    *tdesc = amd64_create_target_description (xcr0_features_bit, is_x32, true,
+++					      true, cet_enabled);
++ 
++   return *tdesc;
++ }
++diff --git a/gdb/amd64-linux-tdep.h b/gdb/amd64-linux-tdep.h
++index 304196781c..12964767e4 100644
++--- a/gdb/amd64-linux-tdep.h
+++++ b/gdb/amd64-linux-tdep.h
++@@ -47,7 +47,8 @@ extern struct target_desc *tdesc_x32_avx_avx512_linux;
++    XCR0_FEATURES_BIT and IS_X32.  */
++ 
++ const target_desc *amd64_linux_read_description (uint64_t xcr0_features_bit,
++-						 bool is_x32);
+++						 bool is_x32,
+++						 bool cet_enabled = false);
++ 
++ /* Enum that defines the syscall identifiers for amd64 linux.
++    Used for process record/replay, these will be translated into
++diff --git a/gdb/amd64-tdep.c b/gdb/amd64-tdep.c
++index 59f7c9f885..d31acd095d 100644
++--- a/gdb/amd64-tdep.c
+++++ b/gdb/amd64-tdep.c
++@@ -3182,6 +3182,13 @@ amd64_init_abi (struct gdbarch_info info, struct gdbarch *gdbarch,
++       tdep->num_pkeys_regs = 1;
++     }
++ 
+++  if (tdesc_find_feature (tdesc, "org.gnu.gdb.i386.cet") != NULL)
+++    {
+++      tdep->cet_register_names = x86_cet_names;
+++      tdep->cet_regnum = AMD64_CET_U_REGNUM;
+++      tdep->num_cet_regs = X86_NUM_CET_REGS;
+++    }
+++
++   tdep->num_byte_regs = 20;
++   tdep->num_word_regs = 16;
++   tdep->num_dword_regs = 16;
++diff --git a/gdb/amd64-tdep.h b/gdb/amd64-tdep.h
++index 44c1250cb9..ffe38a8c3e 100644
++--- a/gdb/amd64-tdep.h
+++++ b/gdb/amd64-tdep.h
++@@ -79,6 +79,8 @@ enum amd64_regnum
++   AMD64_ZMM0H_REGNUM,
++   AMD64_ZMM31H_REGNUM = AMD64_ZMM0H_REGNUM + 31,
++   AMD64_PKRU_REGNUM,
+++  AMD64_CET_U_REGNUM,
+++  AMD64_CET_PL3_SSP_REGNUM,
++   AMD64_FSBASE_REGNUM,
++   AMD64_GSBASE_REGNUM
++ };
++diff --git a/gdb/arch/amd64.c b/gdb/arch/amd64.c
++index a388c7e49d..5d0137f529 100644
++--- a/gdb/arch/amd64.c
+++++ b/gdb/arch/amd64.c
++@@ -22,6 +22,7 @@
++ 
++ #include "../features/i386/64bit-avx.c"
++ #include "../features/i386/64bit-avx512.c"
+++#include "../features/i386/64bit-cet.c"
++ #include "../features/i386/64bit-core.c"
++ #include "../features/i386/64bit-linux.c"
++ #include "../features/i386/64bit-mpx.c"
++@@ -34,11 +35,13 @@
++ /* Create amd64 target descriptions according to XCR0.  If IS_X32 is
++    true, create the x32 ones.  If IS_LINUX is true, create target
++    descriptions for Linux.  If SEGMENTS is true, then include
++-   the "org.gnu.gdb.i386.segments" feature registers.  */
+++   the "org.gnu.gdb.i386.segments" feature registers.  if CET_ENABLED
+++   is true, then include the "org.gnu.gdb.i386.cet" feature registers.
+++*/
++ 
++ target_desc *
++ amd64_create_target_description (uint64_t xcr0, bool is_x32, bool is_linux,
++-				 bool segments)
+++				 bool segments, bool cet_enabled)
++ {
++   target_desc *tdesc = allocate_target_description ();
++ 
++@@ -74,5 +77,8 @@ amd64_create_target_description (uint64_t xcr0, bool is_x32, bool is_linux,
++   if ((xcr0 & X86_XSTATE_PKRU) && !is_x32)
++     regnum = create_feature_i386_64bit_pkeys (tdesc, regnum);
++ 
+++  if (cet_enabled)
+++    regnum = create_feature_i386_64bit_cet (tdesc, regnum);
+++
++   return tdesc;
++ }
++diff --git a/gdb/arch/amd64.h b/gdb/arch/amd64.h
++index 114db18572..c4b7d15804 100644
++--- a/gdb/arch/amd64.h
+++++ b/gdb/arch/amd64.h
++@@ -22,6 +22,7 @@
++ #include <stdint.h>
++ 
++ target_desc *amd64_create_target_description (uint64_t xcr0, bool is_x32,
++-					      bool is_linux, bool segments);
+++					      bool is_linux, bool segments,
+++					      bool cet_enabled = false);
++ 
++ #endif /* ARCH_AMD64_H */
++diff --git a/gdb/arch/i386.c b/gdb/arch/i386.c
++index 099a20b98a..2e1a4b0d70 100644
++--- a/gdb/arch/i386.c
+++++ b/gdb/arch/i386.c
++@@ -29,11 +29,13 @@
++ #include "../features/i386/32bit-mpx.c"
++ #include "../features/i386/32bit-pkeys.c"
++ #include "../features/i386/32bit-segments.c"
+++#include "../features/i386/32bit-cet.c"
++ 
++ /* Create i386 target descriptions according to XCR0.  */
++ 
++ target_desc *
++-i386_create_target_description (uint64_t xcr0, bool is_linux, bool segments)
+++i386_create_target_description (uint64_t xcr0, bool is_linux, bool segments,
+++				bool cet_enabled)
++ {
++   target_desc *tdesc = allocate_target_description ();
++ 
++@@ -69,5 +71,8 @@ i386_create_target_description (uint64_t xcr0, bool is_linux, bool segments)
++   if (xcr0 & X86_XSTATE_PKRU)
++     regnum = create_feature_i386_32bit_pkeys (tdesc, regnum);
++ 
+++  if (cet_enabled)
+++    regnum = create_feature_i386_32bit_cet (tdesc, regnum);
+++
++   return tdesc;
++ }
++diff --git a/gdb/arch/i386.h b/gdb/arch/i386.h
++index 12c9e27eda..95b4c9ecd9 100644
++--- a/gdb/arch/i386.h
+++++ b/gdb/arch/i386.h
++@@ -22,6 +22,7 @@
++ #include <stdint.h>
++ 
++ target_desc *i386_create_target_description (uint64_t xcr0, bool is_linux,
++-					     bool segments);
+++					     bool segments,
+++					     bool cet_enabled = false);
++ 
++ #endif /* ARCH_I386_H */
++diff --git a/gdb/doc/gdb.texinfo b/gdb/doc/gdb.texinfo
++index 77c5d89505..bae141d570 100644
++--- a/gdb/doc/gdb.texinfo
+++++ b/gdb/doc/gdb.texinfo
++@@ -45444,6 +45444,10 @@ The @samp{org.gnu.gdb.i386.pkeys} feature is optional.  It should
++ describe a single register, @samp{pkru}.  It is a 32-bit register
++ valid for i386 and amd64.
++ 
+++The @samp{org.gnu.gdb.i386.cet} feature is optional.  It should
+++describe two user mode registers: @samp{cet_u} and @samp{pl3_ssp}.
+++These are two 64-bit registers valid for i386 and amd64.
+++
++ @node MicroBlaze Features
++ @subsection MicroBlaze Features
++ @cindex target descriptions, MicroBlaze features
++diff --git a/gdb/features/Makefile b/gdb/features/Makefile
++index 689603847a..3e65280f0b 100644
++--- a/gdb/features/Makefile
+++++ b/gdb/features/Makefile
++@@ -219,6 +219,7 @@ FEATURE_XMLFILES = aarch64-core.xml \
++ 	i386/32bit-mpx.xml \
++ 	i386/32bit-avx512.xml \
++ 	i386/32bit-pkeys.xml \
+++	i386/32bit-cet.xml \
++ 	i386/64bit-avx512.xml \
++ 	i386/64bit-core.xml \
++ 	i386/64bit-mpx.xml \
++@@ -227,6 +228,7 @@ FEATURE_XMLFILES = aarch64-core.xml \
++ 	i386/64bit-linux.xml \
++ 	i386/64bit-pkeys.xml \
++ 	i386/64bit-sse.xml \
+++	i386/64bit-cet.xml \
++ 	i386/x32-core.xml \
++ 	riscv/32bit-cpu.xml \
++ 	riscv/32bit-fpu.xml \
++diff --git a/gdb/features/i386/32bit-cet.c b/gdb/features/i386/32bit-cet.c
++new file mode 100644
++index 0000000000..b428d42638
++--- /dev/null
+++++ b/gdb/features/i386/32bit-cet.c
++@@ -0,0 +1,31 @@
+++/* THIS FILE IS GENERATED.  -*- buffer-read-only: t -*- vi:set ro:
+++  Original: 32bit-cet.xml */
+++
+++#include "gdbsupport/tdesc.h"
+++
+++static int
+++create_feature_i386_32bit_cet (struct target_desc *result, long regnum)
+++{
+++  struct tdesc_feature *feature;
+++
+++  feature = tdesc_create_feature (result, "org.gnu.gdb.i386.cet");
+++  tdesc_type_with_fields *type_with_fields;
+++  type_with_fields = tdesc_create_struct (feature, "cet_u_setting");
+++  tdesc_set_struct_size (type_with_fields, 8);
+++  tdesc_add_bitfield (type_with_fields, "SH_STK_EN", 0, 0);
+++  tdesc_add_bitfield (type_with_fields, "WR_SHSTK_EN", 1, 1);
+++  tdesc_add_bitfield (type_with_fields, "ENDBR_EN", 2, 2);
+++  tdesc_add_bitfield (type_with_fields, "LEG_IW_EN", 3, 3);
+++  tdesc_add_bitfield (type_with_fields, "NO_TRACK_EN", 4, 4);
+++  tdesc_add_bitfield (type_with_fields, "SUPPRESS_DIS", 5, 5);
+++  tdesc_add_bitfield (type_with_fields, "RSVD", 6, 9);
+++  tdesc_add_bitfield (type_with_fields, "SUPPRESS", 10, 10);
+++  tdesc_add_bitfield (type_with_fields, "TRACKER", 11, 11);
+++  tdesc_type *field_type;
+++  field_type = tdesc_named_type (feature, "data_ptr");
+++  tdesc_add_typed_bitfield (type_with_fields, "EB_LEG_BITMAP_BASE", 12, 63, field_type);
+++
+++  tdesc_create_reg (feature, "cet_u", regnum++, 1, NULL, 64, "cet_u_setting");
+++  tdesc_create_reg (feature, "pl3_ssp", regnum++, 1, NULL, 64, "code_ptr");
+++  return regnum;
+++}
++diff --git a/gdb/features/i386/32bit-cet.xml b/gdb/features/i386/32bit-cet.xml
++new file mode 100644
++index 0000000000..19bb74ce7b
++--- /dev/null
+++++ b/gdb/features/i386/32bit-cet.xml
++@@ -0,0 +1,27 @@
+++<?xml version="1.0"?>
+++<!-- Copyright (C) 2013-2018 Free Software Foundation, Inc.
+++
+++     Copying and distribution of this file, with or without modification,
+++     are permitted in any medium without royalty provided the copyright
+++     notice and this notice are preserved.  -->
+++
+++<!DOCTYPE feature SYSTEM "gdb-target.dtd">
+++<feature name="org.gnu.gdb.i386.cet">
+++
+++  <struct id="cet_u_setting" size="8">
+++    <field name="SH_STK_EN" start="0" end="0" type="uint64"/>
+++    <field name="WR_SHSTK_EN" start="1" end="1" type="uint64"/>
+++    <field name="ENDBR_EN" start="2" end="2" type="uint64"/>
+++    <field name="LEG_IW_EN" start="3" end="3" type="uint64"/>
+++    <field name="NO_TRACK_EN" start="4" end="4" type="uint64"/>
+++    <field name="SUPPRESS_DIS" start="5" end="5" type="uint64"/>
+++    <field name="RSVD" start="6" end="9" type="uint64"/>
+++    <field name="SUPPRESS" start="10" end="10" type="uint64"/>
+++    <field name="TRACKER" start="11" end="11" type="uint64"/>
+++    <field name="EB_LEG_BITMAP_BASE" start="12" end="63" type="data_ptr"/>
+++  </struct>
+++
+++  <reg name="cet_u" bitsize="64" type="cet_u_setting"/>
+++  <reg name="pl3_ssp" bitsize="64" type="code_ptr"/>
+++
+++</feature>
++diff --git a/gdb/features/i386/64bit-cet.c b/gdb/features/i386/64bit-cet.c
++new file mode 100644
++index 0000000000..f21e43bdf8
++--- /dev/null
+++++ b/gdb/features/i386/64bit-cet.c
++@@ -0,0 +1,31 @@
+++/* THIS FILE IS GENERATED.  -*- buffer-read-only: t -*- vi:set ro:
+++  Original: 64bit-cet.xml */
+++
+++#include "gdbsupport/tdesc.h"
+++
+++static int
+++create_feature_i386_64bit_cet (struct target_desc *result, long regnum)
+++{
+++  struct tdesc_feature *feature;
+++
+++  feature = tdesc_create_feature (result, "org.gnu.gdb.i386.cet");
+++  tdesc_type_with_fields *type_with_fields;
+++  type_with_fields = tdesc_create_struct (feature, "cet_u_setting");
+++  tdesc_set_struct_size (type_with_fields, 8);
+++  tdesc_add_bitfield (type_with_fields, "SH_STK_EN", 0, 0);
+++  tdesc_add_bitfield (type_with_fields, "WR_SHSTK_EN", 1, 1);
+++  tdesc_add_bitfield (type_with_fields, "ENDBR_EN", 2, 2);
+++  tdesc_add_bitfield (type_with_fields, "LEG_IW_EN", 3, 3);
+++  tdesc_add_bitfield (type_with_fields, "NO_TRACK_EN", 4, 4);
+++  tdesc_add_bitfield (type_with_fields, "SUPPRESS_DIS", 5, 5);
+++  tdesc_add_bitfield (type_with_fields, "RSVD", 6, 9);
+++  tdesc_add_bitfield (type_with_fields, "SUPPRESS", 10, 10);
+++  tdesc_add_bitfield (type_with_fields, "TRACKER", 11, 11);
+++  tdesc_type *field_type;
+++  field_type = tdesc_named_type (feature, "data_ptr");
+++  tdesc_add_typed_bitfield (type_with_fields, "EB_LEG_BITMAP_BASE", 12, 63, field_type);
+++
+++  tdesc_create_reg (feature, "cet_u", regnum++, 1, NULL, 64, "cet_u_setting");
+++  tdesc_create_reg (feature, "pl3_ssp", regnum++, 1, NULL, 64, "code_ptr");
+++  return regnum;
+++}
++diff --git a/gdb/features/i386/64bit-cet.xml b/gdb/features/i386/64bit-cet.xml
++new file mode 100644
++index 0000000000..19bb74ce7b
++--- /dev/null
+++++ b/gdb/features/i386/64bit-cet.xml
++@@ -0,0 +1,27 @@
+++<?xml version="1.0"?>
+++<!-- Copyright (C) 2013-2018 Free Software Foundation, Inc.
+++
+++     Copying and distribution of this file, with or without modification,
+++     are permitted in any medium without royalty provided the copyright
+++     notice and this notice are preserved.  -->
+++
+++<!DOCTYPE feature SYSTEM "gdb-target.dtd">
+++<feature name="org.gnu.gdb.i386.cet">
+++
+++  <struct id="cet_u_setting" size="8">
+++    <field name="SH_STK_EN" start="0" end="0" type="uint64"/>
+++    <field name="WR_SHSTK_EN" start="1" end="1" type="uint64"/>
+++    <field name="ENDBR_EN" start="2" end="2" type="uint64"/>
+++    <field name="LEG_IW_EN" start="3" end="3" type="uint64"/>
+++    <field name="NO_TRACK_EN" start="4" end="4" type="uint64"/>
+++    <field name="SUPPRESS_DIS" start="5" end="5" type="uint64"/>
+++    <field name="RSVD" start="6" end="9" type="uint64"/>
+++    <field name="SUPPRESS" start="10" end="10" type="uint64"/>
+++    <field name="TRACKER" start="11" end="11" type="uint64"/>
+++    <field name="EB_LEG_BITMAP_BASE" start="12" end="63" type="data_ptr"/>
+++  </struct>
+++
+++  <reg name="cet_u" bitsize="64" type="cet_u_setting"/>
+++  <reg name="pl3_ssp" bitsize="64" type="code_ptr"/>
+++
+++</feature>
++diff --git a/gdb/i386-linux-nat.c b/gdb/i386-linux-nat.c
++index b4224b27c3..dbbd2c613b 100644
++--- a/gdb/i386-linux-nat.c
+++++ b/gdb/i386-linux-nat.c
++@@ -31,6 +31,7 @@
++ #include "i387-tdep.h"
++ #include "i386-tdep.h"
++ #include "i386-linux-tdep.h"
+++#include "x86-tdep.h"
++ #include "gdbsupport/x86-xstate.h"
++ 
++ #include "x86-linux-nat.h"
++@@ -492,6 +493,10 @@ i386_linux_nat_target::fetch_registers (struct regcache *regcache, int regno)
++ 	  return;
++ 	}
++ 
+++      /* Fetch all CET registers covered by the PTRACE_GETREGSET
+++	 request with NT_X86_CET flag.  */
+++      x86_linux_fetch_cet_regs (regcache, tid);
+++
++       if (fetch_xstateregs (regcache, tid))
++ 	return;
++       if (fetch_fpxregs (regcache, tid))
++@@ -500,6 +505,13 @@ i386_linux_nat_target::fetch_registers (struct regcache *regcache, int regno)
++       return;
++     }
++ 
+++  if (x86_is_cet_regnum (regcache->arch (), regno))
+++    {
+++      /* Fetch all CET registers.  */
+++      x86_linux_fetch_cet_regs (regcache, tid);
+++      return;
+++    }
+++
++   if (GETREGS_SUPPLIES (regno))
++     {
++       fetch_regs (regcache, tid);
++@@ -560,6 +572,10 @@ i386_linux_nat_target::store_registers (struct regcache *regcache, int regno)
++   if (regno == -1)
++     {
++       store_regs (regcache, tid, regno);
+++
+++      /* Store all CET registers.  */
+++      x86_linux_store_cet_regs (regcache, tid);
+++
++       if (store_xstateregs (regcache, tid, regno))
++ 	return;
++       if (store_fpxregs (regcache, tid, regno))
++@@ -568,6 +584,13 @@ i386_linux_nat_target::store_registers (struct regcache *regcache, int regno)
++       return;
++     }
++ 
+++  if (x86_is_cet_regnum (regcache->arch (), regno))
+++    {
+++      /* Store all CET registers.  */
+++      x86_linux_store_cet_regs (regcache, tid);
+++      return;
+++    }
+++
++   if (GETREGS_SUPPLIES (regno))
++     {
++       store_regs (regcache, tid, regno);
++diff --git a/gdb/i386-linux-tdep.c b/gdb/i386-linux-tdep.c
++index 7270931f01..8bba49291d 100644
++--- a/gdb/i386-linux-tdep.c
+++++ b/gdb/i386-linux-tdep.c
++@@ -610,6 +610,7 @@ int i386_linux_gregset_reg_offset[] =
++   -1, -1, -1, -1, -1, -1, -1, -1, /* k0 ... k7 (AVX512)  */
++   -1, -1, -1, -1, -1, -1, -1, -1, /* zmm0 ... zmm7 (AVX512)  */
++   -1,				  /* PKRU register  */
+++  -1, -1,			  /* CET user mode registers  */
++   11 * 4,			  /* "orig_eax"  */
++ };
++ 
++@@ -677,7 +678,7 @@ i386_linux_core_read_xcr0 (bfd *abfd)
++ /* See i386-linux-tdep.h.  */
++ 
++ const struct target_desc *
++-i386_linux_read_description (uint64_t xcr0)
+++i386_linux_read_description (uint64_t xcr0, bool cet_enabled)
++ {
++   if (xcr0 == 0)
++     return NULL;
++@@ -694,7 +695,7 @@ i386_linux_read_description (uint64_t xcr0)
++     [(xcr0 & X86_XSTATE_PKRU) ? 1 : 0];
++ 
++   if (*tdesc == NULL)
++-    *tdesc = i386_create_target_description (xcr0, true, false);
+++    *tdesc = i386_create_target_description (xcr0, true, false, cet_enabled);
++ 
++   return *tdesc;
++ }
++diff --git a/gdb/i386-linux-tdep.h b/gdb/i386-linux-tdep.h
++index c3bfdcd830..9d95a5a488 100644
++--- a/gdb/i386-linux-tdep.h
+++++ b/gdb/i386-linux-tdep.h
++@@ -29,7 +29,7 @@
++ /* Register number for the "orig_eax" pseudo-register.  If this
++    pseudo-register contains a value >= 0 it is interpreted as the
++    system call number that the kernel is supposed to restart.  */
++-#define I386_LINUX_ORIG_EAX_REGNUM (I386_PKRU_REGNUM + 1)
+++#define I386_LINUX_ORIG_EAX_REGNUM (I386_CET_PL3_SSP_REGNUM + 1)
++ 
++ /* Total number of registers for GNU/Linux.  */
++ #define I386_LINUX_NUM_REGS (I386_LINUX_ORIG_EAX_REGNUM + 1)
++@@ -44,7 +44,8 @@ extern void i386_linux_report_signal_info (struct gdbarch *gdbarch,
++ 					   enum gdb_signal siggnal);
++ 
++ /* Return the target description according to XCR0.  */
++-extern const struct target_desc *i386_linux_read_description (uint64_t xcr0);
+++extern const struct target_desc *
+++i386_linux_read_description (uint64_t xcr0, bool cet_enabled = false);
++ 
++ /* Format of XSAVE extended state is:
++  	struct
++diff --git a/gdb/i386-tdep.c b/gdb/i386-tdep.c
++index 8b07ca67b5..2b38585e29 100644
++--- a/gdb/i386-tdep.c
+++++ b/gdb/i386-tdep.c
++@@ -4573,7 +4573,7 @@ i386_register_reggroup_p (struct gdbarch *gdbarch, int regnum,
++       ymm_regnum_p, ymmh_regnum_p, ymm_avx512_regnum_p, ymmh_avx512_regnum_p,
++       bndr_regnum_p, bnd_regnum_p, zmm_regnum_p, zmmh_regnum_p,
++       mpx_ctrl_regnum_p, xmm_avx512_regnum_p,
++-      avx512_p, avx_p, sse_p, pkru_regnum_p;
+++      avx512_p, avx_p, sse_p, pkru_regnum_p, cet_regnum_p;
++ 
++   /* Don't include pseudo registers, except for MMX, in any register
++      groups.  */
++@@ -4590,6 +4590,7 @@ i386_register_reggroup_p (struct gdbarch *gdbarch, int regnum,
++   if (group == i386_mmx_reggroup)
++     return mmx_regnum_p;
++ 
+++  cet_regnum_p = (int) x86_is_cet_regnum (gdbarch, regnum);
++   pkru_regnum_p = i386_pkru_regnum_p(gdbarch, regnum);
++   xmm_regnum_p = i386_xmm_regnum_p (gdbarch, regnum);
++   xmm_avx512_regnum_p = i386_xmm_avx512_regnum_p (gdbarch, regnum);
++@@ -4663,7 +4664,8 @@ i386_register_reggroup_p (struct gdbarch *gdbarch, int regnum,
++ 	    && !mpx_ctrl_regnum_p
++ 	    && !zmm_regnum_p
++ 	    && !zmmh_regnum_p
++-	    && !pkru_regnum_p);
+++	    && !pkru_regnum_p
+++	    && !cet_regnum_p);
++ 
++   return default_register_reggroup_p (gdbarch, regnum, group);
++ }
++@@ -8252,7 +8254,8 @@ i386_validate_tdesc_p (struct gdbarch_tdep *tdep,
++   const struct tdesc_feature *feature_core;
++ 
++   const struct tdesc_feature *feature_sse, *feature_avx, *feature_mpx,
++-			     *feature_avx512, *feature_pkeys, *feature_segments;
+++			     *feature_avx512, *feature_pkeys, *feature_segments,
+++			     *feature_cet;
++   int i, num_regs, valid_p;
++ 
++   if (! tdesc_has_registers (tdesc))
++@@ -8281,6 +8284,9 @@ i386_validate_tdesc_p (struct gdbarch_tdep *tdep,
++   /* Try PKEYS  */
++   feature_pkeys = tdesc_find_feature (tdesc, "org.gnu.gdb.i386.pkeys");
++ 
+++  /* Try CET.  */
+++  feature_cet = tdesc_find_feature (tdesc, "org.gnu.gdb.i386.cet");
+++
++   valid_p = 1;
++ 
++   /* The XCR0 bits.  */
++@@ -8413,6 +8419,21 @@ i386_validate_tdesc_p (struct gdbarch_tdep *tdep,
++ 					    tdep->pkeys_register_names[i]);
++     }
++ 
+++  if (feature_cet)
+++    {
+++      if (tdep->cet_regnum < 0)
+++	{
+++	  tdep->cet_register_names = x86_cet_names;
+++	  tdep->cet_regnum = I386_CET_U_REGNUM;
+++	  tdep->num_cet_regs = X86_NUM_CET_REGS;
+++	}
+++
+++      for (i = 0; i < tdep->num_cet_regs; ++i)
+++	valid_p &= tdesc_numbered_register (feature_cet, tdesc_data,
+++					    tdep->cet_regnum + i,
+++					    tdep->cet_register_names[i]);
+++    }
+++
++   return valid_p;
++ }
++ 
++@@ -8688,6 +8709,10 @@ i386_gdbarch_init (struct gdbarch_info info, struct gdbarch_list *arches)
++   /* No segment base registers.  */
++   tdep->fsbase_regnum = -1;
++ 
+++  /* No CET registers.  */
+++  tdep->cet_regnum = -1;
+++  tdep->num_cet_regs = 0;
+++
++   tdesc_data = tdesc_data_alloc ();
++ 
++   set_gdbarch_relocate_instruction (gdbarch, i386_relocate_instruction);
++diff --git a/gdb/i386-tdep.h b/gdb/i386-tdep.h
++index 79b3b1f942..af58d9c9c7 100644
++--- a/gdb/i386-tdep.h
+++++ b/gdb/i386-tdep.h
++@@ -205,6 +205,15 @@ struct gdbarch_tdep
++      absence of segment base registers.  */
++   int fsbase_regnum;
++ 
+++  /* Number of CET registers.  */
+++  int num_cet_regs;
+++
+++  /* Register number for CET register.  */
+++  int cet_regnum;
+++
+++  /* cet register names.  */
+++  const char **cet_register_names;
+++
++   /* Target description.  */
++   const struct target_desc *tdesc;
++ 
++@@ -302,6 +311,8 @@ enum i386_regnum
++   I386_ZMM0H_REGNUM,		/* %zmm0h */
++   I386_ZMM7H_REGNUM = I386_ZMM0H_REGNUM + 7,
++   I386_PKRU_REGNUM,
+++  I386_CET_U_REGNUM,
+++  I386_CET_PL3_SSP_REGNUM,
++   I386_FSBASE_REGNUM,
++   I386_GSBASE_REGNUM
++ };
++diff --git a/gdb/linux-nat.c b/gdb/linux-nat.c
++index b81014024c..5f17b418ec 100644
++--- a/gdb/linux-nat.c
+++++ b/gdb/linux-nat.c
++@@ -190,6 +190,9 @@ struct linux_nat_target *linux_target;
++ /* Does the current host support PTRACE_GETREGSET?  */
++ enum tribool have_ptrace_getregset = TRIBOOL_UNKNOWN;
++ 
+++/* Does the current host support PTRACE_GETREGSET with NT_X86_CET flag?  */
+++enum tribool have_ptrace_getregset_cet = TRIBOOL_UNKNOWN;
+++
++ static unsigned int debug_linux_nat;
++ static void
++ show_debug_linux_nat (struct ui_file *file, int from_tty,
++diff --git a/gdb/linux-nat.h b/gdb/linux-nat.h
++index 1af9e830c8..7d1230cdf0 100644
++--- a/gdb/linux-nat.h
+++++ b/gdb/linux-nat.h
++@@ -288,6 +288,9 @@ extern struct lwp_info *lwp_list;
++ /* Does the current host support PTRACE_GETREGSET?  */
++ extern enum tribool have_ptrace_getregset;
++ 
+++/* Does the current host support PTRACE_GETREGSET with NT_X86_CET flag?  */
+++extern enum tribool have_ptrace_getregset_cet;
+++
++ /* Iterate over each active thread (light-weight process).  */
++ #define ALL_LWPS(LP)							\
++   for ((LP) = lwp_list;							\
++diff --git a/gdb/testsuite/gdb.arch/i386-cet-regs.exp b/gdb/testsuite/gdb.arch/i386-cet-regs.exp
++new file mode 100644
++index 0000000000..37fbb14666
++--- /dev/null
+++++ b/gdb/testsuite/gdb.arch/i386-cet-regs.exp
++@@ -0,0 +1,86 @@
+++# Copyright 2018 Free Software Foundation, Inc.
+++
+++# This program is free software; you can redistribute it and/or modify
+++# it under the terms of the GNU General Public License as published by
+++# the Free Software Foundation; either version 3 of the License, or
+++# (at your option) any later version.
+++#
+++# This program is distributed in the hope that it will be useful,
+++# but WITHOUT ANY WARRANTY; without even the implied warranty of
+++# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+++# GNU General Public License for more details.
+++#
+++# You should have received a copy of the GNU General Public License
+++# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+++
+++# Please email any bugs, comments, and/or additions to this file to:
+++# bug-gdb@gnu.org
+++
+++# This file is part of the gdb testsuite.
+++
+++load_lib cet.exp
+++
+++if {[skip_cet_tests]} {
+++    unsupported "target does not support CET"
+++    return 0
+++}
+++
+++proc check_register_access { regname } {
+++    global gdb_prompt
+++
+++    set test "$regname register access"
+++    gdb_test_multiple "info reg $regname" "$test" {
+++	-re "Invalid register.*\r\n$gdb_prompt $" {
+++	    unsupported "$test"
+++	    return 0
+++	}
+++	-re "\r\n$regname.*\r\n$gdb_prompt $" {
+++	    pass "$test"
+++	    return 1
+++	}
+++    }
+++    return 0
+++}
+++
+++proc check_register_match { regname regval } {
+++    global hex
+++    gdb_test "print /x \$$regname" ".*$regname.*$hex.*" "read $regname value"
+++    gdb_test "print /x \$$regname = $regval" "= $regval" "set $regname value"
+++    gdb_test "print /x \$$regname" ".*$regname.*$regval.*" \
+++	"read $regname value after setting"
+++    return 0
+++}
+++
+++# Compile and build a simple test program with CET feature activated.
+++set srcfile [standard_temp_file cet_regs_test[pid].cpp]
+++set binfile [standard_temp_file cet_regs_test[pid].x]
+++
+++set src {int main() { return 0; }}
+++gdb_produce_source $srcfile $src
+++
+++if {[prepare_cet_for_testing $binfile $srcfile]} {
+++    return -1
+++}
+++
+++if ![runto_main] {
+++    untested "could not run to main"
+++    return -1
+++}
+++
+++# read/set CET_U fields.
+++check_register_access "cet_u"
+++
+++set regval "0x1"
+++check_register_match "cet_u.SH_STK_EN" $regval
+++check_register_match "cet_u.WR_SHSTK_EN" $regval
+++check_register_match "cet_u.ENDBR_EN" $regval
+++check_register_match "cet_u.LEG_IW_EN" $regval
+++check_register_match "cet_u.NO_TRACK_EN" $regval
+++check_register_match "cet_u.SUPPRESS_DIS" $regval
+++check_register_match "cet_u.SUPPRESS" $regval
+++check_register_match "cet_u.TRACKER" $regval
+++check_register_match "cet_u.EB_LEG_BITMAP_BASE" "0x12345678"
+++
+++# read/set PL3_SSP register.
+++check_register_access "pl3_ssp"
+++check_register_match "pl3_ssp" "0x12345678"
++diff --git a/gdb/testsuite/lib/cet.exp b/gdb/testsuite/lib/cet.exp
++new file mode 100644
++index 0000000000..7a49ad276f
++--- /dev/null
+++++ b/gdb/testsuite/lib/cet.exp
++@@ -0,0 +1,109 @@
+++# Copyright 2019 Free Software Foundation, Inc.
+++#
+++# This program is free software; you can redistribute it and/or modify
+++# it under the terms of the GNU General Public License as published by
+++# the Free Software Foundation; either version 3 of the License, or
+++# (at your option) any later version.
+++#
+++# This program is distributed in the hope that it will be useful,
+++# but WITHOUT ANY WARRANTY; without even the implied warranty of
+++# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+++# GNU General Public License for more details.
+++#
+++# You should have received a copy of the GNU General Public License
+++# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+++#
+++# Support library for testing CET GDB features
+++
+++# Return compiler flags for CET
+++
+++proc cet_compilation_options { } {
+++    global srcdir
+++    set inc_dir "-I$srcdir/../nat/"
+++    set cet_flag "-fcf-protection=full"
+++    set add_flags "additional_flags=$inc_dir additional_flags=$cet_flag"
+++    return [concat {c++ debug} $add_flags]
+++}
+++
+++# Compile a given CET source file
+++
+++proc prepare_cet_for_testing { binfile srcfile } {
+++    set options [cet_compilation_options]
+++    set message "failed to compile $srcfile"
+++    return [prepare_for_testing $message $binfile $srcfile $options]
+++}
+++
+++# Run a test on the target to check if it supports CET.
+++# Return 0 if CET is supported, 1 otherwise.
+++
+++gdb_caching_proc skip_cet_tests {
+++    global srcdir gdb_prompt
+++
+++    set me "skip_cet_tests"
+++
+++    if { ![istarget i?86-*-*] && ![istarget x86_64-*-* ] } {
+++	verbose "$me: target known to not support CET."
+++	return 1
+++    }
+++
+++    # Set up, compile, and execute a simple test program with CET support.
+++    # Include the current process ID in the file names to prevent conflicts
+++    # with invocations for multiple testsuites.
+++    set src [standard_temp_file cet_hw_support_[pid].cpp]
+++    set exe [standard_temp_file cet_hw_support_[pid].x]
+++
+++    gdb_produce_source $src {
+++	#include "x86-cpuid.h"
+++	#include <stddef.h>
+++
+++	static unsigned int  __attribute__ ((noinline))
+++	check_cet_support ()
+++	{
+++	    unsigned int eax, ebx, ecx, edx;
+++	    __cpuid (1, eax, ebx, ecx, edx);
+++
+++	    /* Check if OS provides processor extended state management.  */
+++	    if ((ecx & bit_OSXSAVE) != bit_OSXSAVE) return 0;
+++
+++	    if (__get_cpuid_max (0, NULL) < 7) return 0;
+++	    __cpuid_count (7, 0, eax, ebx, ecx, edx);
+++
+++	    int support = 0;
+++	    if ((edx & bit_IBT) == bit_IBT) support += 1;
+++
+++	    if ((ecx & bit_SHSTK) == bit_SHSTK) support += 2;
+++
+++	    return support;
+++	}
+++
+++	int main() { return 0; }
+++    }
+++
+++    if {[prepare_cet_for_testing ${exe} ${src}]} {
+++	verbose "$me: CET compilation failed" 2
+++	return 1
+++    }
+++
+++    if ![runto_main] {
+++	verbose -log "$me: could not run to main"
+++	return 1
+++    }
+++
+++    send_gdb "print (int) check_cet_support ()\r"
+++    gdb_expect {
+++        -re ".. = 3\r\n$gdb_prompt " {
+++	    verbose -log "\n$me: CET support detected"
+++	    set skip_cet_tests 0
+++        }
+++        default {
+++	    verbose -log "\n$me: CET support not detected"
+++	    set skip_cet_tests 1
+++        }
+++    }
+++    gdb_exit
+++
+++    file delete $src
+++    file delete $exe
+++
+++    return $skip_cet_tests
+++}
++diff --git a/gdb/x86-linux-nat.c b/gdb/x86-linux-nat.c
++index fb2c92c425..e11105e952 100644
++--- a/gdb/x86-linux-nat.c
+++++ b/gdb/x86-linux-nat.c
++@@ -41,6 +41,7 @@
++ #include "nat/x86-linux.h"
++ #include "nat/x86-linux-dregs.h"
++ #include "nat/linux-ptrace.h"
+++#include "x86-tdep.h"
++ 
++ /* linux_nat_target::low_new_fork implementation.  */
++ 
++@@ -189,16 +190,42 @@ x86_linux_nat_target::read_description ()
++   else
++     xcr0_features_bits = 0;
++ 
+++  /* CET_ENABLED is used to decide if the CET feature registers need to be
+++     activated. CET_ENABLED is set to true if PTRACE_GETREGSET is available and
+++     the PTRACE_GETREGSET call with NT_X86_CET flag can be performed
+++     successfully.  */
+++  if (have_ptrace_getregset_cet == TRIBOOL_UNKNOWN)
+++    {
+++      if (have_ptrace_getregset == TRIBOOL_TRUE)
+++	{
+++	  uint64_t buf[2];
+++	  struct iovec iov;
+++
+++	  iov.iov_base = buf;
+++	  iov.iov_len = sizeof (buf);
+++
+++	  /* Check if PTRACE_GETREGSET with NT_X86_CET flag works.  */
+++	  if (ptrace (PTRACE_GETREGSET, tid, NT_X86_CET, &iov) < 0)
+++	    have_ptrace_getregset_cet = TRIBOOL_FALSE;
+++	  else
+++	    have_ptrace_getregset_cet = TRIBOOL_TRUE;
+++	}
+++      else
+++	have_ptrace_getregset_cet = TRIBOOL_FALSE;
+++  }
+++  bool cet_enabled = have_ptrace_getregset_cet == TRIBOOL_TRUE;
+++
++   if (is_64bit)
++     {
++ #ifdef __x86_64__
++-      return amd64_linux_read_description (xcr0_features_bits, is_x32);
+++      return amd64_linux_read_description (xcr0_features_bits, is_x32,
+++					   cet_enabled);
++ #endif
++     }
++   else
++     {
++-      const struct target_desc * tdesc
++-	= i386_linux_read_description (xcr0_features_bits);
+++      const struct target_desc *tdesc
+++	  = i386_linux_read_description (xcr0_features_bits, cet_enabled);
++ 
++       if (tdesc == NULL)
++ 	tdesc = i386_linux_read_description (X86_XSTATE_SSE_MASK);
++@@ -310,6 +337,52 @@ x86_linux_get_thread_area (pid_t pid, void *addr, unsigned int *base_addr)
++ }
++ 
++ 
+++/* Fetch all CET registers covered by the PTRACE_GETREGSET request with
+++   NT_X86_CET flag from process/thread TID and store their values in
+++   GDB's register cache.  */
+++
+++bool
+++x86_linux_fetch_cet_regs (struct regcache *regcache, const int tid)
+++{
+++  if (have_ptrace_getregset_cet != TRIBOOL_TRUE)
+++    return false;
+++
+++  uint64_t buf[X86_NUM_CET_REGS];
+++  struct iovec iov;
+++  iov.iov_base = buf;
+++  iov.iov_len = sizeof (buf);
+++
+++  if (ptrace (PTRACE_GETREGSET, tid, NT_X86_CET, &iov) < 0)
+++    perror_with_name (_("Couldn't get CET registers."));
+++
+++  x86_supply_cet (regcache, buf);
+++
+++  return true;
+++}
+++
+++/* Store all CET registers in GDB's register array covered by the
+++   PTRACE_SETREGSET request with NT_X86_CET flag into the process/thread
+++   specified by TID.  */
+++
+++bool
+++x86_linux_store_cet_regs (const struct regcache *regcache, const int tid)
+++{
+++  if (have_ptrace_getregset_cet != TRIBOOL_TRUE)
+++    return false;
+++
+++  uint64_t buf[X86_NUM_CET_REGS];
+++  struct iovec iov;
+++  iov.iov_base = buf;
+++  iov.iov_len = sizeof (buf);
+++
+++  x86_collect_cet (regcache, buf);
+++
+++  if (ptrace (PTRACE_SETREGSET, tid, NT_X86_CET, &iov) < 0)
+++    perror_with_name (_("Couldn't write CET registers"));
+++
+++  return true;
+++}
+++
++ void _initialize_x86_linux_nat ();
++ void
++ _initialize_x86_linux_nat ()
++diff --git a/gdb/x86-linux-nat.h b/gdb/x86-linux-nat.h
++index d9dcd32409..34d0d421d2 100644
++--- a/gdb/x86-linux-nat.h
+++++ b/gdb/x86-linux-nat.h
++@@ -84,4 +84,17 @@ struct x86_linux_nat_target : public x86_nat_target<linux_nat_target>
++ extern ps_err_e x86_linux_get_thread_area (pid_t pid, void *addr,
++ 					   unsigned int *base_addr);
++ 
+++/* Fetch all CET registers covered by the PTRACE_GETREGSET request with
+++   NT_X86_CET flag from process/thread TID and store their values in
+++   GDB's register cache.  */
+++
+++extern bool x86_linux_fetch_cet_regs (struct regcache *regcache, const int tid);
+++
+++/* Store all CET registers in GDB's register cache covered by the
+++   PTRACE_SETREGSET request with NT_X86_CET flag into the process/thread
+++   specified by TID.  */
+++
+++extern bool x86_linux_store_cet_regs (const struct regcache *regcache,
+++				      const int tid);
+++
++ #endif
++diff --git a/gdb/x86-tdep.c b/gdb/x86-tdep.c
++index 5f03cfe910..27189ee3b9 100644
++--- a/gdb/x86-tdep.c
+++++ b/gdb/x86-tdep.c
++@@ -18,9 +18,66 @@
++    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
++ 
++ #include "defs.h"
+++#include "i386-tdep.h"
++ #include "x86-tdep.h"
++ #include "symtab.h"
++ 
+++const char *x86_cet_names[X86_NUM_CET_REGS] = { "cet_u", "pl3_ssp" };
+++
+++/* See x86-tdep.h.  */
+++
+++bool
+++x86_is_cet_regnum (struct gdbarch *gdbarch, const int regnum)
+++{
+++  if (gdbarch == nullptr)
+++    return false;
+++
+++  struct gdbarch_tdep *tdep = gdbarch_tdep (gdbarch);
+++  gdb_assert (tdep != nullptr);
+++
+++  if (tdep->cet_regnum < 0)
+++    return false;
+++
+++  return (regnum >= tdep->cet_regnum
+++	  && regnum < (tdep->cet_regnum + tdep->num_cet_regs));
+++}
+++
+++/* See x86-tdep.h.  */
+++
+++void
+++x86_supply_cet (struct regcache *regcache, const uint64_t buf[X86_NUM_CET_REGS])
+++{
+++  if (buf == nullptr)
+++    return;
+++
+++  const struct gdbarch_tdep *tdep = gdbarch_tdep (regcache->arch ());
+++  gdb_assert (tdep != nullptr);
+++
+++  if (tdep->cet_regnum < 0)
+++    return;
+++
+++  for (int i = 0; i < X86_NUM_CET_REGS; ++i)
+++    regcache->raw_supply (tdep->cet_regnum + i, &buf[i]);
+++}
+++
+++/* See x86-tdep.h.  */
+++
+++void
+++x86_collect_cet (const struct regcache *regcache,
+++		 uint64_t buf[X86_NUM_CET_REGS])
+++{
+++  if (buf == nullptr)
+++    return;
+++
+++  const struct gdbarch_tdep *tdep = gdbarch_tdep (regcache->arch ());
+++  gdb_assert (tdep != nullptr);
+++
+++  if (tdep->cet_regnum < 0)
+++    return;
+++
+++  for (int i = 0; i < X86_NUM_CET_REGS; ++i)
+++    regcache->raw_collect (tdep->cet_regnum + i, &buf[i]);
+++}
++ 
++ /* Check whether NAME is included in NAMES[LO] (inclusive) to NAMES[HI]
++    (exclusive).  */
++diff --git a/gdb/x86-tdep.h b/gdb/x86-tdep.h
++index 6ff62db3ff..cb69f8f54d 100644
++--- a/gdb/x86-tdep.h
+++++ b/gdb/x86-tdep.h
++@@ -20,6 +20,27 @@
++ #ifndef X86_TDEP_H
++ #define X86_TDEP_H
++ 
+++constexpr int X86_NUM_CET_REGS = 2;
+++
+++/* User mode CET registers' names.  */
+++
+++extern const char *x86_cet_names[X86_NUM_CET_REGS];
+++
+++/* Return TRUE if register number REGNUM is a CET user mode register.  */
+++
+++extern bool x86_is_cet_regnum (struct gdbarch *gdbarch, const int regnum);
+++
+++/* Fill CET user mode registers in REGCACHE with the appropriate
+++   values from buffer BUF.  */
+++
+++extern void x86_supply_cet (struct regcache *regcache,
+++			    const uint64_t buf[X86_NUM_CET_REGS]);
+++
+++/* Fill CET user mode registers in buffer BUF with the values from REGCACHE.  */
+++
+++extern void x86_collect_cet (const struct regcache *regcache,
+++			     uint64_t buf[X86_NUM_CET_REGS]);
+++
++ /* Checks whether PC lies in an indirect branch thunk using registers
++    REGISTER_NAMES[LO] (inclusive) to REGISTER_NAMES[HI] (exclusive).  */
++ 
++diff --git a/gdbserver/linux-low.cc b/gdbserver/linux-low.cc
++index e45493339d..b191d74adc 100644
++--- a/gdbserver/linux-low.cc
+++++ b/gdbserver/linux-low.cc
++@@ -140,6 +140,9 @@ typedef struct
++ /* Does the current host support PTRACE_GETREGSET?  */
++ int have_ptrace_getregset = -1;
++ 
+++/* Does the current host support PTRACE_GETREGSET with NT_X86_CET flag?  */
+++enum tribool have_ptrace_getregset_cet = TRIBOOL_UNKNOWN;
+++
++ /* LWP accessors.  */
++ 
++ /* See nat/linux-nat.h.  */
++diff --git a/gdbserver/linux-low.h b/gdbserver/linux-low.h
++index 0ef659fb0f..12391b62fa 100644
++--- a/gdbserver/linux-low.h
+++++ b/gdbserver/linux-low.h
++@@ -876,6 +876,9 @@ bool thread_db_thread_handle (ptid_t ptid, gdb_byte **handle, int *handle_len);
++ 
++ extern int have_ptrace_getregset;
++ 
+++/* Does the current host support PTRACE_GETREGSET with NT_X86_CET flag?  */
+++extern enum tribool have_ptrace_getregset_cet;
+++
++ /* Search for the value with type MATCH in the auxv vector with
++    entries of length WORDSIZE bytes.  If found, store the value in
++    *VALP and return 1.  If not found or if there is an error, return
++diff --git a/gdbserver/linux-x86-low.cc b/gdbserver/linux-x86-low.cc
++index 37d3626e1f..753a8742b0 100644
++--- a/gdbserver/linux-x86-low.cc
+++++ b/gdbserver/linux-x86-low.cc
++@@ -245,7 +245,8 @@ static const int x86_64_regmap[] =
++   -1, -1, -1, -1, -1, -1, -1, -1,
++   -1, -1, -1, -1, -1, -1, -1, -1,
++   -1, -1, -1, -1, -1, -1, -1, -1,
++-  -1					/* pkru  */
+++  -1,					/* pkru  */
+++  -1, -1				/* CET registers CET_U, PL3_SSP.  */
++ };
++ 
++ #define X86_64_NUM_REGS (sizeof (x86_64_regmap) / sizeof (x86_64_regmap[0]))
++@@ -397,6 +398,48 @@ x86_target::low_cannot_fetch_register (int regno)
++   return regno >= I386_NUM_REGS;
++ }
++ 
+++/* Collect all CET registers in GDB's register cache covered by the
+++   PTRACE_SETREGSET request with NT_X86_CET flag and store into the
+++   process/thread specified by TID.  */
+++
+++static void
+++x86_fill_cet_regs (struct regcache *regcache, const int tid)
+++{
+++  if (have_ptrace_getregset_cet != TRIBOOL_TRUE)
+++    return;
+++
+++  uint64_t buf[2];
+++  collect_register_by_name (regcache, "cet_u", &buf[0]);
+++  collect_register_by_name (regcache, "pl3_ssp", &buf[1]);
+++
+++  struct iovec iov;
+++  iov.iov_base = buf;
+++  iov.iov_len = sizeof (buf);
+++  ptrace (PTRACE_SETREGSET, tid, NT_X86_CET, &iov);
+++}
+++
+++/* Fetch all CET registers covered by the PTRACE_GETREGSET request with
+++   NT_X86_CET flag from process/thread TID and store their values in
+++   GDB's register cache.  */
+++
+++static void
+++x86_store_cet_regs (struct regcache *regcache, const int tid)
+++{
+++  if (have_ptrace_getregset_cet != TRIBOOL_TRUE)
+++    return;
+++
+++  uint64_t buf[2];
+++  struct iovec iov;
+++  iov.iov_base = buf;
+++  iov.iov_len = sizeof (buf);
+++
+++  if (ptrace (PTRACE_GETREGSET, tid, NT_X86_CET, &iov) == 0)
+++    {
+++      supply_register_by_name (regcache, "cet_u", &buf[0]);
+++      supply_register_by_name (regcache, "pl3_ssp", &buf[1]);
+++    }
+++}
+++
++ static void
++ x86_fill_gregset (struct regcache *regcache, void *buf)
++ {
++@@ -417,6 +460,10 @@ x86_fill_gregset (struct regcache *regcache, void *buf)
++   memset (buf, 0x00, X86_64_USER_REGS * 8);
++ #endif
++ 
+++  /* Collect all CET registers in GDB's register cache and store into the
+++     current process/thread.  */
+++  x86_fill_cet_regs (regcache, lwpid_of (current_thread));
+++
++   for (i = 0; i < I386_NUM_REGS; i++)
++     collect_register (regcache, i, ((char *) buf) + i386_regmap[i]);
++ 
++@@ -455,6 +502,10 @@ x86_store_gregset (struct regcache *regcache, const void *buf)
++     }
++ #endif
++ 
+++  /* Fetch all CET registers from current process/thread and store into the
+++     GDB's register cache.  */
+++  x86_store_cet_regs (regcache, lwpid_of (current_thread));
+++
++   for (i = 0; i < I386_NUM_REGS; i++)
++     supply_register (regcache, i, ((char *) buf) + i386_regmap[i]);
++ 
++@@ -942,6 +993,31 @@ x86_linux_read_description (void)
++   if (xcr0_features)
++     x86_xcr0 = xcr0;
++ 
+++  /* CET_ENABLED is used to decide if the CET feature registers need to be
+++     activated.  CET_ENABLED is set to true if PTRACE_GETREGSET is available and
+++     the PTRACE_GETREGSET call with NT_X86_CET flag can be performed
+++     successfully.  */
+++  if (have_ptrace_getregset_cet == TRIBOOL_UNKNOWN)
+++    {
+++      if (have_ptrace_getregset == TRIBOOL_TRUE)
+++	{
+++	  uint64_t buf[2];
+++	  struct iovec iov;
+++
+++	  iov.iov_base = buf;
+++	  iov.iov_len = sizeof (buf);
+++
+++	  /* Check if PTRACE_GETREGSET with NT_X86_CET flag works.  */
+++	  if (ptrace (PTRACE_GETREGSET, tid, NT_X86_CET, &iov) < 0)
+++	    have_ptrace_getregset_cet = TRIBOOL_FALSE;
+++	  else
+++	    have_ptrace_getregset_cet = TRIBOOL_TRUE;
+++	}
+++      else
+++	have_ptrace_getregset_cet = TRIBOOL_FALSE;
+++    }
+++  bool cet_enabled = have_ptrace_getregset_cet == TRIBOOL_TRUE;
+++
++   if (machine == EM_X86_64)
++     {
++ #ifdef __x86_64__
++@@ -950,11 +1026,12 @@ x86_linux_read_description (void)
++       if (xcr0_features)
++ 	{
++ 	  tdesc = amd64_linux_read_description (xcr0 & X86_XSTATE_ALL_MASK,
++-						!is_elf64);
+++						!is_elf64, cet_enabled);
++ 	}
++ 
++       if (tdesc == NULL)
++-	tdesc = amd64_linux_read_description (X86_XSTATE_SSE_MASK, !is_elf64);
+++	tdesc = amd64_linux_read_description (X86_XSTATE_SSE_MASK, !is_elf64,
+++					      cet_enabled);
++       return tdesc;
++ #endif
++     }
++@@ -966,7 +1043,7 @@ x86_linux_read_description (void)
++ 	  tdesc = i386_linux_read_description (xcr0 & X86_XSTATE_ALL_MASK);
++ 
++       if (tdesc == NULL)
++-	tdesc = i386_linux_read_description (X86_XSTATE_SSE);
+++	tdesc = i386_linux_read_description (X86_XSTATE_SSE, cet_enabled);
++ 
++       return tdesc;
++     }
++diff --git a/gdbserver/linux-x86-tdesc.cc b/gdbserver/linux-x86-tdesc.cc
++index 96097eecc5..392148c928 100644
++--- a/gdbserver/linux-x86-tdesc.cc
+++++ b/gdbserver/linux-x86-tdesc.cc
++@@ -76,7 +76,7 @@ static struct target_desc *i386_tdescs[X86_TDESC_LAST] = { };
++ /* Return the target description according to XCR0.  */
++ 
++ const struct target_desc *
++-i386_linux_read_description (uint64_t xcr0)
+++i386_linux_read_description (uint64_t xcr0, bool cet_enabled)
++ {
++   enum x86_linux_tdesc idx = xcr0_to_tdesc_idx (xcr0, false);
++ 
++@@ -87,7 +87,7 @@ i386_linux_read_description (uint64_t xcr0)
++ 
++   if (*tdesc == NULL)
++     {
++-      *tdesc = i386_create_target_description (xcr0, true, false);
+++      *tdesc = i386_create_target_description (xcr0, true, false, cet_enabled);
++ 
++       init_target_desc (*tdesc, i386_expedite_regs);
++     }
++@@ -102,7 +102,7 @@ static target_desc *amd64_tdescs[X86_TDESC_LAST] = { };
++ static target_desc *x32_tdescs[X86_TDESC_LAST] = { };
++ 
++ const struct target_desc *
++-amd64_linux_read_description (uint64_t xcr0, bool is_x32)
+++amd64_linux_read_description (uint64_t xcr0, bool is_x32, bool cet_enabled)
++ {
++   enum x86_linux_tdesc idx = xcr0_to_tdesc_idx (xcr0, is_x32);
++ 
++@@ -118,7 +118,8 @@ amd64_linux_read_description (uint64_t xcr0, bool is_x32)
++ 
++   if (*tdesc == NULL)
++     {
++-      *tdesc = amd64_create_target_description (xcr0, is_x32, true, true);
+++      *tdesc = amd64_create_target_description (xcr0, is_x32, true, true,
+++						cet_enabled);
++ 
++       init_target_desc (*tdesc, amd64_expedite_regs);
++     }
++diff --git a/gdbserver/linux-x86-tdesc.h b/gdbserver/linux-x86-tdesc.h
++index 21c8dfd393..4bcbeed30f 100644
++--- a/gdbserver/linux-x86-tdesc.h
+++++ b/gdbserver/linux-x86-tdesc.h
++@@ -47,10 +47,12 @@ int amd64_get_ipa_tdesc_idx (const struct target_desc *tdesc);
++ const struct target_desc *i386_get_ipa_tdesc (int idx);
++ 
++ #ifdef __x86_64__
++-const struct target_desc *amd64_linux_read_description (uint64_t xcr0,
++-							bool is_x32);
+++const struct target_desc *
+++amd64_linux_read_description (uint64_t xcr0, bool is_x32,
+++			      bool cet_enabled = false);
++ #endif
++ 
++-const struct target_desc *i386_linux_read_description (uint64_t xcr0);
+++const struct target_desc *
+++i386_linux_read_description (uint64_t xcr0, bool cet_enabled = false);
++ 
++ #endif /* GDBSERVER_LINUX_X86_TDESC_H */
++-- 
++2.28.0
++
+diff --git a/0002-x86-Add-NT_X86_CET.patch b/0002-x86-Add-NT_X86_CET.patch
+new file mode 100644
+index 0000000..d88fc1e
+--- /dev/null
++++ b/0002-x86-Add-NT_X86_CET.patch
+@@ -0,0 +1,35 @@
++From 263de2bf1c365d1b0ac4bb99aa2ca00f9f22b544 Mon Sep 17 00:00:00 2001
++From: "H.J. Lu" <hjl.tools@gmail.com>
++Date: Thu, 10 Sep 2020 11:13:05 -0700
++Subject: [PATCH 2/9] x86: Add NT_X86_CET
++
++binutils/
++
++	* readelf.c (get_note_type): Support NT_X86_CET.
++
++include/
++
++	* elf/common.h (NT_X86_CET): New.
++---
++ binutils/readelf.c   | 2 ++
++ include/elf/common.h | 4 ++++
++ 2 files changed, 6 insertions(+)
++
++diff --git a/include/elf/common.h b/include/elf/common.h
++index 75c4fb7e9d..65560dac6d 100644
++--- a/include/elf/common.h
+++++ b/include/elf/common.h
++@@ -613,6 +613,10 @@
++ 					/*   note name must be "LINUX".  */
++ #define NT_X86_XSTATE	0x202		/* x86 XSAVE extended state */
++ 					/*   note name must be "LINUX".  */
+++/* TODO: The following definition should be double-checked once the linux kernel
+++   CET patches are upstreamed.  */
+++#define NT_X86_CET	0x203		/* x86 CET state.  */
+++					/*   note name must be "LINUX".  */
++ #define NT_S390_HIGH_GPRS 0x300		/* S/390 upper halves of GPRs  */
++ 					/*   note name must be "LINUX".  */
++ #define NT_S390_TIMER	0x301		/* S390 timer */
++-- 
++2.26.2
++
+diff --git a/0003-CET-Add-a-new-command-to-print-the-shadow-stack-back.patch b/0003-CET-Add-a-new-command-to-print-the-shadow-stack-back.patch
+new file mode 100644
+index 0000000..5756598
+--- /dev/null
++++ b/0003-CET-Add-a-new-command-to-print-the-shadow-stack-back.patch
+@@ -0,0 +1,584 @@
++From 6483eea0949db328d151cb0a45c0b879c7ca814f Mon Sep 17 00:00:00 2001
++From: "Bakhtiari, Arash" <arash.bakhtiari@intel.com>
++Date: Mon, 17 Dec 2018 14:03:12 +0100
++Subject: [PATCH 3/8] CET: Add a new command to print the shadow stack
++ backtrace.
++
++A shadow stack is a second stack for a program introduced in
++Control-flow Enforcement Technology (CET). The shadow stack is used for control
++transfer operations to store the return addresses. In this patch, a new command
++"info cet backtrace" is added to unwind the shadow stack and print its
++backtrace.
++
++gdb/ChangeLog:
++2018-12-17  Arash Bakhtiari  <arash.bakhtiari@intel.com>
++
++        * x86-cet.h: New file.
++        * x86-cet.c: New file.
++        * Makefile.in: Add x86-cet.c.
++        * include/elf/common.h: Add NT_X86_CET.
++
++gdb/doc/ChangeLog:
++2018-12-17  Arash Bakhtiari  <arash.bakhtiari@intel.com>
++
++        * gdb.texinfo (CET Debugging): New documentation.
++
++Signed-off-by: Bakhtiari, Arash <arash.bakhtiari@intel.com>
++Signed-off-by: Tankut Baris Aktemur <tankut.baris.aktemur@intel.com>
++---
++ gdb/Makefile.in     |   1 +
++ gdb/doc/gdb.texinfo |  51 ++++++
++ gdb/x86-cet.c       | 414 ++++++++++++++++++++++++++++++++++++++++++++
++ gdb/x86-cet.h       |  31 ++++
++ 4 files changed, 497 insertions(+)
++ create mode 100644 gdb/x86-cet.c
++ create mode 100644 gdb/x86-cet.h
++
++diff --git a/gdb/Makefile.in b/gdb/Makefile.in
++index 4808357e65..1022fff56f 100644
++--- a/gdb/Makefile.in
+++++ b/gdb/Makefile.in
++@@ -1163,6 +1163,7 @@ COMMON_SFILES = \
++ 	valprint.c \
++ 	value.c \
++ 	varobj.c \
+++	x86-cet.c \
++ 	xml-support.c \
++ 	xml-syscall.c \
++ 	xml-tdesc.c
++diff --git a/gdb/doc/gdb.texinfo b/gdb/doc/gdb.texinfo
++index bae141d570..104649fc5b 100644
++--- a/gdb/doc/gdb.texinfo
+++++ b/gdb/doc/gdb.texinfo
++@@ -62,6 +62,10 @@ and with the Back-Cover Texts as in (a) below.
++ (a) The FSF's Back-Cover Text is: ``You are free to copy and modify
++ this GNU Manual.  Buying copies from GNU Press supports the FSF in
++ developing GNU and promoting software freedom.''
+++@sp 1
+++Copyright @copyright{} 2020, Intel Corporation.
+++Intel's modifications are provided pursuant to the GNU Free
+++Documentation license.
++ @c man end
++ @end copying
++ 
++@@ -140,6 +144,7 @@ software in general.  We will miss him.
++ * Source::                      Examining source files
++ * Data::                        Examining data
++ * Optimized Code::              Debugging optimized code
+++* Intel Architecture::          Debugging on Intel(R) Architecture
++ * Macros::                      Preprocessor Macros
++ * Tracepoints::                 Debugging remote targets non-intrusively
++ * Overlays::                    Debugging programs that use overlays
++@@ -13774,6 +13779,52 @@ tail calls.  Such tail calls would modify the @code{i} variable, therefore
++ @value{GDBN} cannot be sure the value it knows would be right - @value{GDBN}
++ prints @code{<optimized out>} instead.
++ 
+++@node Intel Architecture
+++@chapter Debugging on Intel(R) Architecture
+++
+++@menu
+++* CET Debugging::          Debugging Control-flow Enforcement Technology (CET)
+++@end menu
+++
+++@node CET Debugging
+++@section Control-flow Enforcement Debugging
+++@cindex control-flow enforcement
+++@cindex shadow stack, indirect branch tracking
+++Control-flow Enforcement Technology (CET) provides two capabilities to defend
+++against ``Return-oriented Programming'' and ``call/jmp-oriented
+++programming'' style control-flow attacks:
+++
+++@itemize @bullet
+++@item Shadow Stack:
+++A shadow stack is a second stack for the program which holds the return
+++addresses pushed by the CALL instruction.  The RET instruction pops the return
+++address from both call and shadow stacks and if the return address from the two
+++stacks do not match, the processor signals a control protection exception.
+++@item Indirect Branch Tracking (IBT):
+++When IBT is enabled, the CPU implements a state machine that tracks indirect
+++jmp and call instructions.  The state machine can be either ``IDLE'' or
+++``WAIT_FOR_ENDBRANCH''. In WAIT_FOR_ENDBRANCH state the next
+++instruction in the program stream must be an ENDBRANCH, otherwise the processor
+++signals control protection exception.
+++@end itemize
+++
+++@subsection Command Description
+++@table @code
+++@item info cet backtrace
+++This command prints backtrace of the shadow stack for the current running
+++process.
+++For example, using the command @code{info cet backtrace} while stopped at
+++the stack frame corresponding to the function @code{func2 ()} will display:
+++@smallexample
+++   Address              Symbol
+++#0 0x000000000040141f   func1 ()
+++#1 0x0000000000401578   main (int, char const**)
+++#2 0x00007ffff72aa393   __libc_start_main
+++#3 0x000000000040125e   _start
+++@end smallexample
+++@end table
+++
+++
++ @node Macros
++ @chapter C Preprocessor Macros
++ 
++diff --git a/gdb/x86-cet.c b/gdb/x86-cet.c
++new file mode 100644
++index 0000000000..0632188f6c
++--- /dev/null
+++++ b/gdb/x86-cet.c
++@@ -0,0 +1,414 @@
+++/* Control-flow Enforcement Technology support for GDB, the GNU debugger.
+++
+++   Copyright (C) 2018 Free Software Foundation, Inc.
+++
+++   This file is part of GDB.
+++
+++   This program is free software; you can redistribute it and/or modify
+++   it under the terms of the GNU General Public License as published by
+++   the Free Software Foundation; either version 3 of the License, or
+++   (at your option) any later version.
+++
+++   This program is distributed in the hope that it will be useful,
+++   but WITHOUT ANY WARRANTY; without even the implied warranty of
+++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+++   GNU General Public License for more details.
+++
+++   You should have received a copy of the GNU General Public License
+++   along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
+++
+++#include "defs.h"
+++#include "x86-cet.h"
+++#include "demangle.h"
+++#include "frame.h"
+++#include "gdbcmd.h"
+++#include "gdbthread.h"
+++#include "i386-tdep.h"
+++#include "i387-tdep.h"
+++#include "inferior.h"
+++#include "include/elf/common.h"
+++#include "inf-ptrace.h"
+++#include "valprint.h"
+++
+++#include <sstream>
+++#include <vector>
+++
+++
+++extern int safe_read_memory_unsigned_integer (CORE_ADDR memaddr, int len,
+++					      enum bfd_endian byte_order,
+++					      ULONGEST *return_value);
+++
+++/* See x86-cet.h.  */
+++
+++bool
+++cet_set_registers (const ptid_t tid, const CORE_ADDR *ssp,
+++		   const uint64_t *cet_msr)
+++{
+++  if (!target_has_execution)
+++    error (_("No current process: you must name one."));
+++
+++  auto *regcache = get_thread_regcache_for_ptid (tid);
+++  const auto *tdep = gdbarch_tdep (regcache->arch ());
+++
+++  auto regnum = tdep->cet_regnum;
+++  if (regnum < 0)
+++    return false;
+++
+++  regcache_raw_write_unsigned (regcache, regnum, (ULONGEST) *cet_msr);
+++
+++  ++regnum;
+++  regcache_raw_write_unsigned (regcache, regnum, *ssp);
+++
+++  return true;
+++}
+++
+++/* See x86-cet.h.  */
+++
+++bool
+++cet_get_registers (const ptid_t tid, CORE_ADDR *ssp, uint64_t *cet_msr)
+++{
+++  if (!target_has_execution)
+++    error (_("No current process: you must name one."));
+++
+++  auto *regcache = get_thread_regcache_for_ptid (tid);
+++  const auto *tdep = gdbarch_tdep (regcache->arch ());
+++
+++  auto regnum = tdep->cet_regnum;
+++  if (regnum < 0)
+++    return false;
+++
+++  if (regcache_raw_read_unsigned (regcache, regnum, (ULONGEST *) cet_msr)
+++      != REG_VALID)
+++    return false;
+++
+++  ++regnum;
+++  if (regcache_raw_read_unsigned (regcache, regnum, ssp) != REG_VALID)
+++    return false;
+++
+++  return true;
+++}
+++
+++/*  Retrieve the mapped memory regions [ADDR_LOW, ADDR_HIGH) for a given
+++    address ADDR in memory space of process TID by reading the process
+++    information from its pseudo-file system.  */
+++
+++static bool
+++cet_get_shstk_mem_range (const CORE_ADDR addr, struct mem_range *range)
+++{
+++  if (!target_has_execution)
+++    error (_("No current process: you must name one."));
+++
+++  if (current_inferior ()->fake_pid_p)
+++    error (_("Can't determine the current process's PID."));
+++
+++  auto pid = current_inferior ()->pid;
+++
+++  /* Construct the memory-map file's name and read the file's content.  */
+++  std::string filename{ "/proc/" + std::to_string (pid) + "/maps" };
+++  gdb::unique_xmalloc_ptr<char> map
+++    = target_fileio_read_stralloc (nullptr, filename.c_str ());
+++  if (map == nullptr)
+++    {
+++      warning (_("Unable to open file '%s'"), filename.c_str ());
+++      return false;
+++    }
+++
+++  /* Parse the memory-map file line-by-line and look for the memory range which
+++     ADDR belongs to. Each line of the memory-map file starts with the format
+++     "<map_low>-<map_high>".  */
+++  std::istringstream map_file_strm (map.get ());
+++  std::string line;
+++  while (std::getline (map_file_strm, line))
+++    {
+++      CORE_ADDR map_low, map_high;
+++      const char *p = line.c_str ();
+++      map_low = strtoulst (p, &p, 16);
+++      if (*p == '-')
+++	p++;
+++      map_high = strtoulst (p, &p, 16);
+++
+++      struct mem_range tmp_range
+++      {
+++	map_low, static_cast<int> (map_high - map_low)
+++      };
+++      if (address_in_mem_range (addr, &tmp_range))
+++	{
+++	  *range = tmp_range;
+++	  return true;
+++	}
+++    }
+++
+++  return false;
+++}
+++
+++/* Represents a frame in shadow stack.
+++   Shadow stack frames contain the Program Counter (PC). Far-calls additionally
+++   store the Code Segment (CS) and the current Shadow Stack Pointer (SPP).  */
+++
+++struct shstk_frame_info
+++{
+++  /* The code segment register.  */
+++  CORE_ADDR cs = 0;
+++
+++  /* The program control register.  */
+++  CORE_ADDR pc = 0;
+++
+++  /* The shadow stack pointer address.  */
+++  CORE_ADDR ssp = 0;
+++};
+++
+++/* Retrieve the shadow stack frame value SHSTK_INFO at SHSTK_ADDR and unwind
+++   the shadow stack by setting the SHSTK_ADDR to the previous frame.  */
+++
+++static bool
+++cet_unwind_shstk_frame (const struct mem_range *shstk_mem_range,
+++			CORE_ADDR *shstk_addr, shstk_frame_info *shstk_info)
+++{
+++  /* Check against memory range SHSTK_MEM_RANGE of shadow stack address
+++     space.  */
+++  if (!address_in_mem_range (*shstk_addr, shstk_mem_range))
+++    return false;
+++
+++  const int addr_size = gdbarch_addr_bit (target_gdbarch ()) / TARGET_CHAR_BIT;
+++  enum bfd_endian byte_order = gdbarch_byte_order (target_gdbarch ());
+++
+++  /* Reading the memory at the shadow stack pointer address.
+++     We create a copy of the SHSTK_ADDR to keep the original value
+++     intact in case of failure in unwinding process.  */
+++  CORE_ADDR ssp_addr = *shstk_addr, ssp_val;
+++  if (!safe_read_memory_unsigned_integer (ssp_addr, addr_size, byte_order,
+++					  &ssp_val))
+++    {
+++      warning (_("Unable to read the memory address %lx in shadow stack."),
+++	       ssp_addr);
+++      return false;
+++    }
+++
+++  /* In case of a far-call, CS, PC and the current shadow stack pointer
+++     are pushed on the shadow stack while for a near-call only the PC value is
+++     pushed.  Hence, to distinguish between far-call and near-call frames,
+++     we check if the value of current shadow stack pointer is equivalent to
+++     the possible previous shadow stack pointer (ssp_addr + 3 * addr_size).  */
+++  CORE_ADDR pc_val = 0, cs_val = 0;
+++  if (ssp_val == (ssp_addr + 3 * addr_size))
+++    {
+++      /* Read the PC value.  */
+++      ssp_addr += addr_size;
+++      if (!safe_read_memory_unsigned_integer (ssp_addr, addr_size, byte_order,
+++					      &pc_val))
+++	{
+++	  warning (
+++	      _("Unable to read the memory address %lx in shadow stack."),
+++	      ssp_addr);
+++	  return false;
+++	}
+++
+++      /* Read the CS value.  */
+++      ssp_addr += addr_size;
+++      if (!safe_read_memory_unsigned_integer (ssp_addr, addr_size, byte_order,
+++					      &cs_val))
+++	{
+++	  warning (
+++	      _("Unable to read the memory address %lx in shadow stack."),
+++	      ssp_addr);
+++	  return false;
+++	}
+++    }
+++  else
+++    {
+++      /* Set the PC value.  */
+++      pc_val = ssp_val;
+++    }
+++
+++  /* Store the shadow stack frame info.  */
+++  shstk_info->cs = cs_val;
+++  shstk_info->pc = pc_val;
+++  shstk_info->ssp = *shstk_addr;
+++
+++  /* Update the shadow stack pointer to point to the previous frame.
+++     After unwinding the innermost frame, the SSP_ADDR will point to
+++     boundary of SHSTK_MEM_RANGE and therefore the next unwinding call will
+++     fail.  */
+++  *shstk_addr = ssp_addr + addr_size;
+++
+++  return true;
+++}
+++
+++/* Print the symbolic representation (symbol name, file name and line number)
+++   of ADDR under the label FIELD_LABEL in UIOUT.  */
+++static void
+++print_cet_address_symbolic (const CORE_ADDR addr, struct ui_out *uiout,
+++			    const std::string field_label)
+++{
+++  /* Symbol name at ADDR.  */
+++  std::string name;
+++
+++  /* File name and line number of the symbol at ADDR.  */
+++  std::string filename;
+++  int unmapped = 0, offset = 0, line = 0;
+++
+++  /* Read the symbol info at ADDR.  */
+++  if (build_address_symbolic (target_gdbarch (), addr, true, true, &name, &offset,
+++			      &filename, &line, &unmapped)
+++      == 0)
+++    {
+++      if (!filename.empty ())
+++	{
+++	  /* Print the file name if one is found.  */
+++	  if (line != -1)
+++	    /* Print the line number if one is found.  */
+++	    uiout->field_fmt (field_label.c_str (), "%s at %s:%d",
+++			      name.c_str (), filename.c_str (), line);
+++	  else
+++	    uiout->field_fmt (field_label.c_str (), "%s in %s", name.c_str (),
+++			      filename.c_str ());
+++	}
+++      else
+++	/* Print only the symbol name if no file name is found.  */
+++	uiout->field_fmt (field_label.c_str (), "%s", name.c_str ());
+++    }
+++  else
+++    uiout->field_string (field_label.c_str (), "<unavailable>");
+++
+++  return;
+++}
+++
+++/* Print the shadow stack backtrace.  */
+++
+++static void
+++print_cet_shstk_backtrace (const std::vector<shstk_frame_info> *shstk_frames)
+++{
+++  if (shstk_frames->empty ())
+++    {
+++      printf_filtered (_("No shadow stack frame to print.\n"));
+++      return;
+++    }
+++
+++  /* Three columns for shadow stack frame's level, value and symbolic address
+++     of the value.  */
+++  const int ncols = 3;
+++
+++  /* One row for each shadow stack frame.  */
+++  const int nrows = shstk_frames->size ();
+++
+++  auto *uiout = current_uiout;
+++  ui_out_emit_table table_emitter (uiout, ncols, nrows, "shstk-bt");
+++
+++  /* Setup the table header.  */
+++  const auto level_width = std::to_string (nrows).length () + 1;
+++  uiout->table_header (level_width, ui_left, "lvl", " ");
+++  const auto addr_width = gdbarch_addr_bit (target_gdbarch ()) <= 32 ? 10 : 18;
+++  uiout->table_header (addr_width, ui_left, "shstk-val", "Address");
+++  uiout->table_header (25, ui_left, "shstk-sym", "Symbol");
+++
+++  /* Setup the table body.  */
+++  uiout->table_body ();
+++
+++  int level = 0;
+++  for (const auto &frame : *shstk_frames)
+++    {
+++      ui_out_emit_tuple tuple_emitter (uiout, nullptr);
+++
+++      /* Print the frame level.  */
+++      const std::string level_str{ "#" + std::to_string (level) };
+++      uiout->field_string ("lvl", level_str.c_str ());
+++
+++      /* Print the shadow stack's value.  */
+++      std::string pc_str{ print_core_address (target_gdbarch (), frame.pc) };
+++      if (frame.cs != 0)
+++	pc_str = std::string{ hex_string_custom (frame.cs, 4) } + ":" + pc_str;
+++      uiout->field_string ("shstk-val", pc_str.c_str ());
+++
+++      /* Print the symbolic representation of the shadow stack's value.  */
+++      print_cet_address_symbolic (frame.pc, uiout, "shstk-sym");
+++
+++      uiout->text ("\n");
+++
+++      ++level;
+++    }
+++}
+++
+++/* Fully unwind the shadow stack starting from the current shadow stack
+++   pointer.  Returns an empty vector if it could not retrieve either the shadow
+++   stack pointer or its memory range or it fails to unwind any frame at the
+++   current shadow stack pointer.  */
+++
+++static std::vector<shstk_frame_info>
+++cet_get_shstk_frames ()
+++{
+++  /* Read the current shadow stack pointer address SSP.  */
+++  uint64_t msr;
+++  CORE_ADDR ssp;
+++  if (!cet_get_registers (inferior_ptid, &ssp, &msr))
+++    {
+++      warning (_("Unable to get the shadow stack pointer address!"));
+++      return {};
+++    }
+++
+++  /* Read the memory range allocated for the shadow stack.
+++     The range is used as a stop criteria for unwinding process.
+++     The memory range is read once and passed as arguments to unwinding
+++     function to avoid repetitive calculation of the range in each unwinding
+++     call.  */
+++  struct mem_range shstk_mem_range;
+++  if (!cet_get_shstk_mem_range (ssp, &shstk_mem_range))
+++    {
+++      warning (_("Unable to get the shadow stack address range!"));
+++      return {};
+++    }
+++
+++  /* The first 64-bit value of shadow stack address space is the supervisor
+++     shadow stack token. We skip it for unwinding the shadow stack since it
+++     is setup by the supervisor when creating the shadow stacks to be used on
+++     inter-privilege call transfers.  */
+++  shstk_mem_range.length -= 0x8;
+++
+++  /* Unwind the shadow stack until we reach the boundaries of SHSTK_MEM_RANGE
+++     memory region. After each iteration SSP will point to the beginning of
+++     the next shadow stack frame.  */
+++  shstk_frame_info shstk_val;
+++  std::vector<shstk_frame_info> shstk_frames;
+++  while (cet_unwind_shstk_frame (&shstk_mem_range, &ssp, &shstk_val))
+++    shstk_frames.push_back (shstk_val);
+++
+++  return shstk_frames;
+++}
+++
+++/* The "info cet backtrace" command.  */
+++
+++static void
+++info_cet_shstk_backtrace_cmd (const char *args, int from_tty)
+++{
+++  auto shstk_frames = cet_get_shstk_frames ();
+++  print_cet_shstk_backtrace (&shstk_frames);
+++}
+++
+++/* Command lists for info CET commands.  */
+++
+++static struct cmd_list_element *info_cet_cmdlist;
+++
+++/* The "info cet" command.  */
+++
+++static void
+++info_cet_cmd (const char *args, int from_tty)
+++{
+++  help_list (info_cet_cmdlist, "info cet ", all_commands, gdb_stdout);
+++}
+++
+++void _initialize_cet_commands ();
+++void
+++_initialize_cet_commands ()
+++{
+++  add_prefix_cmd ("cet", class_info, info_cet_cmd,
+++		  _("Control-flow enforcement info commands."),
+++		  &info_cet_cmdlist, "info cet ", 1, &infolist);
+++
+++  add_cmd ("backtrace", class_info, info_cet_shstk_backtrace_cmd, _("\
+++Print backtrace of shadow stack for the current running process.\n\
+++To print the source filename and line number in the backtrace,\n\
+++the \"symbol-filename\" option of the print command should be toggled on.\n\
+++(See \"show print symbol-filename\")\n"),
+++	   &info_cet_cmdlist);
+++
+++  add_alias_cmd ("bt", "backtrace", class_info, 1, &info_cet_cmdlist);
+++}
++diff --git a/gdb/x86-cet.h b/gdb/x86-cet.h
++new file mode 100644
++index 0000000000..97d0e14e0f
++--- /dev/null
+++++ b/gdb/x86-cet.h
++@@ -0,0 +1,31 @@
+++/* Control-flow Enforcement Technology support for GDB, the GNU debugger.
+++
+++   Copyright (C) 2018 Free Software Foundation, Inc.
+++
+++   This file is part of GDB.
+++
+++   This program is free software; you can redistribute it and/or modify
+++   it under the terms of the GNU General Public License as published by
+++   the Free Software Foundation; either version 3 of the License, or
+++   (at your option) any later version.
+++
+++   This program is distributed in the hope that it will be useful,
+++   but WITHOUT ANY WARRANTY; without even the implied warranty of
+++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+++   GNU General Public License for more details.
+++
+++   You should have received a copy of the GNU General Public License
+++   along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
+++
+++#ifndef X86_CET_H
+++#define X86_CET_H
+++
+++/* Get the CET specific registers.  Returns true on success.  */
+++extern bool cet_get_registers (const ptid_t tid, CORE_ADDR *ssp,
+++			       uint64_t *cet_msr);
+++
+++/* Set the CET specific registers.  Returns true on success.  */
+++extern bool cet_set_registers (const ptid_t tid, const CORE_ADDR *ssp,
+++			       const uint64_t *cet_msr);
+++
+++#endif /* X86_CET_H */
++-- 
++2.28.0
++
+diff --git a/0004-CET-Add-info-cet-status-command.patch b/0004-CET-Add-info-cet-status-command.patch
+new file mode 100644
+index 0000000..dba421a
+--- /dev/null
++++ b/0004-CET-Add-info-cet-status-command.patch
+@@ -0,0 +1,151 @@
++From b57356d66a25931e059689cf16152961bc4c3b30 Mon Sep 17 00:00:00 2001
++From: Felix Willgerodt <felix.willgerodt@intel.com>
++Date: Mon, 3 Dec 2018 09:44:09 +0100
++Subject: [PATCH 4/8] CET: Add info cet status command.
++
++Add new command 'info cet status' to show the status of ibt and shadow stack
++for CET-enabled targets.
++
++gdb/ChangeLog:
++2018-12-03  Felix Willgerodt  <felix.willgerodt@intel.com>
++
++	* doc/gdb.texinfo: (info cet status): New documentation.
++	* x86-cet.c: (print_cet_status): New function.
++	(cet_status_cmd): New function.
++	(_initialize_cet_commands): Add cet_status_cmd.
++
++Signed-off-by: Felix Willgerodt <felix.willgerodt@intel.com>
++---
++ gdb/doc/gdb.texinfo | 17 +++++++++++
++ gdb/x86-cet.c       | 73 +++++++++++++++++++++++++++++++++++++++++++++
++ 2 files changed, 90 insertions(+)
++
++diff --git a/gdb/doc/gdb.texinfo b/gdb/doc/gdb.texinfo
++index 104649fc5b..55e2b70949 100644
++--- a/gdb/doc/gdb.texinfo
+++++ b/gdb/doc/gdb.texinfo
++@@ -13810,6 +13810,23 @@ signals control protection exception.
++ 
++ @subsection Command Description
++ @table @code
+++@item info cet status
+++This command prints general status information of CET at the current point
+++of execution.
+++@smallexample
+++(gdb) info cet status
+++Target Id:                process 30055
+++Shadow Stack:             enabled
+++Shadow Stack Pointer:     0x7ffff7ffefe8
+++WR_SHSTK_EN:              disabled
+++Indirect Branch Tracking: enabled
+++TRACKER:                  WAIT_FOR_ENDBRANCH
+++LEG_IW_EN:                disabled
+++NO_TRACK_EN:              enabled
+++SUPRESS_DIS:              disabled
+++SUPRESS:                  disabled
+++EB_LEG_BITMAP_BASE:       0x000000000000
+++@end smallexample
++ @item info cet backtrace
++ This command prints backtrace of the shadow stack for the current running
++ process.
++diff --git a/gdb/x86-cet.c b/gdb/x86-cet.c
++index 0632188f6c..1e49714920 100644
++--- a/gdb/x86-cet.c
+++++ b/gdb/x86-cet.c
++@@ -34,6 +34,17 @@
++ #include <vector>
++ 
++ 
+++/* MSR_IA32_U_CET and MSR_IA32_S_CET bits.  */
+++#define MSR_CET_SHSTK_EN		(0x1 << 0)
+++#define MSR_CET_WR_SHSTK_EN		(0x1 << 1)
+++#define MSR_CET_ENDBR_EN		(0x1 << 2)
+++#define MSR_CET_LEG_IW_EN		(0x1 << 3)
+++#define MSR_CET_NO_TRACK_EN		(0x1 << 4)
+++#define MSR_CET_SUPRESS_DIS		(0x1 << 5)
+++#define MSR_CET_SUPRESS			(0x1 << 10)
+++#define MSR_CET_TRACKER			(0x1 << 11)
+++#define MSR_CET_EB_LEG_BITMAP_BASE	0xfffffffffffff000ULL
+++
++ extern int safe_read_memory_unsigned_integer (CORE_ADDR memaddr, int len,
++ 					      enum bfd_endian byte_order,
++ 					      ULONGEST *return_value);
++@@ -88,6 +99,65 @@ cet_get_registers (const ptid_t tid, CORE_ADDR *ssp, uint64_t *cet_msr)
++   return true;
++ }
++ 
+++/* Print the information from the CET MSR and the SSP.  */
+++
+++static void
+++print_cet_status (const CORE_ADDR *ssp, const uint64_t *cet_msr)
+++{
+++  const int ncols = 2, nrows = 10;
+++  struct ui_out *uiout = current_uiout;
+++
+++  std::vector<std::string> names
+++      = { "Shadow Stack:", "Shadow Stack Pointer:",
+++	  "WR_SHSTK_EN:",  "Indirect Branch Tracking:",
+++	  "TRACKER:",      "LEG_IW_EN:",
+++	  "NO_TRACK_EN:",  "SUPRESS_DIS:",
+++	  "SUPRESS:",      "EB_LEG_BITMAP_BASE:" };
+++
+++  std::vector<std::string> values
+++      = { (*cet_msr & MSR_CET_SHSTK_EN) ? "enabled" : "disabled",
+++	  hex_string_custom (*ssp, 12),
+++	  (*cet_msr & MSR_CET_WR_SHSTK_EN) ? "enabled" : "disabled",
+++	  (*cet_msr & MSR_CET_ENDBR_EN) ? "enabled" : "disabled",
+++	  (*cet_msr & MSR_CET_TRACKER) ? "WAIT_FOR_ENDBRANCH" : "IDLE",
+++	  (*cet_msr & MSR_CET_LEG_IW_EN) ? "enabled" : "disabled",
+++	  (*cet_msr & MSR_CET_NO_TRACK_EN) ? "enabled" : "disabled",
+++	  (*cet_msr & MSR_CET_SUPRESS_DIS) ? "enabled" : "disabled",
+++	  (*cet_msr & MSR_CET_SUPRESS) ? "enabled" : "disabled",
+++	  hex_string_custom (*cet_msr & MSR_CET_EB_LEG_BITMAP_BASE, 12) };
+++
+++  ui_out_emit_table table_emitter (uiout, ncols, nrows, "cet-status");
+++
+++  uiout->table_header (25, ui_left, "name", "Target Id:");
+++  uiout->table_header (33, ui_left, "value",
+++		       target_pid_to_str (inferior_ptid));
+++  uiout->table_body ();
+++
+++  for (int i = 0; i < nrows; ++i)
+++    {
+++      ui_out_emit_tuple tuple_emitter (uiout, nullptr);
+++      uiout->field_string ("name", names.at (i).c_str ());
+++      uiout->field_string ("value", values.at (i).c_str ());
+++      uiout->text ("\n");
+++    }
+++}
+++
+++/* The "info cet status" command.  */
+++
+++static void
+++cet_status_cmd (const char *args, int from_tty)
+++{
+++  uint64_t cet_msr;
+++  CORE_ADDR ssp;
+++  if (!cet_get_registers (inferior_ptid, &ssp, &cet_msr))
+++    {
+++      warning (_("Failed to fetch CET registers."));
+++      return;
+++    }
+++
+++  print_cet_status (&ssp, &cet_msr);
+++}
+++
++ /*  Retrieve the mapped memory regions [ADDR_LOW, ADDR_HIGH) for a given
++     address ADDR in memory space of process TID by reading the process
++     information from its pseudo-file system.  */
++@@ -403,6 +473,9 @@ _initialize_cet_commands ()
++ 		  _("Control-flow enforcement info commands."),
++ 		  &info_cet_cmdlist, "info cet ", 1, &infolist);
++ 
+++  add_cmd ("status", class_info, cet_status_cmd,
+++	   _("Show the status information of CET.\n"), &info_cet_cmdlist);
+++
++   add_cmd ("backtrace", class_info, info_cet_shstk_backtrace_cmd, _("\
++ Print backtrace of shadow stack for the current running process.\n\
++ To print the source filename and line number in the backtrace,\n\
++-- 
++2.28.0
++
+diff --git a/0005-CET-Enable-return-command-with-CET.patch b/0005-CET-Enable-return-command-with-CET.patch
+new file mode 100644
+index 0000000..37942ff
+--- /dev/null
++++ b/0005-CET-Enable-return-command-with-CET.patch
+@@ -0,0 +1,163 @@
++From 57b550f050c816a05f1d2c80ae96a624e8eb202b Mon Sep 17 00:00:00 2001
++From: Felix Willgerodt <felix.willgerodt@intel.com>
++Date: Thu, 6 Dec 2018 16:41:32 +0100
++Subject: [PATCH 5/8] CET: Enable return command with CET.
++
++The return command resets the current PC and discards the current stack
++frame. To support this with CET-enabled programs, the shadow stack pointer
++needs to be decremented to match with the new frame.
++
++gdb/ChangeLog:
++2020-12-06  Felix Willgerodt  <felix.willgerodt@intel.com>
++
++	* frame.c (get_frame_level): New function.
++	* frame.h (get_frame_level): New declaration.
++	* stack.c (cet_reset_ssp): New function.
++	(return_command): Add SSP manipulation.
++	* x86-cet.c: (shstk_is_enabled): New function.
++	* x86-cet.h: (shstk_is_enabled): New declaration.
++
++Signed-off-by: Felix Willgerodt <felix.willgerodt@intel.com>
++---
++ gdb/frame.c   |  8 ++++++++
++ gdb/frame.h   |  3 +++
++ gdb/stack.c   | 27 +++++++++++++++++++++++++++
++ gdb/x86-cet.c | 11 +++++++++++
++ gdb/x86-cet.h |  3 +++
++ 5 files changed, 52 insertions(+)
++
++diff --git a/gdb/frame.c b/gdb/frame.c
++index 0b708e6682..8c846bd82f 100644
++--- a/gdb/frame.c
+++++ b/gdb/frame.c
++@@ -2856,6 +2856,14 @@ get_frame_language (struct frame_info *frame)
++   return language_unknown;
++ }
++ 
+++/* Return this frame's level.  */
+++
+++int
+++get_frame_level (const struct frame_info *this_frame)
+++{
+++  return this_frame->level;
+++}
+++
++ /* Stack pointer methods.  */
++ 
++ CORE_ADDR
++diff --git a/gdb/frame.h b/gdb/frame.h
++index 3ceb7b32ef..eb476bbace 100644
++--- a/gdb/frame.h
+++++ b/gdb/frame.h
++@@ -676,6 +676,9 @@ extern struct gdbarch *frame_unwind_arch (frame_info *next_frame);
++ /* Return the previous frame's architecture, skipping inline functions.  */
++ extern struct gdbarch *frame_unwind_caller_arch (struct frame_info *frame);
++ 
+++/* Return this frame's level.  */
+++extern int get_frame_level (const struct frame_info *this_frame);
+++
++ 
++ /* Values for the source flag to be used in print_frame_info ().
++    For all the cases below, the address is never printed if
++diff --git a/gdb/stack.c b/gdb/stack.c
++index 616b629e20..a496d632c1 100644
++--- a/gdb/stack.c
+++++ b/gdb/stack.c
++@@ -55,6 +55,7 @@
++ #include "gdbsupport/def-vector.h"
++ #include "cli/cli-option.h"
++ #include "cli/cli-style.h"
+++#include "x86-cet.h"
++ 
++ /* The possible choices of "set print frame-arguments", and the value
++    of this setting.  */
++@@ -2733,6 +2734,23 @@ down_command (const char *count_exp, int from_tty)
++   gdb::observers::user_selected_context_changed.notify (USER_SELECTED_FRAME);
++ }
++ 
+++/* Reset the shadow stack pointer to the state of the frame we return to.  */
+++
+++static void
+++cet_reset_ssp (CORE_ADDR *ssp, uint64_t *cet_msr,
+++		   const int frame_level)
+++{
+++  const int addr_size = gdbarch_addr_bit (target_gdbarch ()) / TARGET_CHAR_BIT;
+++
+++  /* If return is called from frame 0, we decrement ssp by one.  If return
+++     is called from a different frame, we decrement the ssp by the number
+++     of inner frames that are discarded (1 + frame_level).  */
+++  CORE_ADDR new_ssp = *ssp + (addr_size * (1 + frame_level));
+++
+++  if (!cet_set_registers (inferior_ptid, &new_ssp, cet_msr))
+++    error (_("Couldn't set CET registers during return."));
+++}
+++
++ void
++ return_command (const char *retval_exp, int from_tty)
++ {
++@@ -2744,10 +2762,12 @@ return_command (const char *retval_exp, int from_tty)
++   struct value *return_value = NULL;
++   struct value *function = NULL;
++   const char *query_prefix = "";
+++  int frame_level;
++ 
++   thisframe = get_selected_frame ("No selected frame.");
++   thisfun = get_frame_function (thisframe);
++   gdbarch = get_frame_arch (thisframe);
+++  frame_level = get_frame_level (thisframe);
++ 
++   if (get_frame_type (get_current_frame ()) == INLINE_FRAME)
++     error (_("Can not force return from an inlined function."));
++@@ -2836,6 +2856,13 @@ return_command (const char *retval_exp, int from_tty)
++   /* Discard the selected frame and all frames inner-to it.  */
++   frame_pop (get_selected_frame (NULL));
++ 
+++  /* Decrement the ssp by the required amount if shstk is enabled.  */
+++  CORE_ADDR ssp;
+++  uint64_t cet_msr;
+++
+++  if (shstk_is_enabled (&ssp, &cet_msr))
+++    cet_reset_ssp (&ssp, &cet_msr, frame_level);
+++
++   /* Store RETURN_VALUE in the just-returned register set.  */
++   if (return_value != NULL)
++     {
++diff --git a/gdb/x86-cet.c b/gdb/x86-cet.c
++index 1e49714920..2343a54b30 100644
++--- a/gdb/x86-cet.c
+++++ b/gdb/x86-cet.c
++@@ -99,6 +99,17 @@ cet_get_registers (const ptid_t tid, CORE_ADDR *ssp, uint64_t *cet_msr)
++   return true;
++ }
++ 
+++/* See x86-cet.h.  */
+++
+++bool
+++shstk_is_enabled (CORE_ADDR *ssp, uint64_t *cet_msr)
+++{
+++  if (!cet_get_registers (inferior_ptid, ssp, cet_msr))
+++    return false;
+++
+++  return (*cet_msr & MSR_CET_SHSTK_EN);
+++}
+++
++ /* Print the information from the CET MSR and the SSP.  */
++ 
++ static void
++diff --git a/gdb/x86-cet.h b/gdb/x86-cet.h
++index 97d0e14e0f..c8e0f7b1d9 100644
++--- a/gdb/x86-cet.h
+++++ b/gdb/x86-cet.h
++@@ -20,6 +20,9 @@
++ #ifndef X86_CET_H
++ #define X86_CET_H
++ 
+++/* Check if the shadow stack is enabled and read CET specific registers.  */
+++extern bool shstk_is_enabled (CORE_ADDR *ssp, uint64_t *cet_msr);
+++
++ /* Get the CET specific registers.  Returns true on success.  */
++ extern bool cet_get_registers (const ptid_t tid, CORE_ADDR *ssp,
++ 			       uint64_t *cet_msr);
++-- 
++2.28.0
++
+diff --git a/0006-CET-Enable-inferior-calls-with-CET.patch b/0006-CET-Enable-inferior-calls-with-CET.patch
+new file mode 100644
+index 0000000..bf14bab
+--- /dev/null
++++ b/0006-CET-Enable-inferior-calls-with-CET.patch
+@@ -0,0 +1,124 @@
++From 94b909d568d3421861f5de42711e940b67ae94a4 Mon Sep 17 00:00:00 2001
++From: Felix Willgerodt <felix.willgerodt@intel.com>
++Date: Thu, 6 Dec 2018 16:42:12 +0100
++Subject: [PATCH 6/8] CET: Enable inferior calls with CET.
++
++Inferior calls in GDB reset the current PC to the beginning of the function
++that is called. As no call instruction is executed the new return address
++needs to be pushed to the shadow stack and the shadow stack pointer needs
++to be incremented.
++
++gdb/ChangeLog:
++2020-12-06  Felix Willgerodt  <felix.willgerodt@intel.com>
++
++	* infcall.c (cet_shstk_push): New function.
++	(call_function_by_hand_dummy): Add shadow stack handling.
++
++Signed-off-by: Felix Willgerodt <felix.willgerodt@intel.com>
++---
++ gdb/infcall.c | 47 +++++++++++++++++++++++++++++++++++++++++++++++
++ 1 file changed, 47 insertions(+)
++
++diff --git a/gdb/infcall.c b/gdb/infcall.c
++index cdb30137c3..723bff7ac5 100644
++--- a/gdb/infcall.c
+++++ b/gdb/infcall.c
++@@ -40,6 +40,8 @@
++ #include "top.h"
++ #include "interps.h"
++ #include "thread-fsm.h"
+++#include "x86-cet.h"
+++
++ #include <algorithm>
++ #include "gdbsupport/scope-exit.h"
++ #include <list>
++@@ -566,6 +568,24 @@ call_thread_fsm::should_notify_stop ()
++   return true;
++ }
++ 
+++/* Pushes a breakpoint address to the shadow-stack and increments the ssp
+++   accordingly.  */
+++
+++static void
+++cet_shstk_push (CORE_ADDR *dummy_bp_addr, CORE_ADDR *pc_addr,
+++		CORE_ADDR *ssp, uint64_t *cet_msr)
+++{
+++  const int addr_size = gdbarch_addr_bit (target_gdbarch ()) / TARGET_CHAR_BIT;
+++  const enum bfd_endian byte_order = gdbarch_byte_order (target_gdbarch ());
+++  CORE_ADDR new_ssp = *ssp - addr_size;
+++
+++  write_memory_unsigned_integer (new_ssp, addr_size, byte_order,
+++				 (ULONGEST) *dummy_bp_addr);
+++
+++  if (!cet_set_registers (inferior_ptid, &new_ssp, cet_msr))
+++    error (_("Couldn't set CET registers during inferior call."));
+++}
+++
++ /* Subroutine of call_function_by_hand to simplify it.
++    Start up the inferior and wait for it to stop.
++    Return the exception if there's an error, or an exception with
++@@ -841,6 +861,8 @@ call_function_by_hand_dummy (struct value *function,
++      is released once the regcache has been pushed).  */
++   infcall_suspend_state_up caller_state (save_infcall_suspend_state ());
++ 
+++  CORE_ADDR stop_pc = regcache_read_pc (get_current_regcache ());
+++
++   /* Ensure that the initial SP is correctly aligned.  */
++   {
++     CORE_ADDR old_sp = get_frame_sp (frame);
++@@ -1221,6 +1243,16 @@ call_function_by_hand_dummy (struct value *function,
++       }
++   }
++ 
+++  /* CET: Push the return address of the inferior on the shstk and increment
+++     the shstk pointer.  As we don't execute a call instruction to start the
+++     inferior we need to handle this manually.  */
+++  CORE_ADDR ssp;
+++  uint64_t cet_msr;
+++  const bool with_cet = shstk_is_enabled (&ssp, &cet_msr);
+++
+++  if (with_cet)
+++    cet_shstk_push (&bp_addr, &stop_pc, &ssp, &cet_msr);
+++
++   /* Create a breakpoint in std::terminate.
++      If a C++ exception is raised in the dummy-frame, and the
++      exception handler is (normally, and expected to be) out-of-frame,
++@@ -1295,6 +1327,11 @@ call_function_by_hand_dummy (struct value *function,
++ 	    dummy_frame_pop (dummy_id, call_thread.get ());
++ 	    restore_infcall_control_state (inf_status.release ());
++ 
+++	    /* Restore shadow-stack-pointer and CET state.  */
+++	    if (with_cet)
+++	      if (!cet_set_registers (inferior_ptid, &ssp, &cet_msr))
+++		error (_("Couldn't set CET registers during inferior call."));
+++
++ 	    /* Get the return value.  */
++ 	    retval = sm->return_value;
++ 
++@@ -1425,6 +1462,11 @@ When the function is done executing, GDB will silently stop."),
++ 		 dummy call.  */
++ 	      restore_infcall_control_state (inf_status.release ());
++ 
+++	      /* Restore shadow-stack-pointer and CET state.  */
+++	      if (with_cet)
+++		if (!cet_set_registers (inferior_ptid, &ssp, &cet_msr))
+++		  error (_("Couldn't set CET registers during inferior call."));
+++
++ 	      /* FIXME: Insert a bunch of wrap_here; name can be very
++ 		 long if it's a C++ name with arguments and stuff.  */
++ 	      error (_("\
++@@ -1466,6 +1508,11 @@ When the function is done executing, GDB will silently stop."),
++ 	     the dummy call.  */
++ 	  restore_infcall_control_state (inf_status.release ());
++ 
+++	  /* Restore shadow-stack-pointer and CET state.  */
+++	  if (with_cet)
+++	    if (!cet_set_registers (inferior_ptid, &ssp, &cet_msr))
+++	      error (_("Couldn't set CET registers during inferior call."));
+++
++ 	  error (_("\
++ The program being debugged entered a std::terminate call, most likely\n\
++ caused by an unhandled C++ exception.  GDB blocked this call in order\n\
++-- 
++2.28.0
++
+diff --git a/0007-CET-Testing.patch b/0007-CET-Testing.patch
+new file mode 100644
+index 0000000..6349f6a
+--- /dev/null
++++ b/0007-CET-Testing.patch
+@@ -0,0 +1,252 @@
++From f7a8b5fe5004af18513803069ec95ea0aaeba010 Mon Sep 17 00:00:00 2001
++From: Felix Willgerodt <felix.willgerodt@intel.com>
++Date: Fri, 3 Aug 2018 15:50:36 +0200
++Subject: [PATCH 7/8] CET: Testing.
++
++testsuite/ChangeLog:
++2018-08-03  Felix Willgerodt  <felix.willgerodt@intel.com>
++
++	* i386-cet-features.exp: New file.
++	* i386-cet.c: New file.
++
++Signed-off-by: Felix Willgerodt <felix.willgerodt@intel.com>
++---
++ gdb/testsuite/gdb.arch/i386-cet-features.exp | 144 +++++++++++++++++++
++ gdb/testsuite/gdb.arch/i386-cet.c            |  74 ++++++++++
++ 2 files changed, 218 insertions(+)
++ create mode 100644 gdb/testsuite/gdb.arch/i386-cet-features.exp
++ create mode 100644 gdb/testsuite/gdb.arch/i386-cet.c
++
++diff --git a/gdb/testsuite/gdb.arch/i386-cet-features.exp b/gdb/testsuite/gdb.arch/i386-cet-features.exp
++new file mode 100644
++index 0000000000..fa5e7b19fa
++--- /dev/null
+++++ b/gdb/testsuite/gdb.arch/i386-cet-features.exp
++@@ -0,0 +1,144 @@
+++# Copyright 2018 Free Software Foundation, Inc.
+++
+++# This program is free software; you can redistribute it and/or modify
+++# it under the terms of the GNU General Public License as published by
+++# the Free Software Foundation; either version 3 of the License, or
+++# (at your option) any later version.
+++#
+++# This program is distributed in the hope that it will be useful,
+++# but WITHOUT ANY WARRANTY; without even the implied warranty of
+++# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+++# GNU General Public License for more details.
+++#
+++# You should have received a copy of the GNU General Public License
+++# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+++
+++# Please email any bugs, comments, and/or additions to this file to:
+++# bug-gdb@gnu.org
+++
+++# This file is part of the gdb testsuite.
+++
+++if { ![istarget i?86-*-*] && ![istarget x86_64-*-* ] } {
+++    verbose "Skipping x86 CET function prologue tests."
+++    return
+++}
+++
+++standard_testfile i386-cet.c
+++
+++set comp_flags "-fcf-protection=full -I${srcdir}/../nat"
+++
+++if { [prepare_for_testing "failed to prepare" ${testfile} ${srcfile} \
+++    [list nowarnings additional_flags=${comp_flags}]] } {
+++    return -1
+++}
+++
+++if ![runto_main] {
+++    untested "could not run to main"
+++    return -1
+++}
+++
+++# test hardware support
+++send_gdb "print (int) check_cet_support ()\r"
+++gdb_expect {
+++    -re ".. = 3\r\n$gdb_prompt " {
+++	verbose -log "\nCET support detected"
+++    }
+++    default {
+++	unsupported "processor does not support CET"
+++	return
+++    }
+++}
+++
+++# test kernel support
+++send_gdb "info cet status\r"
+++gdb_expect {
+++    -re ".*Shadow Stack:.*enabled.*Indirect Branch Tracking:.*enabled.*" {
+++	verbose -log "\nKernel supports CET"
+++    }
+++    default {
+++	unsupported "Kernel does not support CET"
+++	return
+++    }
+++}
+++
+++# test info cet status
+++gdb_test "info cet status" [multi_line \
+++      "Target Id:.*process|LWP \[0-9\]+.*" \
+++      "Shadow Stack:.*enabled.*" \
+++      "Shadow Stack Pointer:.*$hex.*" \
+++      "WRSS_EN:.*enabled|disabled.*" \
+++      "Indirect Branch Tracking:.*enabled.*" \
+++      "TRACKER:.*IDLE|WAIT_FOR_ENDBRANCH.*" \
+++      "LEG_IW_EN:.*enabled|disabled.*" \
+++      "NO_TRACK_EN:.*enabled|disabled.*" \
+++      "SUPRESS_DIS:.*enabled|disabled.*" \
+++      "SUPRESS:.*enabled|disabled.*" \
+++      "EB_LEG_BITMAP_BASE:.*$hex.*"
+++  ]
+++
+++# test call
+++gdb_test "break call1" \
+++	"Breakpoint \[0-9\]* at $hex.*"
+++
+++gdb_test "continue" \
+++	"Breakpoint \[0-9\]*.*call1.*" \
+++	"continue to call1"
+++
+++gdb_test "call (int) call2()" \
+++	".. = 0|1|2|3.*"
+++
+++gdb_test "break call2" \
+++	"Breakpoint \[0-9\]* at $hex.*"
+++
+++# Potential CET violations caused by 'call' or 'return' commands often only
+++# occur after resuming normal execution.  Therefore it is important to test
+++# normal program continuation after each of these commands in this test.
+++gdb_test "continue" \
+++	"Breakpoint \[0-9\]*.*call2.*" \
+++	"continue to call2"
+++
+++# test info cet backtrace
+++gdb_test "info cet backtrace" [multi_line \
+++	"Address.*Symbol.*" \
+++	"#0.*$hex.*call1.*" \
+++	"#1.*$hex.*main.*" \
+++	"#2.*$hex.*__libc_start_main.*" \
+++	"#3.*$hex.*_start.*"
+++  ]
+++
+++# test return from current frame
+++gdb_test "return (int) 1" \
+++	"#0.*call1.*" \
+++	"Test CET return from current frame" \
+++	"Make selected stack frame return now\\? \\(y or n\\) " "y"
+++
+++gdb_test "continue" \
+++	".*exited normally.*" \
+++	"continue (return from current frame)"
+++
+++# test return from past frame
+++clean_restart ${binfile}
+++
+++if ![runto_main] {
+++    untested "could not run to main"
+++    return -1
+++}
+++
+++gdb_test "break call2" \
+++	"Breakpoint \[0-9\]* at $hex.*"
+++
+++gdb_test "continue" \
+++	"Breakpoint \[0-9\]*.*call2.*" \
+++	"continue to call2 for return testing"
+++
+++gdb_test "frame 1" \
+++	".*in call1.*"
+++
+++gdb_test "return (int) 1" \
+++	"#0.*main.*" \
+++	"Test CET return from past frame" \
+++	"Make selected stack frame return now\\? \\(y or n\\) " "y"
+++
+++gdb_test "continue" \
+++	".*exited normally.*" \
+++	"continue (return from past frame)"
++diff --git a/gdb/testsuite/gdb.arch/i386-cet.c b/gdb/testsuite/gdb.arch/i386-cet.c
++new file mode 100644
++index 0000000000..bd946a727f
++--- /dev/null
+++++ b/gdb/testsuite/gdb.arch/i386-cet.c
++@@ -0,0 +1,74 @@
+++/* This testcase is part of GDB, the GNU debugger.
+++
+++ Copyright 2018 Free Software Foundation, Inc.
+++
+++ This program is free software; you can redistribute it and/or modify
+++ it under the terms of the GNU General Public License as published by
+++ the Free Software Foundation; either version 3 of the License, or
+++ (at your option) any later version.
+++
+++ This program is distributed in the hope that it will be useful,
+++ but WITHOUT ANY WARRANTY; without even the implied warranty of
+++ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+++ GNU General Public License for more details.
+++
+++ You should have received a copy of the GNU General Public License
+++ along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
+++
+++#include <stddef.h>
+++#include "x86-cpuid.h"
+++
+++/* Check if OS provides processor extended state management.
+++   Implied HW support for XSAVE, XGETBV, XGETBV, XCR0....   */
+++static int
+++check_xsave_os_support ()
+++{
+++  unsigned int eax, ebx, ecx, edx;
+++
+++  __cpuid (1, eax, ebx, ecx, edx);
+++
+++  return (ecx & bit_OSXSAVE) == bit_OSXSAVE;
+++}
+++
+++/* Check CET hardware support.  */
+++static int
+++check_cet_support ()
+++{
+++  int support = 0;
+++
+++  if (!check_xsave_os_support ())
+++    return 0;
+++
+++  if (__get_cpuid_max (0, NULL) < 7)
+++    return 0;
+++
+++  unsigned int eax, ebx, ecx, edx;
+++  __cpuid_count (7, 0, eax, ebx, ecx, edx);
+++
+++  if ((edx & bit_IBT) == bit_IBT)
+++    support += 1;
+++
+++  if ((ecx & bit_SHSTK) == bit_SHSTK)
+++    support += 2;
+++
+++  return support;
+++}
+++
+++static int
+++call2 ()
+++{
+++  return check_cet_support ();
+++}
+++
+++static int
+++call1 ()
+++{
+++  return call2 ();
+++}
+++
+++int
+++main (int argc, char **argv)
+++{
+++  call1 ();
+++  return 0;
+++}
++-- 
++2.28.0
++
+diff --git a/0008-Initial-CET-coredump-support.patch b/0008-Initial-CET-coredump-support.patch
+new file mode 100644
+index 0000000..4fcf82f
+--- /dev/null
++++ b/0008-Initial-CET-coredump-support.patch
+@@ -0,0 +1,202 @@
++From 7182139694b73160992091cb10f49897723aab11 Mon Sep 17 00:00:00 2001
++From: "H.J. Lu" <hjl.tools@gmail.com>
++Date: Thu, 10 Sep 2020 15:46:21 -0700
++Subject: [PATCH 8/8] Initial CET coredump support
++
++---
++ bfd/elf.c              | 24 ++++++++++++++++++
++ gdb/amd64-linux-tdep.c |  5 +++-
++ gdb/i386-linux-tdep.c  | 57 +++++++++++++++++++++++++++++++++++++++++-
++ gdb/i386-linux-tdep.h  |  6 +++++
++ 4 files changed, 90 insertions(+), 2 deletions(-)
++
++diff --git a/bfd/elf.c b/bfd/elf.c
++index 5a02f8dc30..1ed41d9db9 100644
++--- a/bfd/elf.c
+++++ b/bfd/elf.c
++@@ -9693,6 +9693,12 @@ elfcore_grok_xstatereg (bfd *abfd, Elf_Internal_Note *note)
++   return elfcore_make_note_pseudosection (abfd, ".reg-xstate", note);
++ }
++ 
+++static bfd_boolean
+++elfcore_grok_cetreg (bfd *abfd, Elf_Internal_Note *note)
+++{
+++  return elfcore_make_note_pseudosection (abfd, ".cet-state", note);
+++}
+++
++ static bfd_boolean
++ elfcore_grok_ppc_vmx (bfd *abfd, Elf_Internal_Note *note)
++ {
++@@ -10315,6 +10321,13 @@ elfcore_grok_note (bfd *abfd, Elf_Internal_Note *note)
++       else
++ 	return TRUE;
++ 
+++    case NT_X86_CET:		/* Linux CET extension */
+++      if (note->namesz == 6
+++	  && strcmp (note->namedata, "LINUX") == 0)
+++	return elfcore_grok_cetreg (abfd, note);
+++      else
+++	return TRUE;
+++
++     case NT_PPC_VMX:
++       if (note->namesz == 6
++ 	  && strcmp (note->namedata, "LINUX") == 0)
++@@ -11515,6 +11528,15 @@ elfcore_write_xstatereg (bfd *abfd, char *buf, int *bufsiz,
++ 			     note_name, NT_X86_XSTATE, xfpregs, size);
++ }
++ 
+++static char *
+++elfcore_write_cetreg (bfd *abfd, char *buf, int *bufsiz,
+++		      const void *cetregs, int size)
+++{
+++  char *note_name = "LINUX";
+++  return elfcore_write_note (abfd, buf, bufsiz,
+++			     note_name, NT_X86_CET, cetregs, size);
+++}
+++
++ char *
++ elfcore_write_ppc_vmx (bfd *abfd,
++ 		       char *buf,
++@@ -11955,6 +11977,8 @@ elfcore_write_register_note (bfd *abfd,
++     return elfcore_write_prxfpreg (abfd, buf, bufsiz, data, size);
++   if (strcmp (section, ".reg-xstate") == 0)
++     return elfcore_write_xstatereg (abfd, buf, bufsiz, data, size);
+++  if (strcmp (section, ".cet-state") == 0)
+++    return elfcore_write_cetreg (abfd, buf, bufsiz, data, size);
++   if (strcmp (section, ".reg-ppc-vmx") == 0)
++     return elfcore_write_ppc_vmx (abfd, buf, bufsiz, data, size);
++   if (strcmp (section, ".reg-ppc-vsx") == 0)
++diff --git a/gdb/amd64-linux-tdep.c b/gdb/amd64-linux-tdep.c
++index 04b3c50e30..7de3ac175f 100644
++--- a/gdb/amd64-linux-tdep.c
+++++ b/gdb/amd64-linux-tdep.c
++@@ -1611,9 +1611,11 @@ amd64_linux_core_read_description (struct gdbarch *gdbarch,
++ {
++   /* Linux/x86-64.  */
++   uint64_t xcr0 = i386_linux_core_read_xcr0 (abfd);
+++  bool cet_enabled = i386_linux_core_read_cet_state_p (abfd);
++ 
++   return amd64_linux_read_description (xcr0 & X86_XSTATE_ALL_MASK,
++-				       gdbarch_ptr_bit (gdbarch) == 32);
+++				       gdbarch_ptr_bit (gdbarch) == 32,
+++				       cet_enabled);
++ }
++ 
++ /* Similar to amd64_supply_fpregset, but use XSAVE extended state.  */
++@@ -1657,6 +1659,7 @@ amd64_linux_iterate_over_regset_sections (struct gdbarch *gdbarch,
++   cb (".reg2", 512, 512, &amd64_fpregset, NULL, cb_data);
++   cb (".reg-xstate", X86_XSTATE_SIZE (tdep->xcr0), X86_XSTATE_SIZE (tdep->xcr0),
++       &amd64_linux_xstateregset, "XSAVE extended state", cb_data);
+++  cb (".cet-state", 16, 16, &i386_linux_cetregset, "CET state", cb_data);
++ }
++ 
++ /* The instruction sequences used in x86_64 machines for a
++diff --git a/gdb/i386-linux-tdep.c b/gdb/i386-linux-tdep.c
++index 8bba49291d..eee249d214 100644
++--- a/gdb/i386-linux-tdep.c
+++++ b/gdb/i386-linux-tdep.c
++@@ -675,6 +675,14 @@ i386_linux_core_read_xcr0 (bfd *abfd)
++   return xcr0;
++ }
++ 
+++/* Get CET state from core dump.  */
+++
+++bool
+++i386_linux_core_read_cet_state_p (bfd *abfd)
+++{
+++  return bfd_get_section_by_name (abfd, ".cet-state") != NULL;
+++}
+++
++ /* See i386-linux-tdep.h.  */
++ 
++ const struct target_desc *
++@@ -709,7 +717,9 @@ i386_linux_core_read_description (struct gdbarch *gdbarch,
++ {
++   /* Linux/i386.  */
++   uint64_t xcr0 = i386_linux_core_read_xcr0 (abfd);
++-  const struct target_desc *tdesc = i386_linux_read_description (xcr0);
+++  bool cet_enabled = i386_linux_core_read_cet_state_p (abfd);
+++  const struct target_desc *tdesc = i386_linux_read_description (xcr0,
+++								 cet_enabled);
++ 
++   if (tdesc != NULL)
++     return tdesc;
++@@ -755,6 +765,49 @@ static const struct regset i386_linux_xstateregset =
++     i386_linux_collect_xstateregset
++   };
++ 
+++static void
+++i386_linux_supply_cetregset (const struct regset *regset,
+++			     struct regcache *regcache, int regnum,
+++			     const void *cetregs, size_t len)
+++{
+++  struct gdbarch *gdbarch = regcache->arch ();
+++  const struct gdbarch_tdep *tdep = gdbarch_tdep (gdbarch);
+++  const gdb_byte *regs = (const gdb_byte *) cetregs;
+++  int i;
+++
+++  gdb_assert (len == 16 && tdep->num_cet_regs == 2);
+++
+++  for (i = 0; i < tdep->num_cet_regs; i++)
+++    {
+++      if (regnum == -1 || regnum == (tdep->cet_regnum + i))
+++	regcache->raw_supply (tdep->cet_regnum + i, regs + 8 * i);
+++    }
+++}
+++
+++static void
+++i386_linux_collect_cetregset (const struct regset *regset,
+++			      const struct regcache *regcache,
+++			      int regnum, void *cetregs, size_t len)
+++{
+++  struct gdbarch *gdbarch = regcache->arch ();
+++  const struct gdbarch_tdep *tdep = gdbarch_tdep (gdbarch);
+++  gdb_byte *regs = (gdb_byte *) cetregs;
+++  int i;
+++
+++  gdb_assert (len == 16 && tdep->num_cet_regs == 2);
+++
+++  for (i = 0; i < tdep->num_cet_regs; i++)
+++    {
+++      if (regnum == -1 || regnum == (tdep->cet_regnum + i))
+++	regcache->raw_collect (tdep->cet_regnum + i, regs + 8 * i);
+++    }
+++}
+++
+++const struct regset i386_linux_cetregset =
+++  {
+++    NULL, i386_linux_supply_cetregset, i386_linux_collect_cetregset
+++  };
+++
++ /* Iterate over core file register note sections.  */
++ 
++ static void
++@@ -776,6 +829,8 @@ i386_linux_iterate_over_regset_sections (struct gdbarch *gdbarch,
++ 	cb_data);
++   else
++     cb (".reg2", 108, 108, &i386_fpregset, NULL, cb_data);
+++
+++  cb (".cet-state", 16, 16, &i386_linux_cetregset, "CET state", cb_data);
++ }
++ 
++ /* Linux kernel shows PC value after the 'int $0x80' instruction even if
++diff --git a/gdb/i386-linux-tdep.h b/gdb/i386-linux-tdep.h
++index 9d95a5a488..2d0e4cc6b0 100644
++--- a/gdb/i386-linux-tdep.h
+++++ b/gdb/i386-linux-tdep.h
++@@ -37,6 +37,12 @@
++ /* Get XSAVE extended state xcr0 from core dump.  */
++ extern uint64_t i386_linux_core_read_xcr0 (bfd *abfd);
++ 
+++/* Get CET state from core dump.  */
+++extern bool i386_linux_core_read_cet_state_p (bfd *abfd);
+++
+++/* CET register set. */
+++extern const struct regset i386_linux_cetregset;
+++
++ /* Handle and display information related to the MPX bound violation
++    to the user.  */
++ extern void i386_linux_report_signal_info (struct gdbarch *gdbarch,
++-- 
++2.28.0
++
+diff --git a/gdb.spec b/gdb.spec
+index 21167f4..9555411 100644
+--- a/gdb.spec
++++ b/gdb.spec
+@@ -1,3 +1,12 @@
++Patch100001: 0001-CET-Sync-up-x86-gcc-cpuid.h-with-cpuid.h-from-gcc-10.patch
++Patch100002: 0002-CET-Add-support-of-Intel-CET-registers-to-GDB-and-GD.patch
++Patch100003: 0003-CET-Add-a-new-command-to-print-the-shadow-stack-back.patch
++Patch100004: 0004-CET-Add-info-cet-status-command.patch
++Patch100005: 0005-CET-Enable-return-command-with-CET.patch
++Patch100006: 0006-CET-Enable-inferior-calls-with-CET.patch
++Patch100007: 0007-CET-Testing.patch
++Patch100008: 0008-Initial-CET-coredump-support.patch
++
+ # rpmbuild parameters:
+ # --with testsuite: Run the testsuite (biarch if possible).  Default is without.
+ # --with buildisa: Use %%{?_isa} for BuildRequires
+@@ -479,6 +488,15 @@ pushd intl
+ autoconf -f
+ popd
+ 
++%patch100001 -p1
++%patch100002 -p1
++%patch100003 -p1
++%patch100004 -p1
++%patch100005 -p1
++%patch100006 -p1
++%patch100007 -p1
++%patch100008 -p1
++
+ find -name "*.orig" | xargs rm -f
+ ! find -name "*.rej" # Should not happen.
+ 
+-- 
+2.31.1
+

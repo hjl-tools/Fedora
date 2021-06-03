@@ -1,0 +1,25 @@
+From 08b4df6aff69f8438390a5f422752f06a9c1d385 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Wed, 9 Sep 2020 13:20:57 -0700
+Subject: [PATCH 2/2] Add .0 to Release string
+
+---
+ gdb.spec | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/gdb.spec b/gdb.spec
+index 9555411..5d622ed 100644
+--- a/gdb.spec
++++ b/gdb.spec
+@@ -46,7 +46,7 @@ Version: 10.2
+ 
+ # The release always contains a leading reserved number, start it at 1.
+ # `upstream' is not a part of `name' to stay fully rpm dependencies compatible for the testing.
+-Release: 1%{?dist}
++Release: 1.0%{?dist}
+ 
+ License: GPLv3+ and GPLv3+ with exceptions and GPLv2+ and GPLv2+ with exceptions and GPL+ and LGPLv2+ and LGPLv3+ and BSD and Public Domain and GFDL
+ # Do not provide URL for snapshots as the file lasts there only for 2 days.
+-- 
+2.31.1
+
