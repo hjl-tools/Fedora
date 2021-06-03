@@ -1,0 +1,25 @@
+From 15ab46913eeed829e050599d2c4d3e544bf922ef Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Wed, 18 Oct 2017 08:32:18 -0700
+Subject: [PATCH 07/10] Append .0 to Release string
+
+---
+ glibc.spec | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/glibc.spec b/glibc.spec
+index 5a148b8..75cdd2e 100644
+--- a/glibc.spec
++++ b/glibc.spec
+@@ -89,7 +89,7 @@
+ Summary: The GNU libc libraries
+ Name: glibc
+ Version: %{glibcversion}
+-Release: 14%{?dist}
++Release: 14.0%{?dist}
+ 
+ # In general, GPLv2+ is used by programs, LGPLv2+ is used for
+ # libraries.
+-- 
+2.31.1
+

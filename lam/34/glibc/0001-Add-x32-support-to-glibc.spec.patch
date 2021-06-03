@@ -1,0 +1,178 @@
+From 2e51af7302c6137f006a72a5f7d6debdba5b9306 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Mon, 29 Oct 2018 05:06:29 -0700
+Subject: [PATCH 01/10] Add x32 support to glibc.spec
+
+Don't require libgcc(x86-x32), libxcrypt-devel(x86-x32) and
+libxcrypt-static(x86-x32).  Enable static PIE for x32
+---
+ glibc.spec | 52 ++++++++++++++++++++++++++++++++++++++++++++--------
+ 1 file changed, 44 insertions(+), 8 deletions(-)
+
+diff --git a/glibc.spec b/glibc.spec
+index e05fcee..fa53f38 100644
+--- a/glibc.spec
++++ b/glibc.spec
+@@ -56,12 +56,12 @@
+ %endif
+ 
+ # Only some architectures have static PIE support.
+-%define pie_arches %{ix86} x86_64
++%define pie_arches %{ix86} x86_64 x32
+ 
+ ##############################################################################
+ # Any architecture/kernel combination that supports running 32-bit and 64-bit
+ # code in userspace is considered a biarch arch.
+-%define biarcharches %{ix86} x86_64 s390 s390x
++%define biarcharches %{ix86} x86_64 x32 s390 s390x
+ 
+ # Avoid generating a glibc-headers package on architectures which are
+ # not biarch.
+@@ -70,7 +70,7 @@
+ %if 0%{?rhel} > 0
+ %define headers_package_name glibc-headers
+ %else
+-%ifarch %{ix86} x86_64
++%ifarch %{ix86} x86_64 x32
+ %define headers_package_name glibc-headers-x86
+ %endif
+ %ifarch s390 s390x
+@@ -217,8 +217,12 @@ Provides: ldconfig
+ # The dynamic linker supports DT_GNU_HASH
+ Provides: rtld(GNU_HASH)
+ 
++%ifnarch x32
+ # We need libgcc for cancellation support in POSIX threads.
++# Don't require libgcc(x86-x32) since x32 libgcc is provided by x86-64
++# libgcc rpm which is always installed with x86-64 gcc.
+ Requires: libgcc%{_isa}
++%endif
+ 
+ Requires: glibc-common = %{version}-%{release}
+ 
+@@ -283,6 +287,9 @@ Conflicts: kernel < %{enablekernel}
+ %ifarch ppc64le
+ %define target ppc64le-redhat-linux
+ %endif
++%ifarch x32
++%define target x86_64-redhat-linux
++%endif
+ 
+ # GNU make 4.0 introduced the -O option.
+ BuildRequires: make >= 4.0
+@@ -361,7 +368,10 @@ applications should use libnsl2 instead to gain IPv6 support.
+ %package devel
+ Summary: Object files for development using standard C libraries.
+ Requires: %{name} = %{version}-%{release}
++%ifnarch x32
++# There is no x32 libxcrypt-devel rpm.
+ Requires: libxcrypt-devel%{_isa} >= 4.0.0
++%endif
+ Requires: kernel-headers >= 3.2
+ BuildRequires: kernel-headers >= 3.2
+ %if %{need_headers_package}
+@@ -411,7 +421,9 @@ format.  Additional package documentation is also provided.
+ %package static
+ Summary: C library static libraries for -static linking.
+ Requires: %{name}-devel = %{version}-%{release}
++%ifnarch x32
+ Requires: libxcrypt-static%{?_isa} >= 4.0.0
++%endif
+ 
+ %description static
+ The glibc-static package contains the C library static libraries
+@@ -1040,6 +1052,11 @@ df
+ GCC=gcc
+ GXX=g++
+ 
++%ifarch x32
++GCC="$GCC -mx32"
++GXX="$GXX -mx32"
++%endif
++
+ # Part of rpm_inherit_flags.  Is overridden below.
+ rpm_append_flag ()
+ {
+@@ -1076,6 +1093,7 @@ rpm_inherit_flags \
+ 	"-funwind-tables" \
+ 	"-m31" \
+ 	"-m32" \
++	"-mx32" \
+ 	"-m64" \
+ 	"-march=armv8-a+lse" \
+ 	"-march=armv8.1-a" \
+@@ -1155,7 +1173,7 @@ build()
+ 		--enable-tunables \
+ 		--enable-systemtap \
+ 		${core_with_options} \
+-%ifarch x86_64 %{ix86}
++%ifarch x86_64 x32 %{ix86}
+ 	       --enable-cet \
+ %endif
+ %ifarch %{ix86}
+@@ -1165,9 +1183,11 @@ build()
+ 		--disable-werror \
+ %endif
+ 		--disable-profile \
++%ifnarch x32
+ %if %{with bootstrap}
+ 		--without-selinux \
+ %endif
++%endif
+ %ifarch aarch64
+ %if 0%{?rhel} > 0
+ 		--enable-memory-tagging \
+@@ -1468,7 +1488,11 @@ popd
+ # The xtrace and memusage scripts have hard-coded paths that need to be
+ # translated to a correct set of paths using the $LIB token which is
+ # dynamically translated by ld.so as the default lib directory.
++%ifarch x32
++for i in %{glibc_sysroot}%{_prefix}/bin/xtrace; do
++%else
+ for i in %{glibc_sysroot}%{_prefix}/bin/{xtrace,memusage}; do
++%endif
+ %if %{with bootstrap}
+   test -w $i || continue
+ %endif
+@@ -1728,6 +1752,13 @@ grep '%{_prefix}/share' master.filelist \
+ 	-e '%{_docdir}' \
+ 	>> common.filelist
+ 
++# For ix86, move POSIX_V6_ILP32_OFFBIG, POSIX_V7_ILP32_OFFBIG and
++# XBS5_ILP32_OFFBIG from glibc.filelist to common.filelist
++%ifarch %{ix86}
++grep 'ILP32_OFFBIG' < glibc.filelist >> common.filelist
++sed -i -e '\|ILP32_OFFBIG|d' glibc.filelist
++%endif
++
+ ###############################################################################
+ # nscd
+ ###############################################################################
+@@ -1741,15 +1772,20 @@ echo '%{_prefix}/sbin/nscd' > nscd.filelist
+ 
+ # Add the utils scripts and programs to the utils subpackage.
+ cat > utils.filelist <<EOF
+-%if %{without bootstrap}
+-%{_prefix}/bin/memusage
+-%{_prefix}/bin/memusagestat
+-%endif
+ %{_prefix}/bin/mtrace
+ %{_prefix}/bin/pcprofiledump
+ %{_prefix}/bin/xtrace
+ EOF
+ 
++%if %{without bootstrap}
++%ifnarch x32
++cat >> utils.filelist <<EOF
++%{_prefix}/bin/memusage
++%{_prefix}/bin/memusagestat
++EOF
++%endif
++%endif
++
+ ###############################################################################
+ # nss_db, nss_hesiod
+ ###############################################################################
+-- 
+2.31.1
+

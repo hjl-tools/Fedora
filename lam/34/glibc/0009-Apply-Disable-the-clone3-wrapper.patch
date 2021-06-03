@@ -1,0 +1,60 @@
+From ec388cefcd1a679a55bb8abd76d78ddbb58ee967 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Thu, 4 Mar 2021 06:44:48 -0800
+Subject: [PATCH 09/10] Apply Disable the clone3 wrapper
+
+---
+ 0001-Disable-the-clone3-wrapper.patch | 27 +++++++++++++++++++++++++++
+ glibc.spec                            |  2 ++
+ 2 files changed, 29 insertions(+)
+ create mode 100644 0001-Disable-the-clone3-wrapper.patch
+
+diff --git a/0001-Disable-the-clone3-wrapper.patch b/0001-Disable-the-clone3-wrapper.patch
+new file mode 100644
+index 0000000..d66b7ff
+--- /dev/null
++++ b/0001-Disable-the-clone3-wrapper.patch
+@@ -0,0 +1,27 @@
++From 6e6f73714fda683b2b9e17b0fee51dfb52840294 Mon Sep 17 00:00:00 2001
++From: "H.J. Lu" <hjl.tools@gmail.com>
++Date: Sat, 22 May 2021 13:45:18 -0700
++Subject: [PATCH] Disable the clone3 wrapper
++
++---
++ sysdeps/unix/sysv/linux/x86_64/sysdep.h | 3 +++
++ 1 file changed, 3 insertions(+)
++
++diff --git a/sysdeps/unix/sysv/linux/x86_64/sysdep.h b/sysdeps/unix/sysv/linux/x86_64/sysdep.h
++index f26ffc68ae..96dc90391e 100644
++--- a/sysdeps/unix/sysv/linux/x86_64/sysdep.h
+++++ b/sysdeps/unix/sysv/linux/x86_64/sysdep.h
++@@ -377,7 +377,10 @@
++ # define HAVE_GETCPU_VSYSCALL		"__vdso_getcpu"
++ # define HAVE_CLOCK_GETRES64_VSYSCALL   "__vdso_clock_getres"
++ 
+++/* FIXME: Disable the clone3 wrapper for now since it doesn't work for
+++   chrome nor firefox.
++ # define HAVE_CLONE3_WAPPER			1
+++ */
++ 
++ # define SINGLE_THREAD_BY_GLOBAL		1
++ 
++-- 
++2.31.1
++
+diff --git a/glibc.spec b/glibc.spec
+index a054eea..170a5bd 100644
+--- a/glibc.spec
++++ b/glibc.spec
+@@ -264,6 +264,8 @@ Patch200022: 0022-Use-sys-tagged-address.h-in-some-LAM-tests.patch
+ Patch200023: 0023-Add-test-memmove-lam_u57.c.patch
+ Patch200024: 0024-Improve-string-test-memmove.c-coverage.patch
+ 
++Patch300000: 0001-Disable-the-clone3-wrapper.patch
++
+ ##############################################################################
+ # Continued list of core "glibc" package information:
+ ##############################################################################
+-- 
+2.31.1
+

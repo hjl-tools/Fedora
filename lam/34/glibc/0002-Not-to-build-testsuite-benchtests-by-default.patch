@@ -1,0 +1,28 @@
+From a5d1889aa9e788462aeb8e777dd7728078b87545 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Thu, 9 Jun 2016 09:30:03 -0700
+Subject: [PATCH 02/10] Not to build testsuite/benchtests by default
+
+---
+ glibc.spec | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/glibc.spec b/glibc.spec
+index fa53f38..d1d75e8 100644
+--- a/glibc.spec
++++ b/glibc.spec
+@@ -22,9 +22,9 @@
+ #
+ # You must always run the testsuite for production builds.
+ # Default: Always run the testsuite.
+-%bcond_without testsuite
++%bcond_with testsuite
+ # Default: Always build the benchtests.
+-%bcond_without benchtests
++%bcond_with benchtests
+ # Default: Not bootstrapping.
+ %bcond_with bootstrap
+ # Default: Treat warnings as errors.
+-- 
+2.31.1
+
