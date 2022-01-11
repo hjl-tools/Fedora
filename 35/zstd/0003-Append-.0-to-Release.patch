@@ -1,0 +1,25 @@
+From ba8700facc0eb4230035d04415552f13108db58f Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Tue, 11 Jan 2022 13:49:11 -0800
+Subject: [PATCH 3/3] Append .0 to Release
+
+---
+ zstd.spec | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/zstd.spec b/zstd.spec
+index 7f44d86..afc4367 100644
+--- a/zstd.spec
++++ b/zstd.spec
+@@ -33,7 +33,7 @@ Patch100000: 0001-x86-64-Hide-internal-assembly-functions.patch
+ 
+ Name:           zstd
+ Version:        1.5.1
+-Release:        6%{?dist}
++Release:        6.0%{?dist}
+ Summary:        Zstd compression library
+ 
+ License:        BSD and GPLv2
+-- 
+2.34.1
+

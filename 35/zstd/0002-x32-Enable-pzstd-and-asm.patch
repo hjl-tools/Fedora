@@ -1,0 +1,34 @@
+From d15965327b3fffb8be5bb73125348982692d1584 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Tue, 11 Jan 2022 13:48:23 -0800
+Subject: [PATCH 2/3] x32: Enable pzstd and asm
+
+---
+ zstd.spec | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/zstd.spec b/zstd.spec
+index 99702a8..7f44d86 100644
+--- a/zstd.spec
++++ b/zstd.spec
+@@ -13,7 +13,7 @@ Patch100000: 0001-x86-64-Hide-internal-assembly-functions.patch
+ # gcc-4.4 is currently too old to compile pzstd
+ %bcond_with pzstd
+ %else
+-%ifarch %{ix86} x86_64
++%ifarch %{ix86} x86_64 x32
+ %bcond_without pzstd
+ %else
+ # aarch64 and armv7hl at least currently segfault
+@@ -22,7 +22,7 @@ Patch100000: 0001-x86-64-Hide-internal-assembly-functions.patch
+ %endif
+ %endif
+ 
+-%ifarch x86_64
++%ifarch x86_64 x32
+ %bcond_without asm
+ %else
+ # Disable asm to ensure non excutable stack
+-- 
+2.34.1
+
