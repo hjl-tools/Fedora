@@ -1,0 +1,175 @@
+From a6bcf7f0ccaafbe29a30196a99d0646c03eaaa3d Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Tue, 11 Jan 2022 08:39:12 -0800
+Subject: [PATCH] Enable CET for x86-64
+
+Apply
+
+b6c6891b x86-64: Hide internal assembly functions
+fbf54c52 x86-64: Enable Intel CET
+---
+ 0001-x86-64-Enable-Intel-CET.patch            | 32 +++++++
+ ...-64-Hide-internal-assembly-functions.patch | 90 +++++++++++++++++++
+ zstd.spec                                     |  6 ++
+ 3 files changed, 128 insertions(+)
+ create mode 100644 0001-x86-64-Enable-Intel-CET.patch
+ create mode 100644 0001-x86-64-Hide-internal-assembly-functions.patch
+
+diff --git a/0001-x86-64-Enable-Intel-CET.patch b/0001-x86-64-Enable-Intel-CET.patch
+new file mode 100644
+index 0000000..d686bec
+--- /dev/null
++++ b/0001-x86-64-Enable-Intel-CET.patch
+@@ -0,0 +1,32 @@
++From fbf54c52a22c61bdcef7a1d08dddfd611aa4657c Mon Sep 17 00:00:00 2001
++From: "H.J. Lu" <hjl.tools@gmail.com>
++Date: Tue, 11 Jan 2022 07:28:25 -0800
++Subject: [PATCH] x86-64: Enable Intel CET
++
++Include <cet.h> to add .note.gnu.property section for Intel CET in
++assembly sources when CET is enabled.
++---
++ lib/common/portability_macros.h | 9 +++++++++
++ 1 file changed, 9 insertions(+)
++
++diff --git a/lib/common/portability_macros.h b/lib/common/portability_macros.h
++index 627ef9ee..0321dae3 100644
++--- a/lib/common/portability_macros.h
+++++ b/lib/common/portability_macros.h
++@@ -128,4 +128,13 @@
++ # define ZSTD_ENABLE_ASM_X86_64_BMI2 0
++ #endif
++ 
+++/*
+++ * Add .note.gnu.property section for Intel CET in assembly sources
+++ * when CET is enabled.
+++ */
+++#if (defined(__x86_64__) || defined(__i386__)) \
+++    && defined(__has_include) && __has_include(<cet.h>)
+++# include <cet.h>
+++#endif
+++
++ #endif /* ZSTD_PORTABILITY_MACROS_H */
++-- 
++2.34.1
++
+diff --git a/0001-x86-64-Hide-internal-assembly-functions.patch b/0001-x86-64-Hide-internal-assembly-functions.patch
+new file mode 100644
+index 0000000..9cd4e25
+--- /dev/null
++++ b/0001-x86-64-Hide-internal-assembly-functions.patch
+@@ -0,0 +1,90 @@
++From dfe79bf152380e2de2cb06a71ac4ed99b5cc3b6d Mon Sep 17 00:00:00 2001
++From: "H.J. Lu" <hjl.tools@gmail.com>
++Date: Tue, 11 Jan 2022 08:09:58 -0800
++Subject: [PATCH] x86-64: Hide internal assembly functions
++
++Hide x86-64 internal assembly functions. Before
++
++$ nm -D lib/libzstd.so.1
++00000000000c23c0 T _HUF_decompress4X1_usingDTable_internal_bmi2_asm_loop
++00000000000c23c0 T HUF_decompress4X1_usingDTable_internal_bmi2_asm_loop
++00000000000c283d T _HUF_decompress4X2_usingDTable_internal_bmi2_asm_loop
++00000000000c283d T HUF_decompress4X2_usingDTable_internal_bmi2_asm_loop
++$
++
++After
++
++$ nm -D lib/libzstd.so.1
++$
++
++This fixes issue #2990.
++---
++ lib/common/portability_macros.h       | 6 ++++++
++ lib/decompress/huf_decompress.c       | 4 ++--
++ lib/decompress/huf_decompress_amd64.S | 4 ++++
++ 3 files changed, 12 insertions(+), 2 deletions(-)
++
++diff --git a/lib/common/portability_macros.h b/lib/common/portability_macros.h
++index 627ef9ee..2143817f 100644
++--- a/lib/common/portability_macros.h
+++++ b/lib/common/portability_macros.h
++@@ -65,6 +65,12 @@
++ # endif
++ #endif
++ 
+++/* Mark the internal assembly functions as hidden  */
+++#ifdef __ELF__
+++# define ZSTD_HIDE_ASM_FUNCTION(func) .hidden func
+++#else
+++# define ZSTD_HIDE_ASM_FUNCTION(func)
+++#endif
++ 
++ /* Enable runtime BMI2 dispatch based on the CPU.
++  * Enabled for clang & gcc >=4.8 on x86 when BMI2 isn't enabled by default.
++diff --git a/lib/decompress/huf_decompress.c b/lib/decompress/huf_decompress.c
++index fa61968b..20271882 100644
++--- a/lib/decompress/huf_decompress.c
+++++ b/lib/decompress/huf_decompress.c
++@@ -664,7 +664,7 @@ size_t HUF_decompress4X1_usingDTable_internal_default(void* dst, size_t dstSize,
++ 
++ #if ZSTD_ENABLE_ASM_X86_64_BMI2
++ 
++-HUF_ASM_DECL void HUF_decompress4X1_usingDTable_internal_bmi2_asm_loop(HUF_DecompressAsmArgs* args);
+++HUF_ASM_DECL void HUF_decompress4X1_usingDTable_internal_bmi2_asm_loop(HUF_DecompressAsmArgs* args) ZSTDLIB_HIDDEN;
++ 
++ static HUF_ASM_X86_64_BMI2_ATTRS
++ size_t
++@@ -1380,7 +1380,7 @@ size_t HUF_decompress4X2_usingDTable_internal_default(void* dst, size_t dstSize,
++ 
++ #if ZSTD_ENABLE_ASM_X86_64_BMI2
++ 
++-HUF_ASM_DECL void HUF_decompress4X2_usingDTable_internal_bmi2_asm_loop(HUF_DecompressAsmArgs* args);
+++HUF_ASM_DECL void HUF_decompress4X2_usingDTable_internal_bmi2_asm_loop(HUF_DecompressAsmArgs* args) ZSTDLIB_HIDDEN;
++ 
++ static HUF_ASM_X86_64_BMI2_ATTRS size_t
++ HUF_decompress4X2_usingDTable_internal_bmi2_asm(
++diff --git a/lib/decompress/huf_decompress_amd64.S b/lib/decompress/huf_decompress_amd64.S
++index 01bb6d76..37d3ad27 100644
++--- a/lib/decompress/huf_decompress_amd64.S
+++++ b/lib/decompress/huf_decompress_amd64.S
++@@ -91,6 +91,8 @@
++ /* Define both _HUF_* & HUF_* symbols because MacOS
++  * C symbols are prefixed with '_' & Linux symbols aren't.
++  */
+++ZSTD_HIDE_ASM_FUNCTION(_HUF_decompress4X1_usingDTable_internal_bmi2_asm_loop)
+++ZSTD_HIDE_ASM_FUNCTION(HUF_decompress4X1_usingDTable_internal_bmi2_asm_loop)
++ _HUF_decompress4X1_usingDTable_internal_bmi2_asm_loop:
++ HUF_decompress4X1_usingDTable_internal_bmi2_asm_loop:
++     /* Save all registers - even if they are callee saved for simplicity. */
++@@ -346,6 +348,8 @@ HUF_decompress4X1_usingDTable_internal_bmi2_asm_loop:
++     pop %rax
++     ret
++ 
+++ZSTD_HIDE_ASM_FUNCTION(_HUF_decompress4X2_usingDTable_internal_bmi2_asm_loop)
+++ZSTD_HIDE_ASM_FUNCTION(HUF_decompress4X2_usingDTable_internal_bmi2_asm_loop)
++ _HUF_decompress4X2_usingDTable_internal_bmi2_asm_loop:
++ HUF_decompress4X2_usingDTable_internal_bmi2_asm_loop:
++     /* Save all registers - even if they are callee saved for simplicity. */
++-- 
++2.34.1
++
+diff --git a/zstd.spec b/zstd.spec
+index 7ba508d..f3b5620 100644
+--- a/zstd.spec
++++ b/zstd.spec
+@@ -1,3 +1,6 @@
++Patch100000: 0001-x86-64-Hide-internal-assembly-functions.patch
++Patch100001: 0001-x86-64-Enable-Intel-CET.patch
++
+ %if 0%{?rhel} && 0%{?rhel} <= 6
+ # gcc-4.4 is currently too old to compile pzstd
+ %bcond_with pzstd
+@@ -69,6 +72,9 @@ find -name .gitignore -delete
+ %patch1 -p1
+ %endif
+ 
++%patch100000 -p1
++%patch100001 -p1
++
+ %build
+ export CFLAGS="$RPM_OPT_FLAGS"
+ export LDFLAGS="$RPM_LD_FLAGS"
+-- 
+2.34.1
+
