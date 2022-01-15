@@ -1,0 +1,87 @@
+From 1c77dff0d85e9c259d4593285ac3bcac23a29f76 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Fri, 10 Dec 2021 05:20:13 -0800
+Subject: [PATCH 6/7] Apply fs/binfmt_elf: use PT_LOAD p_align values for
+ static PIE
+
+---
+ ...e-PT_LOAD-p_align-values-for-static-.patch | 47 +++++++++++++++++++
+ kernel.spec                                   |  4 ++
+ 2 files changed, 51 insertions(+)
+ create mode 100644 0001-fs-binfmt_elf-use-PT_LOAD-p_align-values-for-static-.patch
+
+diff --git a/0001-fs-binfmt_elf-use-PT_LOAD-p_align-values-for-static-.patch b/0001-fs-binfmt_elf-use-PT_LOAD-p_align-values-for-static-.patch
+new file mode 100644
+index 000000000..a731174e0
+--- /dev/null
++++ b/0001-fs-binfmt_elf-use-PT_LOAD-p_align-values-for-static-.patch
+@@ -0,0 +1,47 @@
++From d1d0d180415a9c3f8f9efeff13343369a21a8027 Mon Sep 17 00:00:00 2001
++From: "H.J. Lu" <hjl.tools@gmail.com>
++Date: Thu, 9 Dec 2021 09:33:48 -0800
++Subject: [PATCH] fs/binfmt_elf: use PT_LOAD p_align values for static PIE
++
++Extend
++
++commit ce81bb256a224259ab686742a6284930cbe4f1fa
++Author: Chris Kennelly <ckennelly@google.com>
++Date:   Thu Oct 15 20:12:32 2020 -0700
++
++    fs/binfmt_elf: use PT_LOAD p_align values for suitable start address
++
++which fixed PIE binaries built with -Wl,-z,max-page-size=0x200000, to
++cover static PIE binaries.  This fixes:
++
++https://bugzilla.kernel.org/show_bug.cgi?id=215275
++
++Tested by verifying static PIE binaries with -Wl,-z,max-page-size=0x200000
++loading.
++
++Signed-off-by: H.J. Lu <hjl.tools@gmail.com>
++---
++ fs/binfmt_elf.c | 4 ++--
++ 1 file changed, 2 insertions(+), 2 deletions(-)
++
++diff --git a/fs/binfmt_elf.c b/fs/binfmt_elf.c
++index f8c7f26f1fbb..5e9c0832d47c 100644
++--- a/fs/binfmt_elf.c
+++++ b/fs/binfmt_elf.c
++@@ -1116,11 +1116,11 @@ static int load_elf_binary(struct linux_binprm *bprm)
++ 			 * independently randomized mmap region (0 load_bias
++ 			 * without MAP_FIXED nor MAP_FIXED_NOREPLACE).
++ 			 */
++-			if (interpreter) {
+++			alignment = maximum_alignment(elf_phdata, elf_ex->e_phnum);
+++			if (alignment > ELF_MIN_ALIGN) {
++ 				load_bias = ELF_ET_DYN_BASE;
++ 				if (current->flags & PF_RANDOMIZE)
++ 					load_bias += arch_mmap_rnd();
++-				alignment = maximum_alignment(elf_phdata, elf_ex->e_phnum);
++ 				if (alignment)
++ 					load_bias &= ~(alignment - 1);
++ 				elf_flags |= MAP_FIXED_NOREPLACE;
++-- 
++2.34.1
++
+diff --git a/kernel.spec b/kernel.spec
+index 8f3f325de..a39a5ceed 100755
+--- a/kernel.spec
++++ b/kernel.spec
+@@ -1,3 +1,5 @@
++Patch100001: 0001-fs-binfmt_elf-use-PT_LOAD-p_align-values-for-static-.patch
++
+ Patch200001: 0001-Documentation-x86-Add-CET-description.patch
+ Patch200002: 0002-x86-cet-shstk-Add-Kconfig-option-for-Shadow-Stack.patch
+ Patch200003: 0003-x86-cpufeatures-Add-CET-CPU-feature-flags-for-Contro.patch
+@@ -1436,6 +1438,8 @@ ApplyOptionalPatch patch-%{patchversion}-redhat.patch
+ 
+ ApplyOptionalPatch linux-kernel-test.patch
+ 
++ApplyOptionalPatch 0001-fs-binfmt_elf-use-PT_LOAD-p_align-values-for-static-.patch
++
+ ApplyOptionalPatch 0001-Documentation-x86-Add-CET-description.patch
+ ApplyOptionalPatch 0002-x86-cet-shstk-Add-Kconfig-option-for-Shadow-Stack.patch
+ ApplyOptionalPatch 0003-x86-cpufeatures-Add-CET-CPU-feature-flags-for-Contro.patch
+-- 
+2.34.1
+

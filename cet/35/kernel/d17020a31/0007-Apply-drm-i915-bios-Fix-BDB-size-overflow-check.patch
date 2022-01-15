@@ -1,0 +1,81 @@
+From 7fa5b991c02a8f8ce4a5a0600943505bf2785bce Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Fri, 17 Dec 2021 08:05:36 -0800
+Subject: [PATCH 7/7] Apply drm/i915/bios: Fix BDB size overflow check
+
+---
+ ...915-bios-Fix-BDB-size-overflow-check.patch | 43 +++++++++++++++++++
+ kernel.spec                                   |  2 +
+ 2 files changed, 45 insertions(+)
+ create mode 100755 0001-drm-i915-bios-Fix-BDB-size-overflow-check.patch
+
+diff --git a/0001-drm-i915-bios-Fix-BDB-size-overflow-check.patch b/0001-drm-i915-bios-Fix-BDB-size-overflow-check.patch
+new file mode 100755
+index 000000000..52b8451fe
+--- /dev/null
++++ b/0001-drm-i915-bios-Fix-BDB-size-overflow-check.patch
+@@ -0,0 +1,43 @@
++From 48100bb0ff5bd981176b40d7532a0fcdd4504feb Mon Sep 17 00:00:00 2001
++From: "H.J. Lu" <hjl.tools@gmail.com>
++Date: Thu, 16 Dec 2021 09:59:31 -0800
++Subject: [PATCH] drm/i915/bios: Fix BDB size overflow check
++
++LG Gram 2021 laptop 17Z95P-K.ADE9U1 has
++
++Total size: 0x2200
++VBT size: 0x2000
++BDB offset: 0x30
++BDB size: 0x216e
++
++Update intel_bios_is_valid_vbt to pass total size, instead of VBT size,
++to range_overflows_t for BDB size overflow check.  This fixes:
++
++https://gitlab.freedesktop.org/drm/intel/-/issues/4763
++
++Signed-off-by: H.J. Lu <hjl.tools@gmail.com>
++---
++ drivers/gpu/drm/i915/display/intel_bios.c | 4 +---
++ 1 file changed, 1 insertion(+), 3 deletions(-)
++
++diff --git a/drivers/gpu/drm/i915/display/intel_bios.c b/drivers/gpu/drm/i915/display/intel_bios.c
++index 9d989c9f5da4..d0d14c6a8010 100644
++--- a/drivers/gpu/drm/i915/display/intel_bios.c
+++++ b/drivers/gpu/drm/i915/display/intel_bios.c
++@@ -2316,12 +2316,10 @@ bool intel_bios_is_valid_vbt(const void *buf, size_t size)
++ 		return false;
++ 	}
++ 
++-	size = vbt->vbt_size;
++-
++ 	if (range_overflows_t(size_t,
++ 			      vbt->bdb_offset,
++ 			      sizeof(struct bdb_header),
++-			      size)) {
+++			      vbt->vbt_size)) {
++ 		DRM_DEBUG_DRIVER("BDB header incomplete\n");
++ 		return false;
++ 	}
++-- 
++2.33.1
++
+diff --git a/kernel.spec b/kernel.spec
+index a39a5ceed..9f8690235 100755
+--- a/kernel.spec
++++ b/kernel.spec
+@@ -1,4 +1,5 @@
+ Patch100001: 0001-fs-binfmt_elf-use-PT_LOAD-p_align-values-for-static-.patch
++Patch100002: 0001-drm-i915-bios-Fix-BDB-size-overflow-check.patch
+ 
+ Patch200001: 0001-Documentation-x86-Add-CET-description.patch
+ Patch200002: 0002-x86-cet-shstk-Add-Kconfig-option-for-Shadow-Stack.patch
+@@ -1439,6 +1440,7 @@ ApplyOptionalPatch patch-%{patchversion}-redhat.patch
+ ApplyOptionalPatch linux-kernel-test.patch
+ 
+ ApplyOptionalPatch 0001-fs-binfmt_elf-use-PT_LOAD-p_align-values-for-static-.patch
++ApplyOptionalPatch 0001-drm-i915-bios-Fix-BDB-size-overflow-check.patch
+ 
+ ApplyOptionalPatch 0001-Documentation-x86-Add-CET-description.patch
+ ApplyOptionalPatch 0002-x86-cet-shstk-Add-Kconfig-option-for-Shadow-Stack.patch
+-- 
+2.34.1
+

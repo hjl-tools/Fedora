@@ -1,0 +1,39 @@
+From 3e7d16fb0257c639b054cb4dab1798a4bb1d662c Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Tue, 14 Apr 2020 10:58:50 -0700
+Subject: [PATCH 2/7] Enable CONFIG_X86_SHADOW_STACK and CONFIG_X86_IBT
+
+---
+ kernel-x86_64-debug-fedora.config | 2 ++
+ kernel-x86_64-fedora.config       | 2 ++
+ 2 files changed, 4 insertions(+)
+
+diff --git a/kernel-x86_64-debug-fedora.config b/kernel-x86_64-debug-fedora.config
+index a9deb9e60..6976bf4cf 100644
+--- a/kernel-x86_64-debug-fedora.config
++++ b/kernel-x86_64-debug-fedora.config
+@@ -7714,6 +7714,8 @@ CONFIG_X86_UV=y
+ # CONFIG_X86_VSMP is not set
+ CONFIG_X86_X2APIC=y
+ CONFIG_X86_X32=y
++CONFIG_X86_SHADOW_STACK=y
++CONFIG_X86_IBT=y
+ CONFIG_XDP_SOCKETS_DIAG=m
+ CONFIG_XDP_SOCKETS=y
+ CONFIG_XEN_512GB=y
+diff --git a/kernel-x86_64-fedora.config b/kernel-x86_64-fedora.config
+index 2f7fef108..e202331d9 100644
+--- a/kernel-x86_64-fedora.config
++++ b/kernel-x86_64-fedora.config
+@@ -7689,6 +7689,8 @@ CONFIG_X86_UV=y
+ # CONFIG_X86_VSMP is not set
+ CONFIG_X86_X2APIC=y
+ CONFIG_X86_X32=y
++CONFIG_X86_SHADOW_STACK=y
++CONFIG_X86_IBT=y
+ CONFIG_XDP_SOCKETS_DIAG=m
+ CONFIG_XDP_SOCKETS=y
+ CONFIG_XEN_512GB=y
+-- 
+2.34.1
+
