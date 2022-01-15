@@ -1,0 +1,40 @@
+From e42f8b4c4436bcdf440097da35fee94181da92a7 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Sat, 15 Jan 2022 05:31:08 -0800
+Subject: [PATCH 2/2] Update
+ 0007-elf-Always-define-_dl_get_dl_main_map-in-libc.a.patch
+
+Sync with glibc-2.34-18.fc35
+---
+ ...-elf-Always-define-_dl_get_dl_main_map-in-libc.a.patch | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/0007-elf-Always-define-_dl_get_dl_main_map-in-libc.a.patch b/0007-elf-Always-define-_dl_get_dl_main_map-in-libc.a.patch
+index 9b49337..c868711 100644
+--- a/0007-elf-Always-define-_dl_get_dl_main_map-in-libc.a.patch
++++ b/0007-elf-Always-define-_dl_get_dl_main_map-in-libc.a.patch
+@@ -33,7 +33,7 @@ diff --git a/sysdeps/generic/ldsodefs.h b/sysdeps/generic/ldsodefs.h
+ index fcbbf69748..6ba71c2b44 100644
+ --- a/sysdeps/generic/ldsodefs.h
+ +++ b/sysdeps/generic/ldsodefs.h
+-@@ -1216,15 +1216,15 @@ void __libc_setup_tls (void);
++@@ -1229,15 +1229,15 @@ void __libc_setup_tls (void);
+  # if ENABLE_STATIC_PIE
+  /* Relocate static executable with PIE.  */
+  extern void _dl_relocate_static_pie (void) attribute_hidden;
+@@ -50,9 +50,9 @@ index fcbbf69748..6ba71c2b44 100644
+ +extern struct link_map * _dl_get_dl_main_map (void)
+ +  __attribute__ ((visibility ("hidden")));
+ +
+- /* Initialization of libpthread for statically linked applications.
+-    If libpthread is not linked in, this is an empty function.  */
+- void __pthread_initialize_minimal (void) weak_function;
++ /* Initialize the DSO sort algorithm to use.  */
++ extern void _dl_sort_maps_init (void) attribute_hidden;
++ 
+ -- 
+ 2.34.1
+ 
+-- 
+2.34.1
+

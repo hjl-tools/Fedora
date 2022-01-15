@@ -1,0 +1,3873 @@
+From f011c22c370241fb27e0a76694e842b4bd7d3ed8 Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Sat, 15 Jan 2022 05:21:53 -0800
+Subject: [PATCH 1/2] Combine indirect external access with CET/LAM patches
+
+---
+ ...al-support-for-GNU_PROPERTY_1_NEEDED.patch |    6 +-
+ ...e-check-for-indirect-external-access.patch |    6 +-
+ ...ARCH_CET_ALLOC_SHSTK-with-PROT_SHSTK.patch |  571 ---------
+ ...able-symbol-hack-in-libc_nonshared.a.patch |    6 +-
+ ...-tst-sigreturn-1.c-from-Linux-kernel.patch | 1113 -----------------
+ ...m-unistd.h-and-regenerate-arch-sysca.patch |  120 ++
+ ...t-Sync-with-the-kernel-CET-interface.patch |  591 +++++++--
+ 0006-x86-Check-PT_GNU_PROPERTY-early.patch    |  357 ++++++
+ ...define-_dl_get_dl_main_map-in-libc.a.patch |   58 +
+ ...able-x86-CPU-features-during-startup.patch |  383 ++++++
+ ...-Modularize-sysdeps-x86-dl-feature.c.patch |   33 +-
+ ...010-x86-64-Initial-Intel-LAM-support.patch |   50 +-
+ ...s.patch => 0011-x86-64-Add-LAM-tests.patch |    6 +-
+ glibc.spec                                    |   21 +-
+ 14 files changed, 1502 insertions(+), 1819 deletions(-)
+ delete mode 100644 0002-x86-Replace-ARCH_CET_ALLOC_SHSTK-with-PROT_SHSTK.patch
+ rename 0001-Disable-symbol-hack-in-libc_nonshared.a.patch => 0003-Disable-symbol-hack-in-libc_nonshared.a.patch (92%)
+ delete mode 100644 0003-x86-Add-tst-sigreturn-1.c-from-Linux-kernel.patch
+ create mode 100644 0004-x86-Add-fixup-asm-unistd.h-and-regenerate-arch-sysca.patch
+ rename 0004-x86-Extend-CET-features-to-cover-other-features.patch => 0005-x86-cet-Sync-with-the-kernel-CET-interface.patch (53%)
+ create mode 100644 0006-x86-Check-PT_GNU_PROPERTY-early.patch
+ create mode 100644 0007-elf-Always-define-_dl_get_dl_main_map-in-libc.a.patch
+ create mode 100644 0008-x86-Enable-x86-CPU-features-during-startup.patch
+ rename 0005-x86-Modularize-sysdeps-x86-dl-feature.c.patch => 0009-x86-Modularize-sysdeps-x86-dl-feature.c.patch (94%)
+ rename 0006-x86-64-Initial-Intel-LAM-support.patch => 0010-x86-64-Initial-Intel-LAM-support.patch (84%)
+ rename 0007-x86-64-Add-LAM-tests.patch => 0011-x86-64-Add-LAM-tests.patch (99%)
+
+diff --git a/0001-Initial-support-for-GNU_PROPERTY_1_NEEDED.patch b/0001-Initial-support-for-GNU_PROPERTY_1_NEEDED.patch
+index 577e79e..333a2ca 100644
+--- a/0001-Initial-support-for-GNU_PROPERTY_1_NEEDED.patch
++++ b/0001-Initial-support-for-GNU_PROPERTY_1_NEEDED.patch
+@@ -1,7 +1,7 @@
+-From fc262a803346fd8830388f1a65840048501df915 Mon Sep 17 00:00:00 2001
++From ecc9f1faeba0bb822fef829a12852fe52097f8c4 Mon Sep 17 00:00:00 2001
+ From: "H.J. Lu" <hjl.tools@gmail.com>
+ Date: Fri, 18 Jun 2021 11:53:55 -0700
+-Subject: [PATCH 1/2] Initial support for GNU_PROPERTY_1_NEEDED
++Subject: [PATCH 01/11] Initial support for GNU_PROPERTY_1_NEEDED
+ 
+ 1. Add GNU_PROPERTY_1_NEEDED:
+ 
+@@ -149,5 +149,5 @@ index 4c46a25f83..0c7e25dc96 100644
+ +
+ +#include <sysdeps/generic/link_map.h>
+ -- 
+-2.33.1
++2.34.1
+ 
+diff --git a/0002-Add-run-time-check-for-indirect-external-access.patch b/0002-Add-run-time-check-for-indirect-external-access.patch
+index a9805e7..3c6618f 100644
+--- a/0002-Add-run-time-check-for-indirect-external-access.patch
++++ b/0002-Add-run-time-check-for-indirect-external-access.patch
+@@ -1,7 +1,7 @@
+-From 6133ffb3350c82720a7145aa2848348942c4dc6a Mon Sep 17 00:00:00 2001
++From 211358366d57bd4cee23dfee5d6c55c36e473908 Mon Sep 17 00:00:00 2001
+ From: "H.J. Lu" <hjl.tools@gmail.com>
+ Date: Fri, 18 Jun 2021 16:50:39 -0700
+-Subject: [PATCH 2/2] Add run-time check for indirect external access
++Subject: [PATCH 02/11] Add run-time check for indirect external access
+ 
+ When performing symbol lookup for references in executable without
+ indirect external access:
+@@ -104,5 +104,5 @@ index 0000000000..244d020dc4
+ +
+ +#endif /* _DL_PROTECTED_H */
+ -- 
+-2.33.1
++2.34.1
+ 
+diff --git a/0002-x86-Replace-ARCH_CET_ALLOC_SHSTK-with-PROT_SHSTK.patch b/0002-x86-Replace-ARCH_CET_ALLOC_SHSTK-with-PROT_SHSTK.patch
+deleted file mode 100644
+index a4e6cdf..0000000
+--- a/0002-x86-Replace-ARCH_CET_ALLOC_SHSTK-with-PROT_SHSTK.patch
++++ /dev/null
+@@ -1,571 +0,0 @@
+-From d47ff655599f0582d8039368bb6c54eea645ddbf Mon Sep 17 00:00:00 2001
+-From: "H.J. Lu" <hjl.tools@gmail.com>
+-Date: Sat, 15 Aug 2020 08:04:23 -0700
+-Subject: [PATCH 2/7] x86: Replace ARCH_CET_ALLOC_SHSTK with PROT_SHSTK
+-
+-Since the upstream kernel will support shadow stack allocation with
+-PROT_SHSTK, remove ARCH_CET_ALLOC_SHSTK and add __allocate_shadow_stack
+-to use PROT_SHSTK.
+-
+-Also rename ARCH_CET_XXX to ARCH_X86_CET_XXX to match the upstream kernel
+-header file.
+----
+- sysdeps/unix/sysv/linux/i386/getcontext.S     |  2 +-
+- sysdeps/unix/sysv/linux/i386/makecontext.S    | 88 +++++++------------
+- sysdeps/unix/sysv/linux/i386/swapcontext.S    |  2 +-
+- sysdeps/unix/sysv/linux/x86/Makefile          |  1 +
+- .../sysv/linux/x86/allocate-shadow-stack.c    | 75 ++++++++++++++++
+- .../sysv/linux/x86/allocate-shadow-stack.h    | 27 ++++++
+- sysdeps/unix/sysv/linux/x86/bits/mman.h       |  1 +
+- sysdeps/unix/sysv/linux/x86/cpu-features.c    |  3 +-
+- sysdeps/unix/sysv/linux/x86/dl-cet.h          |  4 +-
+- .../unix/sysv/linux/x86/include/asm/prctl.h   | 15 ++--
+- .../sysv/linux/x86/tst-cet-setcontext-1.c     |  2 +-
+- .../unix/sysv/linux/x86_64/__start_context.S  | 38 ++------
+- sysdeps/unix/sysv/linux/x86_64/getcontext.S   |  2 +-
+- sysdeps/unix/sysv/linux/x86_64/makecontext.c  | 29 +++---
+- sysdeps/unix/sysv/linux/x86_64/swapcontext.S  |  2 +-
+- 15 files changed, 174 insertions(+), 117 deletions(-)
+- create mode 100644 sysdeps/unix/sysv/linux/x86/allocate-shadow-stack.c
+- create mode 100644 sysdeps/unix/sysv/linux/x86/allocate-shadow-stack.h
+-
+-diff --git a/sysdeps/unix/sysv/linux/i386/getcontext.S b/sysdeps/unix/sysv/linux/i386/getcontext.S
+-index 95e8d06dd1..61c0195b33 100644
+---- a/sysdeps/unix/sysv/linux/i386/getcontext.S
+-+++ b/sysdeps/unix/sysv/linux/i386/getcontext.S
+-@@ -63,7 +63,7 @@ ENTRY(__getcontext)
+- 	   been recorded yet.  */
+- 	sub	$24, %esp
+- 	mov	%esp, %ecx
+--	movl	$ARCH_CET_STATUS, %ebx
+-+	movl	$ARCH_X86_CET_STATUS, %ebx
+- 	movl	$__NR_arch_prctl, %eax
+- 	ENTER_KERNEL
+- 	testl	%eax, %eax
+-diff --git a/sysdeps/unix/sysv/linux/i386/makecontext.S b/sysdeps/unix/sysv/linux/i386/makecontext.S
+-index 059fa5a95e..3609fff7ac 100644
+---- a/sysdeps/unix/sysv/linux/i386/makecontext.S
+-+++ b/sysdeps/unix/sysv/linux/i386/makecontext.S
+-@@ -74,28 +74,37 @@ ENTRY(__makecontext)
+- 	testl	$X86_FEATURE_1_SHSTK, %gs:FEATURE_1_OFFSET
+- 	jz	L(skip_ssp)
+- 
+--	/* Reload the pointer to ucontext.  */
+--	movl	4(%esp), %eax
+-+	/* Shadow stack is enabled.  Load the pointer to ucontext in
+-+	   ECX.  */
+-+	movl	4(%esp), %ecx
+-+
+-+	/* Pass the address of __ssp[1] in EDX.  */
+-+	leal	(oSSP + 4)(%ecx), %edx
+-+	/* Pass stack size in EAX.  */
+-+	movl	oSS_SIZE(%ecx), %eax
+-+
+-+	/* Call __allocate_shadow_stack to allocate a new shadow stack.  */
+-+	call	__allocate_shadow_stack
+-+	/* Check for error return.  */
+-+	testl	%eax, %eax
+-+	jne	L(hlt)		/* This should never happen.  */
+- 
+--	/* Shadow stack is enabled.  We need to allocate a new shadow
+--	   stack.  */
+--	subl	oSS_SP(%eax), %edx
+--	shrl	$STACK_SIZE_TO_SHADOW_STACK_SIZE_SHIFT, %edx
+-+	/* Reload the pointer to ucontext into ECX.  */
+-+	movl	4(%esp), %ecx
+- 
+--	/* Align shadow stack size to 8 bytes.  */
+--	addl	$7, %edx
+--	andl	$-8, %edx
+-+	/* Load the base address of the new shadow stack into EAX.  */
+-+	movl	(oSSP + 4)(%ecx), %eax
+- 
+--	/* Store shadow stack size in __ssp[2].  */
+--	movl	%edx, (oSSP + 8)(%eax)
+-+	/* Store the new shadow stack pointer, the shadow stack base +
+-+	   the shadow stack size - 4, in __ssp[0].  */
+-+	addl	(oSSP + 8)(%ecx), %eax
+-+	subl	$4, %eax
+-+	movl	%eax, oSSP(%ecx)
+- 
+- 	/* Save ESI in the second scratch register slot.  */
+--	movl	%esi, oSCRATCH2(%eax)
+-+	movl	%esi, oSCRATCH2(%ecx)
+- 	/* Save EDI in the third scratch register slot.  */
+--	movl	%edi, oSCRATCH3(%eax)
+--
+--	/* Save the pointer to ucontext.  */
+--	movl	%eax, %edi
+-+	movl	%edi, oSCRATCH3(%ecx)
+- 
+- 	/* Get the original shadow stack pointer.  */
+- 	rdsspd	%esi
+-@@ -105,7 +114,7 @@ ENTRY(__makecontext)
+- 	andl	$-8, %esi
+- 
+- 	/* Load the top of the new stack into EDX.  */
+--	movl	oESP(%eax), %edx
+-+	movl	oESP(%ecx), %edx
+- 
+- 	/* We need to terminate the FDE here because the unwinder looks
+- 	   at ra-1 for unwind information.  */
+-@@ -119,39 +128,14 @@ ENTRY(__makecontext)
+- 	   onto stack.  */
+- 	addl	$4, %esp
+- 
+--	/* Allocate the new shadow stack.  Save EBX in the first scratch
+--	   register slot.  */
+--	movl	%ebx, oSCRATCH1(%eax)
+--
+--	/* CET syscall takes 64-bit sizes.  */
+--	subl	$16, %esp
+--	movl	(oSSP + 8)(%eax), %ecx
+--	movl	%ecx, (%esp)
+--	movl	$0, 4(%esp)
+--	movl	%ecx, 8(%esp)
+--	movl	$0, 12(%esp)
+--	movl	%esp, %ecx
+--
+--	movl	$ARCH_CET_ALLOC_SHSTK, %ebx
+--	movl	$__NR_arch_prctl, %eax
+--	ENTER_KERNEL
+--	testl	%eax, %eax
+--	jne	L(hlt)		/* This should never happen.  */
+--
+--	/* Copy the base address of the new shadow stack to __ssp[1].  */
+--	movl	(%esp), %eax
+--	movl	%eax, (oSSP + 4)(%edi)
+--
+--	addl	$16, %esp
+-+	/* Load the new shadow stack base in __ssp[1] into EAX.  */
+-+	movl	(oSSP + 4)(%ecx), %eax
+- 
+--	/* Restore EBX from the first scratch register slot.  */
+--	movl	oSCRATCH1(%edi), %ebx
+--
+--	/* Get the size of the new shadow stack.  */
+--	movl	(oSSP + 8)(%edi), %ecx
+-+	/* Load the new shadow stack size in __ssp[2] into EDI.  */
+-+	movl	(oSSP + 8)(%ecx), %edi
+- 
+- 	/* Use the restore stoken to restore the new shadow stack.  */
+--	rstorssp -8(%eax, %ecx)
+-+	rstorssp -8(%eax, %edi)
+- 
+- 	/* Save the restore token at the next 8 byte aligned boundary
+- 	   on the original shadow stack.  */
+-@@ -163,27 +147,21 @@ ENTRY(__makecontext)
+- 	jmp	L(exitcode)
+- 1:
+- 
+--	/* Get the new shadow stack pointer.  */
+--	rdsspd	%eax
+--
+- 	/* Use the restore stoken to restore the original shadow stack.  */
+- 	rstorssp -8(%esi)
+- 
+- 	/* Save the restore token on the new shadow stack.  */
+- 	saveprevssp
+- 
+--	/* Store the new shadow stack pointer in __ssp[0].  */
+--	movl	%eax, oSSP(%edi)
+--
+- 	/* Restore the original stack.  */
+- 	mov	%edx, %esp
+- 
+- 	cfi_startproc
+- 
+- 	/* Restore ESI from the second scratch register slot.  */
+--	movl	oSCRATCH2(%edi), %esi
+-+	movl	oSCRATCH2(%ecx), %esi
+- 	/* Restore EDI from the third scratch register slot.  */
+--	movl	oSCRATCH3(%edi), %edi
+-+	movl	oSCRATCH3(%ecx), %edi
+- 
+- 	ret
+- 
+-diff --git a/sysdeps/unix/sysv/linux/i386/swapcontext.S b/sysdeps/unix/sysv/linux/i386/swapcontext.S
+-index 369c22f7f2..e9111d5d19 100644
+---- a/sysdeps/unix/sysv/linux/i386/swapcontext.S
+-+++ b/sysdeps/unix/sysv/linux/i386/swapcontext.S
+-@@ -91,7 +91,7 @@ ENTRY(__swapcontext)
+- 	   been recorded yet.  */
+- 	sub	$24, %esp
+- 	mov	%esp, %ecx
+--	movl	$ARCH_CET_STATUS, %ebx
+-+	movl	$ARCH_X86_CET_STATUS, %ebx
+- 	movl	$__NR_arch_prctl, %eax
+- 	ENTER_KERNEL
+- 	testl	%eax, %eax
+-diff --git a/sysdeps/unix/sysv/linux/x86/Makefile b/sysdeps/unix/sysv/linux/x86/Makefile
+-index 9dfdd689a9..ed0d6500b9 100644
+---- a/sysdeps/unix/sysv/linux/x86/Makefile
+-+++ b/sysdeps/unix/sysv/linux/x86/Makefile
+-@@ -44,6 +44,7 @@ CFLAGS-tst-cet-vfork-1.c += -mshstk
+- endif
+- 
+- ifeq ($(subdir),stdlib)
+-+sysdep_routines += allocate-shadow-stack
+- tests += tst-cet-setcontext-1
+- CFLAGS-tst-cet-setcontext-1.c += -mshstk
+- endif
+-diff --git a/sysdeps/unix/sysv/linux/x86/allocate-shadow-stack.c b/sysdeps/unix/sysv/linux/x86/allocate-shadow-stack.c
+-new file mode 100644
+-index 0000000000..a90a09515a
+---- /dev/null
+-+++ b/sysdeps/unix/sysv/linux/x86/allocate-shadow-stack.c
+-@@ -0,0 +1,75 @@
+-+/* Helper function to allocate shadow stack.
+-+   Copyright (C) 2020 Free Software Foundation, Inc.
+-+   This file is part of the GNU C Library.
+-+
+-+   The GNU C Library is free software; you can redistribute it and/or
+-+   modify it under the terms of the GNU Lesser General Public
+-+   License as published by the Free Software Foundation; either
+-+   version 2.1 of the License, or (at your option) any later version.
+-+
+-+   The GNU C Library is distributed in the hope that it will be useful,
+-+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+-+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+-+   Lesser General Public License for more details.
+-+
+-+   You should have received a copy of the GNU Lesser General Public
+-+   License along with the GNU C Library; if not, see
+-+   <https://www.gnu.org/licenses/>.  */
+-+
+-+#include <sysdep.h>
+-+#include <stdint.h>
+-+#include <errno.h>
+-+#include <sys/mman.h>
+-+#include <libc-pointer-arith.h>
+-+#include <allocate-shadow-stack.h>
+-+
+-+/* NB: This can be treated as a syscall by caller.  */
+-+
+-+#ifndef __x86_64__
+-+__attribute__ ((regparm (2)))
+-+#endif
+-+long int
+-+__allocate_shadow_stack (size_t stack_size,
+-+			 shadow_stack_size_t *child_stack)
+-+{
+-+  long int ret;
+-+  size_t shadow_stack_size
+-+    = stack_size >> STACK_SIZE_TO_SHADOW_STACK_SIZE_SHIFT;
+-+  /* Align shadow stack to 8 bytes.  */
+-+  shadow_stack_size = ALIGN_UP (shadow_stack_size, 8);
+-+  /* NB: Must use __mmap (see mmap64.c and mmap.c).  */
+-+  void *shadow_stack = __mmap (0, shadow_stack_size,
+-+			       PROT_READ | PROT_WRITE,
+-+			       MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+-+  /* Report the mmap error.  */
+-+  if (shadow_stack == MAP_FAILED)
+-+    return -errno;
+-+
+-+  void *shadow_stack_top = shadow_stack + shadow_stack_size;
+-+
+-+  /* Shadow stack restore token.  */
+-+  uint64_t shadow_stack_token = (uintptr_t) shadow_stack_top;
+-+#ifdef __x86_64__
+-+  shadow_stack_token |= 1;
+-+#endif
+-+
+-+  /* Store shadow stack restore token at the top of shadow stack.  */
+-+  *(uint64_t *) (shadow_stack_top - 8) = shadow_stack_token;
+-+
+-+  /* Enable shadow stack with PROT_SHSTK.  */
+-+  ret = (long) INTERNAL_SYSCALL_CALL (mprotect, shadow_stack,
+-+				      shadow_stack_size,
+-+				      PROT_READ | PROT_SHSTK);
+-+  if (INTERNAL_SYSCALL_ERROR_P ((uintptr_t) ret))
+-+    {
+-+      INTERNAL_SYSCALL_CALL (munmap, shadow_stack, shadow_stack_size);
+-+      /* Report the mprotect error.  */
+-+      return ret;
+-+    }
+-+
+-+  /* Save the shadow stack base and size on child stack.  */
+-+  child_stack[0] = (uintptr_t) shadow_stack;
+-+  child_stack[1] = shadow_stack_size;
+-+
+-+  return 0;
+-+}
+-diff --git a/sysdeps/unix/sysv/linux/x86/allocate-shadow-stack.h b/sysdeps/unix/sysv/linux/x86/allocate-shadow-stack.h
+-new file mode 100644
+-index 0000000000..25e3814867
+---- /dev/null
+-+++ b/sysdeps/unix/sysv/linux/x86/allocate-shadow-stack.h
+-@@ -0,0 +1,27 @@
+-+/* Helper function to allocate shadow stack.
+-+   Copyright (C) 2020 Free Software Foundation, Inc.
+-+   This file is part of the GNU C Library.
+-+
+-+   The GNU C Library is free software; you can redistribute it and/or
+-+   modify it under the terms of the GNU Lesser General Public
+-+   License as published by the Free Software Foundation; either
+-+   version 2.1 of the License, or (at your option) any later version.
+-+
+-+   The GNU C Library is distributed in the hope that it will be useful,
+-+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+-+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+-+   Lesser General Public License for more details.
+-+
+-+   You should have received a copy of the GNU Lesser General Public
+-+   License along with the GNU C Library; if not, see
+-+   <https://www.gnu.org/licenses/>.  */
+-+
+-+#include <ucontext.h>
+-+
+-+typedef __typeof (((ucontext_t *) 0)->__ssp[0]) shadow_stack_size_t;
+-+
+-+extern long int __allocate_shadow_stack (size_t, shadow_stack_size_t *)
+-+#ifndef __x86_64__
+-+  __attribute__ ((regparm (2)))
+-+#endif
+-+  attribute_hidden;
+-diff --git a/sysdeps/unix/sysv/linux/x86/bits/mman.h b/sysdeps/unix/sysv/linux/x86/bits/mman.h
+-index b2ae788555..d37eb80158 100644
+---- a/sysdeps/unix/sysv/linux/x86/bits/mman.h
+-+++ b/sysdeps/unix/sysv/linux/x86/bits/mman.h
+-@@ -26,6 +26,7 @@
+- /* Other flags.  */
+- #ifdef __USE_MISC
+- # define MAP_32BIT	0x40		/* Only give out 32-bit addresses.  */
+-+# define PROT_SHSTK	0x10		/* Shadow stack pages.  */
+- #endif
+- 
+- #include <bits/mman-map-flags-generic.h>
+-diff --git a/sysdeps/unix/sysv/linux/x86/cpu-features.c b/sysdeps/unix/sysv/linux/x86/cpu-features.c
+-index 60f766853d..76ef99d4a1 100644
+---- a/sysdeps/unix/sysv/linux/x86/cpu-features.c
+-+++ b/sysdeps/unix/sysv/linux/x86/cpu-features.c
+-@@ -24,7 +24,8 @@ static inline int __attribute__ ((always_inline))
+- get_cet_status (void)
+- {
+-   unsigned long long cet_status[3];
+--  if (INTERNAL_SYSCALL_CALL (arch_prctl, ARCH_CET_STATUS, cet_status) == 0)
+-+  if (INTERNAL_SYSCALL_CALL (arch_prctl, ARCH_X86_CET_STATUS,
+-+			     cet_status) == 0)
+-     return cet_status[0];
+-   return 0;
+- }
+-diff --git a/sysdeps/unix/sysv/linux/x86/dl-cet.h b/sysdeps/unix/sysv/linux/x86/dl-cet.h
+-index 86151d8bbd..a431b601cc 100644
+---- a/sysdeps/unix/sysv/linux/x86/dl-cet.h
+-+++ b/sysdeps/unix/sysv/linux/x86/dl-cet.h
+-@@ -21,12 +21,12 @@
+- static inline int __attribute__ ((always_inline))
+- dl_cet_disable_cet (unsigned int cet_feature)
+- {
+--  return (int) INTERNAL_SYSCALL_CALL (arch_prctl, ARCH_CET_DISABLE,
+-+  return (int) INTERNAL_SYSCALL_CALL (arch_prctl, ARCH_X86_CET_DISABLE,
+- 				      cet_feature);
+- }
+- 
+- static inline int __attribute__ ((always_inline))
+- dl_cet_lock_cet (void)
+- {
+--  return (int) INTERNAL_SYSCALL_CALL (arch_prctl, ARCH_CET_LOCK, 0);
+-+  return (int) INTERNAL_SYSCALL_CALL (arch_prctl, ARCH_X86_CET_LOCK, 0);
+- }
+-diff --git a/sysdeps/unix/sysv/linux/x86/include/asm/prctl.h b/sysdeps/unix/sysv/linux/x86/include/asm/prctl.h
+-index 45ad0b052f..d58754018b 100644
+---- a/sysdeps/unix/sysv/linux/x86/include/asm/prctl.h
+-+++ b/sysdeps/unix/sysv/linux/x86/include/asm/prctl.h
+-@@ -4,7 +4,7 @@
+- 
+- #include_next <asm/prctl.h>
+- 
+--#ifndef ARCH_CET_STATUS
+-+#ifndef ARCH_X86_CET_STATUS
+- /* CET features:
+-    IBT:   GNU_PROPERTY_X86_FEATURE_1_IBT
+-    SHSTK: GNU_PROPERTY_X86_FEATURE_1_SHSTK
+-@@ -14,14 +14,9 @@
+-      shadow stack base address: addr[1].
+-      shadow stack size: addr[2].
+-  */
+--# define ARCH_CET_STATUS	0x3001
+-+# define ARCH_X86_CET_STATUS	0x3001
+- /* Disable CET features in unsigned int features.  */
+--# define ARCH_CET_DISABLE	0x3002
+-+# define ARCH_X86_CET_DISABLE	0x3002
+- /* Lock all CET features.  */
+--# define ARCH_CET_LOCK		0x3003
+--/* Allocate a new shadow stack with unsigned long long *addr:
+--     IN: requested shadow stack size: *addr.
+--     OUT: allocated shadow stack address: *addr.
+-- */
+--# define ARCH_CET_ALLOC_SHSTK	0x3004
+--#endif /* ARCH_CET_STATUS */
+-+# define ARCH_X86_CET_LOCK		0x3003
+-+#endif /* ARCH_X86_CET_STATUS */
+-diff --git a/sysdeps/unix/sysv/linux/x86/tst-cet-setcontext-1.c b/sysdeps/unix/sysv/linux/x86/tst-cet-setcontext-1.c
+-index 38ca4b1d05..74a9a55677 100644
+---- a/sysdeps/unix/sysv/linux/x86/tst-cet-setcontext-1.c
+-+++ b/sysdeps/unix/sysv/linux/x86/tst-cet-setcontext-1.c
+-@@ -88,7 +88,7 @@ do_test (void)
+-   makecontext (&ctx[4], (void (*) (void)) f1, 0);
+- 
+-   /* NB: When shadow stack is enabled, makecontext calls arch_prctl
+--     with ARCH_CET_ALLOC_SHSTK to allocate a new shadow stack which
+-+     with ARCH_X86_CET_MMAP_SHSTK to allocate a new shadow stack which
+-      can be unmapped.  The base address and size of the new shadow
+-      stack are returned in __ssp[1] and __ssp[2].  makecontext is
+-      called for CTX1, CTX3 and CTX4.  But only CTX1 is used.  New
+-diff --git a/sysdeps/unix/sysv/linux/x86_64/__start_context.S b/sysdeps/unix/sysv/linux/x86_64/__start_context.S
+-index 49381e369e..bfde78d814 100644
+---- a/sysdeps/unix/sysv/linux/x86_64/__start_context.S
+-+++ b/sysdeps/unix/sysv/linux/x86_64/__start_context.S
+-@@ -25,20 +25,14 @@
+- /* Use CALL to push __start_context onto the new stack as well as the new
+-    shadow stack.  RDI points to ucontext:
+-    Incoming:
+--     __ssp[0]: The original caller's shadow stack pointer.
+--     __ssp[1]: The size of the new shadow stack.
+--     __ssp[2]: The size of the new shadow stack.
+--   Outgoing:
+-      __ssp[0]: The new shadow stack pointer.
+-      __ssp[1]: The base address of the new shadow stack.
+-      __ssp[2]: The size of the new shadow stack.
+-  */
+- 
+- ENTRY(__push___start_context)
+--	/* Save the pointer to ucontext.  */
+--	movq	%rdi, %r9
+- 	/* Get the original shadow stack pointer.  */
+--	rdsspq	%r8
+-+	rdsspq	%rcx
+- 	/* Save the original stack pointer.  */
+- 	movq	%rsp, %rdx
+- 	/* Load the top of the new stack into RSI.  */
+-@@ -46,24 +40,12 @@ ENTRY(__push___start_context)
+- 	/* Add 8 bytes to RSI since CALL will push the 8-byte return
+- 	   address onto stack.  */
+- 	leaq	8(%rsi), %rsp
+--	/* Allocate the new shadow stack.  The size of the new shadow
+--	   stack is passed in __ssp[1].  */
+--	lea	(oSSP + 8)(%rdi), %RSI_LP
+--	movl	$ARCH_CET_ALLOC_SHSTK, %edi
+--	movl	$__NR_arch_prctl, %eax
+--	/* The new shadow stack base is returned in __ssp[1].  */
+--	syscall
+--	testq	%rax, %rax
+--	jne	L(hlt)		/* This should never happen.  */
+--
+--	/* Get the size of the new shadow stack.  */
+--	movq	8(%rsi), %rdi
+--
+--	/* Get the base address of the new shadow stack.  */
+--	movq	(%rsi), %rsi
+--
+-+	/* The size of the new shadow stack is stored in __ssp[2].  */
+-+	mov	(oSSP + 16)(%rdi), %RSI_LP
+-+	/* The new shadow stack base is stored in __ssp[1].  */
+-+	mov	(oSSP + 8)(%rdi), %RAX_LP
+- 	/* Use the restore stoken to restore the new shadow stack.  */
+--	rstorssp -8(%rsi, %rdi)
+-+	rstorssp -8(%rax, %rsi)
+- 
+- 	/* Save the restore token on the original shadow stack.  */
+- 	saveprevssp
+-@@ -74,18 +56,12 @@ ENTRY(__push___start_context)
+- 	jmp	__start_context
+- 1:
+- 
+--	/* Get the new shadow stack pointer.  */
+--	rdsspq	%rdi
+--
+- 	/* Use the restore stoken to restore the original shadow stack.  */
+--	rstorssp -8(%r8)
+-+	rstorssp -8(%rcx)
+- 
+- 	/* Save the restore token on the new shadow stack.  */
+- 	saveprevssp
+- 
+--	/* Store the new shadow stack pointer in __ssp[0].  */
+--	movq	%rdi, oSSP(%r9)
+--
+- 	/* Restore the original stack.  */
+- 	mov	%rdx, %rsp
+- 	ret
+-diff --git a/sysdeps/unix/sysv/linux/x86_64/getcontext.S b/sysdeps/unix/sysv/linux/x86_64/getcontext.S
+-index 5ca779b15b..aee363b000 100644
+---- a/sysdeps/unix/sysv/linux/x86_64/getcontext.S
+-+++ b/sysdeps/unix/sysv/linux/x86_64/getcontext.S
+-@@ -71,7 +71,7 @@ ENTRY(__getcontext)
+- 	   been recorded yet.  */
+- 	sub	$24, %RSP_LP
+- 	mov	%RSP_LP, %RSI_LP
+--	movl	$ARCH_CET_STATUS, %edi
+-+	movl	$ARCH_X86_CET_STATUS, %edi
+- 	movl	$__NR_arch_prctl, %eax
+- 	syscall
+- 	testq	%rax, %rax
+-diff --git a/sysdeps/unix/sysv/linux/x86_64/makecontext.c b/sysdeps/unix/sysv/linux/x86_64/makecontext.c
+-index ceb5c02bad..950e3b1201 100644
+---- a/sysdeps/unix/sysv/linux/x86_64/makecontext.c
+-+++ b/sysdeps/unix/sysv/linux/x86_64/makecontext.c
+-@@ -25,6 +25,8 @@
+- # include <pthread.h>
+- # include <libc-pointer-arith.h>
+- # include <sys/prctl.h>
+-+# include <sys/mman.h>
+-+# include <allocate-shadow-stack.h>
+- #endif
+- 
+- #include "ucontext_i.h"
+-@@ -89,23 +91,24 @@ __makecontext (ucontext_t *ucp, void (*func) (void), int argc, ...)
+-   if ((feature_1 & X86_FEATURE_1_SHSTK) != 0)
+-     {
+-       /* Shadow stack is enabled.  We need to allocate a new shadow
+--         stack.  */
+--      unsigned long ssp_size = (((uintptr_t) sp
+--				 - (uintptr_t) ucp->uc_stack.ss_sp)
+--				>> STACK_SIZE_TO_SHADOW_STACK_SIZE_SHIFT);
+--      /* Align shadow stack to 8 bytes.  */
+--      ssp_size = ALIGN_UP (ssp_size, 8);
+--
+--      ucp->__ssp[1] = ssp_size;
+--      ucp->__ssp[2] = ssp_size;
+--
+--      /* Call __push___start_context to allocate a new shadow stack,
+--	 push __start_context onto the new stack as well as the new
+--	 shadow stack.  NB: After __push___start_context returns,
+-+         stack.  NB:
+- 	   ucp->__ssp[0]: The new shadow stack pointer.
+- 	   ucp->__ssp[1]: The base address of the new shadow stack.
+- 	   ucp->__ssp[2]: The size of the new shadow stack.
+-        */
+-+      long int ret
+-+	= __allocate_shadow_stack (((uintptr_t) sp
+-+				    - (uintptr_t) ucp->uc_stack.ss_sp),
+-+				   &ucp->__ssp[1]);
+-+      if (ret != 0)
+-+	{
+-+	  /* FIXME: What should we do?  */
+-+	  abort ();
+-+	}
+-+
+-+      ucp->__ssp[0] = ucp->__ssp[1] + ucp->__ssp[2] - 8;
+-+      /* Call __push___start_context to push __start_context onto the new
+-+	 stack as well as the new shadow stack.  */
+-       __push___start_context (ucp);
+-     }
+-   else
+-diff --git a/sysdeps/unix/sysv/linux/x86_64/swapcontext.S b/sysdeps/unix/sysv/linux/x86_64/swapcontext.S
+-index dbc1a3a840..16648a6080 100644
+---- a/sysdeps/unix/sysv/linux/x86_64/swapcontext.S
+-+++ b/sysdeps/unix/sysv/linux/x86_64/swapcontext.S
+-@@ -115,7 +115,7 @@ ENTRY(__swapcontext)
+- 	   been recorded yet.  */
+- 	sub	$24, %RSP_LP
+- 	mov	%RSP_LP, %RSI_LP
+--	movl	$ARCH_CET_STATUS, %edi
+-+	movl	$ARCH_X86_CET_STATUS, %edi
+- 	movl	$__NR_arch_prctl, %eax
+- 	syscall
+- 	testq	%rax, %rax
+--- 
+-2.33.1
+-
+diff --git a/0001-Disable-symbol-hack-in-libc_nonshared.a.patch b/0003-Disable-symbol-hack-in-libc_nonshared.a.patch
+similarity index 92%
+rename from 0001-Disable-symbol-hack-in-libc_nonshared.a.patch
+rename to 0003-Disable-symbol-hack-in-libc_nonshared.a.patch
+index 52d3ed5..815e3ee 100644
+--- a/0001-Disable-symbol-hack-in-libc_nonshared.a.patch
++++ b/0003-Disable-symbol-hack-in-libc_nonshared.a.patch
+@@ -1,7 +1,7 @@
+-From d4169c17b9df437330e84d87983d9777f88e43f5 Mon Sep 17 00:00:00 2001
++From a658c438f009e9aa92bb73168ae9a72746c0d651 Mon Sep 17 00:00:00 2001
+ From: "H.J. Lu" <hjl.tools@gmail.com>
+ Date: Thu, 23 Sep 2021 11:08:11 -0700
+-Subject: [PATCH 1/7] Disable symbol hack in libc_nonshared.a
++Subject: [PATCH 03/11] Disable symbol hack in libc_nonshared.a
+ 
+ Don't reference __GI_memmove, __GI_memset, __GI_memcpy, __divdi3_internal,
+ __udivdi3_internal and __moddi3_internal in libc_nonshared.a.
+@@ -40,5 +40,5 @@ index 3e7c54bd0c..efbb0cce8b 100644
+  asm ("__udivdi3 = __udivdi3_internal");
+  asm ("__moddi3 = __moddi3_internal");
+ -- 
+-2.33.1
++2.34.1
+ 
+diff --git a/0003-x86-Add-tst-sigreturn-1.c-from-Linux-kernel.patch b/0003-x86-Add-tst-sigreturn-1.c-from-Linux-kernel.patch
+deleted file mode 100644
+index 5015285..0000000
+--- a/0003-x86-Add-tst-sigreturn-1.c-from-Linux-kernel.patch
++++ /dev/null
+@@ -1,1113 +0,0 @@
+-From 88af63dbc932b7237b33881cfd66757b1c5c79d8 Mon Sep 17 00:00:00 2001
+-From: "H.J. Lu" <hjl.tools@gmail.com>
+-Date: Sat, 15 Aug 2020 08:21:32 -0700
+-Subject: [PATCH 3/7] x86: Add tst-sigreturn-1.c from Linux kernel
+-
+-Add tst-sigreturn-1.c from tools/testing/selftests/x86/sigreturn.c in
+-Linux kernel to test shadow stack with PROT_SHSTK and MAP_32BIT.  Also
+-add <asm/desc_defs.h> from Linux kernel for tst-sigreturn-1.c.
+----
+- sysdeps/unix/sysv/linux/x86/Makefile          |   7 +
+- .../sysv/linux/x86/include/asm/desc_defs.h    | 135 +++
+- sysdeps/unix/sysv/linux/x86/tst-sigreturn-1.c | 929 ++++++++++++++++++
+- 3 files changed, 1071 insertions(+)
+- create mode 100644 sysdeps/unix/sysv/linux/x86/include/asm/desc_defs.h
+- create mode 100644 sysdeps/unix/sysv/linux/x86/tst-sigreturn-1.c
+-
+-diff --git a/sysdeps/unix/sysv/linux/x86/Makefile b/sysdeps/unix/sysv/linux/x86/Makefile
+-index ed0d6500b9..cbda2f51a6 100644
+---- a/sysdeps/unix/sysv/linux/x86/Makefile
+-+++ b/sysdeps/unix/sysv/linux/x86/Makefile
+-@@ -22,6 +22,13 @@ ifeq ($(subdir),setjmp)
+- tests += tst-saved_mask-1
+- endif
+- 
+-+ifeq ($(subdir),signal)
+-+tests-internal += tst-sigreturn-1
+-+ifneq ($(enable-cet),no)
+-+CFLAGS-tst-sigreturn-1.c += -mshstk
+-+endif
+-+endif
+-+
+- ifneq ($(enable-cet),no)
+- ifeq ($(subdir),elf)
+- tests += tst-cet-property-1 tst-cet-property-2
+-diff --git a/sysdeps/unix/sysv/linux/x86/include/asm/desc_defs.h b/sysdeps/unix/sysv/linux/x86/include/asm/desc_defs.h
+-new file mode 100644
+-index 0000000000..a91f3b6e4f
+---- /dev/null
+-+++ b/sysdeps/unix/sysv/linux/x86/include/asm/desc_defs.h
+-@@ -0,0 +1,135 @@
+-+/* SPDX-License-Identifier: GPL-2.0 */
+-+/* Written 2000 by Andi Kleen */
+-+#ifndef _ASM_X86_DESC_DEFS_H
+-+#define _ASM_X86_DESC_DEFS_H
+-+
+-+/*
+-+ * Segment descriptor structure definitions, usable from both x86_64 and i386
+-+ * archs.
+-+ */
+-+
+-+#ifndef __ASSEMBLY__
+-+
+-+#include <linux/types.h>
+-+
+-+/* 8 byte segment descriptor */
+-+struct desc_struct {
+-+	u16	limit0;
+-+	u16	base0;
+-+	u16	base1: 8, type: 4, s: 1, dpl: 2, p: 1;
+-+	u16	limit1: 4, avl: 1, l: 1, d: 1, g: 1, base2: 8;
+-+} __attribute__((packed));
+-+
+-+#define GDT_ENTRY_INIT(flags, base, limit)			\
+-+	{							\
+-+		.limit0		= (u16) (limit),		\
+-+		.limit1		= ((limit) >> 16) & 0x0F,	\
+-+		.base0		= (u16) (base),			\
+-+		.base1		= ((base) >> 16) & 0xFF,	\
+-+		.base2		= ((base) >> 24) & 0xFF,	\
+-+		.type		= (flags & 0x0f),		\
+-+		.s		= (flags >> 4) & 0x01,		\
+-+		.dpl		= (flags >> 5) & 0x03,		\
+-+		.p		= (flags >> 7) & 0x01,		\
+-+		.avl		= (flags >> 12) & 0x01,		\
+-+		.l		= (flags >> 13) & 0x01,		\
+-+		.d		= (flags >> 14) & 0x01,		\
+-+		.g		= (flags >> 15) & 0x01,		\
+-+	}
+-+
+-+enum {
+-+	GATE_INTERRUPT = 0xE,
+-+	GATE_TRAP = 0xF,
+-+	GATE_CALL = 0xC,
+-+	GATE_TASK = 0x5,
+-+};
+-+
+-+enum {
+-+	DESC_TSS = 0x9,
+-+	DESC_LDT = 0x2,
+-+	DESCTYPE_S = 0x10,	/* !system */
+-+};
+-+
+-+/* LDT or TSS descriptor in the GDT. */
+-+struct ldttss_desc {
+-+	u16	limit0;
+-+	u16	base0;
+-+
+-+	u16	base1 : 8, type : 5, dpl : 2, p : 1;
+-+	u16	limit1 : 4, zero0 : 3, g : 1, base2 : 8;
+-+#ifdef CONFIG_X86_64
+-+	u32	base3;
+-+	u32	zero1;
+-+#endif
+-+} __attribute__((packed));
+-+
+-+typedef struct ldttss_desc ldt_desc;
+-+typedef struct ldttss_desc tss_desc;
+-+
+-+struct idt_bits {
+-+	u16		ist	: 3,
+-+			zero	: 5,
+-+			type	: 5,
+-+			dpl	: 2,
+-+			p	: 1;
+-+} __attribute__((packed));
+-+
+-+struct gate_struct {
+-+	u16		offset_low;
+-+	u16		segment;
+-+	struct idt_bits	bits;
+-+	u16		offset_middle;
+-+#ifdef CONFIG_X86_64
+-+	u32		offset_high;
+-+	u32		reserved;
+-+#endif
+-+} __attribute__((packed));
+-+
+-+typedef struct gate_struct gate_desc;
+-+
+-+static inline unsigned long gate_offset(const gate_desc *g)
+-+{
+-+#ifdef CONFIG_X86_64
+-+	return g->offset_low | ((unsigned long)g->offset_middle << 16) |
+-+		((unsigned long) g->offset_high << 32);
+-+#else
+-+	return g->offset_low | ((unsigned long)g->offset_middle << 16);
+-+#endif
+-+}
+-+
+-+static inline unsigned long gate_segment(const gate_desc *g)
+-+{
+-+	return g->segment;
+-+}
+-+
+-+struct desc_ptr {
+-+	unsigned short size;
+-+	unsigned long address;
+-+} __attribute__((packed)) ;
+-+
+-+#endif /* !__ASSEMBLY__ */
+-+
+-+/* Access rights as returned by LAR */
+-+#define AR_TYPE_RODATA		(0 * (1 << 9))
+-+#define AR_TYPE_RWDATA		(1 * (1 << 9))
+-+#define AR_TYPE_RODATA_EXPDOWN	(2 * (1 << 9))
+-+#define AR_TYPE_RWDATA_EXPDOWN	(3 * (1 << 9))
+-+#define AR_TYPE_XOCODE		(4 * (1 << 9))
+-+#define AR_TYPE_XRCODE		(5 * (1 << 9))
+-+#define AR_TYPE_XOCODE_CONF	(6 * (1 << 9))
+-+#define AR_TYPE_XRCODE_CONF	(7 * (1 << 9))
+-+#define AR_TYPE_MASK		(7 * (1 << 9))
+-+
+-+#define AR_DPL0			(0 * (1 << 13))
+-+#define AR_DPL3			(3 * (1 << 13))
+-+#define AR_DPL_MASK		(3 * (1 << 13))
+-+
+-+#define AR_A			(1 << 8)   /* "Accessed" */
+-+#define AR_S			(1 << 12)  /* If clear, "System" segment */
+-+#define AR_P			(1 << 15)  /* "Present" */
+-+#define AR_AVL			(1 << 20)  /* "AVaiLable" (no HW effect) */
+-+#define AR_L			(1 << 21)  /* "Long mode" for code segments */
+-+#define AR_DB			(1 << 22)  /* D/B, effect depends on type */
+-+#define AR_G			(1 << 23)  /* "Granularity" (limit in pages) */
+-+
+-+#endif /* _ASM_X86_DESC_DEFS_H */
+-diff --git a/sysdeps/unix/sysv/linux/x86/tst-sigreturn-1.c b/sysdeps/unix/sysv/linux/x86/tst-sigreturn-1.c
+-new file mode 100644
+-index 0000000000..329d13210c
+---- /dev/null
+-+++ b/sysdeps/unix/sysv/linux/x86/tst-sigreturn-1.c
+-@@ -0,0 +1,929 @@
+-+// SPDX-License-Identifier: GPL-2.0-only
+-+/*
+-+ * sigreturn.c - tests for x86 sigreturn(2) and exit-to-userspace
+-+ * Copyright (c) 2014-2015 Andrew Lutomirski
+-+ *
+-+ * This is a series of tests that exercises the sigreturn(2) syscall and
+-+ * the IRET / SYSRET paths in the kernel.
+-+ *
+-+ * For now, this focuses on the effects of unusual CS and SS values,
+-+ * and it has a bunch of tests to make sure that ESP/RSP is restored
+-+ * properly.
+-+ *
+-+ * The basic idea behind these tests is to raise(SIGUSR1) to create a
+-+ * sigcontext frame, plug in the values to be tested, and then return,
+-+ * which implicitly invokes sigreturn(2) and programs the user context
+-+ * as desired.
+-+ *
+-+ * For tests for which we expect sigreturn and the subsequent return to
+-+ * user mode to succeed, we return to a short trampoline that generates
+-+ * SIGTRAP so that the meat of the tests can be ordinary C code in a
+-+ * SIGTRAP handler.
+-+ *
+-+ * The inner workings of each test is documented below.
+-+ *
+-+ * Do not run on outdated, unpatched kernels at risk of nasty crashes.
+-+ */
+-+
+-+#ifndef _GNU_SOURCE
+-+#define _GNU_SOURCE
+-+#endif
+-+
+-+#include <sys/time.h>
+-+#include <time.h>
+-+#include <stdlib.h>
+-+#include <sys/syscall.h>
+-+#include <unistd.h>
+-+#include <stdio.h>
+-+#include <string.h>
+-+#include <inttypes.h>
+-+#include <sys/mman.h>
+-+#include <sys/signal.h>
+-+#include <sys/ucontext.h>
+-+#include <asm/ldt.h>
+-+#include <err.h>
+-+#include <setjmp.h>
+-+#include <stddef.h>
+-+#include <stdbool.h>
+-+#include <sys/ptrace.h>
+-+#include <sys/user.h>
+-+#include <sys/mman.h>
+-+#include <x86intrin.h>
+-+
+-+#include <support/test-driver.h>
+-+
+-+/* Pull in AR_xyz defines. */
+-+typedef unsigned int u32;
+-+typedef unsigned short u16;
+-+#include <asm/desc_defs.h>
+-+
+-+/*
+-+ * Copied from asm/ucontext.h, as asm/ucontext.h conflicts badly with the glibc
+-+ * headers.
+-+ */
+-+#ifdef __x86_64__
+-+/*
+-+ * UC_SIGCONTEXT_SS will be set when delivering 64-bit or x32 signals on
+-+ * kernels that save SS in the sigcontext.  All kernels that set
+-+ * UC_SIGCONTEXT_SS will correctly restore at least the low 32 bits of esp
+-+ * regardless of SS (i.e. they implement espfix).
+-+ *
+-+ * Kernels that set UC_SIGCONTEXT_SS will also set UC_STRICT_RESTORE_SS
+-+ * when delivering a signal that came from 64-bit code.
+-+ *
+-+ * Sigreturn restores SS as follows:
+-+ *
+-+ * if (saved SS is valid || UC_STRICT_RESTORE_SS is set ||
+-+ *     saved CS is not 64-bit)
+-+ *         new SS = saved SS  (will fail IRET and signal if invalid)
+-+ * else
+-+ *         new SS = a flat 32-bit data segment
+-+ */
+-+#define UC_SIGCONTEXT_SS       0x2
+-+#define UC_STRICT_RESTORE_SS   0x4
+-+#endif
+-+
+-+/*
+-+ * In principle, this test can run on Linux emulation layers (e.g.
+-+ * Illumos "LX branded zones").  Solaris-based kernels reserve LDT
+-+ * entries 0-5 for their own internal purposes, so start our LDT
+-+ * allocations above that reservation.  (The tests don't pass on LX
+-+ * branded zones, but at least this lets them run.)
+-+ */
+-+#define LDT_OFFSET 6
+-+
+-+/* An aligned stack accessible through some of our segments. */
+-+static unsigned char stack16[65536] __attribute__((aligned(4096)));
+-+
+-+/*
+-+ * An aligned int3 instruction used as a trampoline.  Some of the tests
+-+ * want to fish out their ss values, so this trampoline copies ss to eax
+-+ * before the int3.
+-+ */
+-+asm (".pushsection .text\n\t"
+-+     ".type int3, @function\n\t"
+-+     ".align 4096\n\t"
+-+     "int3:\n\t"
+-+     "mov %ss,%ecx\n\t"
+-+     "int3\n\t"
+-+     ".size int3, . - int3\n\t"
+-+     ".align 4096, 0xcc\n\t"
+-+     ".popsection");
+-+extern char int3[4096];
+-+
+-+/*
+-+ * At startup, we prepapre:
+-+ *
+-+ * - ldt_nonexistent_sel: An LDT entry that doesn't exist (all-zero
+-+ *   descriptor or out of bounds).
+-+ * - code16_sel: A 16-bit LDT code segment pointing to int3.
+-+ * - data16_sel: A 16-bit LDT data segment pointing to stack16.
+-+ * - npcode32_sel: A 32-bit not-present LDT code segment pointing to int3.
+-+ * - npdata32_sel: A 32-bit not-present LDT data segment pointing to stack16.
+-+ * - gdt_data16_idx: A 16-bit GDT data segment pointing to stack16.
+-+ * - gdt_npdata32_idx: A 32-bit not-present GDT data segment pointing to
+-+ *   stack16.
+-+ *
+-+ * For no particularly good reason, xyz_sel is a selector value with the
+-+ * RPL and LDT bits filled in, whereas xyz_idx is just an index into the
+-+ * descriptor table.  These variables will be zero if their respective
+-+ * segments could not be allocated.
+-+ */
+-+static unsigned short ldt_nonexistent_sel;
+-+static unsigned short code16_sel, data16_sel, npcode32_sel, npdata32_sel;
+-+
+-+static unsigned short gdt_data16_idx, gdt_npdata32_idx;
+-+
+-+static unsigned short GDT3(int idx)
+-+{
+-+	return (idx << 3) | 3;
+-+}
+-+
+-+static unsigned short LDT3(int idx)
+-+{
+-+	return (idx << 3) | 7;
+-+}
+-+
+-+/* Our sigaltstack scratch space. */
+-+static char altstack_data[SIGSTKSZ];
+-+
+-+static void sethandler(int sig, void (*handler)(int, siginfo_t *, void *),
+-+		       int flags)
+-+{
+-+	struct sigaction sa;
+-+	memset(&sa, 0, sizeof(sa));
+-+	sa.sa_sigaction = handler;
+-+	sa.sa_flags = SA_SIGINFO | flags;
+-+	sigemptyset(&sa.sa_mask);
+-+	if (sigaction(sig, &sa, 0))
+-+		err(1, "sigaction");
+-+}
+-+
+-+static void clearhandler(int sig)
+-+{
+-+	struct sigaction sa;
+-+	memset(&sa, 0, sizeof(sa));
+-+	sa.sa_handler = SIG_DFL;
+-+	sigemptyset(&sa.sa_mask);
+-+	if (sigaction(sig, &sa, 0))
+-+		err(1, "sigaction");
+-+}
+-+
+-+static void add_ldt(const struct user_desc *desc, unsigned short *var,
+-+		    const char *name)
+-+{
+-+	if (syscall(__NR_modify_ldt, 1, desc, sizeof(*desc)) == 0) {
+-+		*var = LDT3(desc->entry_number);
+-+	} else {
+-+		printf("[NOTE]\tFailed to create %s segment\n", name);
+-+		*var = 0;
+-+	}
+-+}
+-+
+-+static void setup_ldt(void)
+-+{
+-+	if ((unsigned long)stack16 > (1ULL << 32) - sizeof(stack16))
+-+		errx(EXIT_UNSUPPORTED, "stack16 is too high\n");
+-+	if ((unsigned long)int3 > (1ULL << 32) - sizeof(int3))
+-+		errx(EXIT_UNSUPPORTED, "int3 is too high\n");
+-+
+-+	ldt_nonexistent_sel = LDT3(LDT_OFFSET + 2);
+-+
+-+	const struct user_desc code16_desc = {
+-+		.entry_number    = LDT_OFFSET + 0,
+-+		.base_addr       = (unsigned long)int3,
+-+		.limit           = 4095,
+-+		.seg_32bit       = 0,
+-+		.contents        = 2, /* Code, not conforming */
+-+		.read_exec_only  = 0,
+-+		.limit_in_pages  = 0,
+-+		.seg_not_present = 0,
+-+		.useable         = 0
+-+	};
+-+	add_ldt(&code16_desc, &code16_sel, "code16");
+-+
+-+	const struct user_desc data16_desc = {
+-+		.entry_number    = LDT_OFFSET + 1,
+-+		.base_addr       = (unsigned long)stack16,
+-+		.limit           = 0xffff,
+-+		.seg_32bit       = 0,
+-+		.contents        = 0, /* Data, grow-up */
+-+		.read_exec_only  = 0,
+-+		.limit_in_pages  = 0,
+-+		.seg_not_present = 0,
+-+		.useable         = 0
+-+	};
+-+	add_ldt(&data16_desc, &data16_sel, "data16");
+-+
+-+	const struct user_desc npcode32_desc = {
+-+		.entry_number    = LDT_OFFSET + 3,
+-+		.base_addr       = (unsigned long)int3,
+-+		.limit           = 4095,
+-+		.seg_32bit       = 1,
+-+		.contents        = 2, /* Code, not conforming */
+-+		.read_exec_only  = 0,
+-+		.limit_in_pages  = 0,
+-+		.seg_not_present = 1,
+-+		.useable         = 0
+-+	};
+-+	add_ldt(&npcode32_desc, &npcode32_sel, "npcode32");
+-+
+-+	const struct user_desc npdata32_desc = {
+-+		.entry_number    = LDT_OFFSET + 4,
+-+		.base_addr       = (unsigned long)stack16,
+-+		.limit           = 0xffff,
+-+		.seg_32bit       = 1,
+-+		.contents        = 0, /* Data, grow-up */
+-+		.read_exec_only  = 0,
+-+		.limit_in_pages  = 0,
+-+		.seg_not_present = 1,
+-+		.useable         = 0
+-+	};
+-+	add_ldt(&npdata32_desc, &npdata32_sel, "npdata32");
+-+
+-+	struct user_desc gdt_data16_desc = {
+-+		.entry_number    = -1,
+-+		.base_addr       = (unsigned long)stack16,
+-+		.limit           = 0xffff,
+-+		.seg_32bit       = 0,
+-+		.contents        = 0, /* Data, grow-up */
+-+		.read_exec_only  = 0,
+-+		.limit_in_pages  = 0,
+-+		.seg_not_present = 0,
+-+		.useable         = 0
+-+	};
+-+
+-+	if (syscall(__NR_set_thread_area, &gdt_data16_desc) == 0) {
+-+		/*
+-+		 * This probably indicates vulnerability to CVE-2014-8133.
+-+		 * Merely getting here isn't definitive, though, and we'll
+-+		 * diagnose the problem for real later on.
+-+		 */
+-+		printf("[WARN]\tset_thread_area allocated data16 at index %d\n",
+-+		       gdt_data16_desc.entry_number);
+-+		gdt_data16_idx = gdt_data16_desc.entry_number;
+-+	} else {
+-+		printf("[OK]\tset_thread_area refused 16-bit data\n");
+-+	}
+-+
+-+	struct user_desc gdt_npdata32_desc = {
+-+		.entry_number    = -1,
+-+		.base_addr       = (unsigned long)stack16,
+-+		.limit           = 0xffff,
+-+		.seg_32bit       = 1,
+-+		.contents        = 0, /* Data, grow-up */
+-+		.read_exec_only  = 0,
+-+		.limit_in_pages  = 0,
+-+		.seg_not_present = 1,
+-+		.useable         = 0
+-+	};
+-+
+-+	if (syscall(__NR_set_thread_area, &gdt_npdata32_desc) == 0) {
+-+		/*
+-+		 * As a hardening measure, newer kernels don't allow this.
+-+		 */
+-+		printf("[WARN]\tset_thread_area allocated npdata32 at index %d\n",
+-+		       gdt_npdata32_desc.entry_number);
+-+		gdt_npdata32_idx = gdt_npdata32_desc.entry_number;
+-+	} else {
+-+		printf("[OK]\tset_thread_area refused 16-bit data\n");
+-+	}
+-+}
+-+
+-+/* State used by our signal handlers. */
+-+static gregset_t initial_regs, requested_regs, resulting_regs;
+-+
+-+/* Instructions for the SIGUSR1 handler. */
+-+static volatile unsigned short sig_cs, sig_ss;
+-+static volatile sig_atomic_t sig_trapped, sig_err, sig_trapno;
+-+#ifdef __x86_64__
+-+static volatile sig_atomic_t sig_corrupt_final_ss;
+-+#endif
+-+
+-+/* Abstractions for some 32-bit vs 64-bit differences. */
+-+#ifdef __x86_64__
+-+# define REG_IP REG_RIP
+-+# define REG_SP REG_RSP
+-+# define REG_CX REG_RCX
+-+
+-+struct selectors {
+-+	unsigned short cs, gs, fs, ss;
+-+};
+-+
+-+static unsigned short *ssptr(ucontext_t *ctx)
+-+{
+-+	struct selectors *sels = (void *)&ctx->uc_mcontext.gregs[REG_CSGSFS];
+-+	return &sels->ss;
+-+}
+-+
+-+static unsigned short *csptr(ucontext_t *ctx)
+-+{
+-+	struct selectors *sels = (void *)&ctx->uc_mcontext.gregs[REG_CSGSFS];
+-+	return &sels->cs;
+-+}
+-+#else
+-+# define REG_IP REG_EIP
+-+# define REG_SP REG_ESP
+-+# define REG_CX REG_ECX
+-+
+-+static greg_t *ssptr(ucontext_t *ctx)
+-+{
+-+	return &ctx->uc_mcontext.gregs[REG_SS];
+-+}
+-+
+-+static greg_t *csptr(ucontext_t *ctx)
+-+{
+-+	return &ctx->uc_mcontext.gregs[REG_CS];
+-+}
+-+#endif
+-+
+-+/*
+-+ * Checks a given selector for its code bitness or returns -1 if it's not
+-+ * a usable code segment selector.
+-+ */
+-+int cs_bitness(unsigned short cs)
+-+{
+-+	uint32_t valid = 0, ar;
+-+	asm ("lar %[cs], %[ar]\n\t"
+-+	     "jnz 1f\n\t"
+-+	     "mov $1, %[valid]\n\t"
+-+	     "1:"
+-+	     : [ar] "=r" (ar), [valid] "+rm" (valid)
+-+	     : [cs] "r" (cs));
+-+
+-+	if (!valid)
+-+		return -1;
+-+
+-+	bool db = (ar & (1 << 22));
+-+	bool l = (ar & (1 << 21));
+-+
+-+	if (!(ar & (1<<11)))
+-+	    return -1;	/* Not code. */
+-+
+-+	if (l && !db)
+-+		return 64;
+-+	else if (!l && db)
+-+		return 32;
+-+	else if (!l && !db)
+-+		return 16;
+-+	else
+-+		return -1;	/* Unknown bitness. */
+-+}
+-+
+-+/*
+-+ * Checks a given selector for its code bitness or returns -1 if it's not
+-+ * a usable code segment selector.
+-+ */
+-+bool is_valid_ss(unsigned short cs)
+-+{
+-+	uint32_t valid = 0, ar;
+-+	asm ("lar %[cs], %[ar]\n\t"
+-+	     "jnz 1f\n\t"
+-+	     "mov $1, %[valid]\n\t"
+-+	     "1:"
+-+	     : [ar] "=r" (ar), [valid] "+rm" (valid)
+-+	     : [cs] "r" (cs));
+-+
+-+	if (!valid)
+-+		return false;
+-+
+-+	if ((ar & AR_TYPE_MASK) != AR_TYPE_RWDATA &&
+-+	    (ar & AR_TYPE_MASK) != AR_TYPE_RWDATA_EXPDOWN)
+-+		return false;
+-+
+-+	return (ar & AR_P);
+-+}
+-+
+-+/* Number of errors in the current test case. */
+-+static volatile sig_atomic_t nerrs;
+-+
+-+static void validate_signal_ss(int sig, ucontext_t *ctx)
+-+{
+-+#ifdef __x86_64__
+-+	bool was_64bit = (cs_bitness(*csptr(ctx)) == 64);
+-+
+-+	if (!(ctx->uc_flags & UC_SIGCONTEXT_SS)) {
+-+		printf("[FAIL]\tUC_SIGCONTEXT_SS was not set\n");
+-+		nerrs++;
+-+
+-+		/*
+-+		 * This happens on Linux 4.1.  The rest will fail, too, so
+-+		 * return now to reduce the noise.
+-+		 */
+-+		return;
+-+	}
+-+
+-+	/* UC_STRICT_RESTORE_SS is set iff we came from 64-bit mode. */
+-+	if (!!(ctx->uc_flags & UC_STRICT_RESTORE_SS) != was_64bit) {
+-+		printf("[FAIL]\tUC_STRICT_RESTORE_SS was wrong in signal %d\n",
+-+		       sig);
+-+		nerrs++;
+-+	}
+-+
+-+	if (is_valid_ss(*ssptr(ctx))) {
+-+		/*
+-+		 * DOSEMU was written before 64-bit sigcontext had SS, and
+-+		 * it tries to figure out the signal source SS by looking at
+-+		 * the physical register.  Make sure that keeps working.
+-+		 */
+-+		unsigned short hw_ss;
+-+		asm ("mov %%ss, %0" : "=rm" (hw_ss));
+-+		if (hw_ss != *ssptr(ctx)) {
+-+			printf("[FAIL]\tHW SS didn't match saved SS\n");
+-+			nerrs++;
+-+		}
+-+	}
+-+#endif
+-+}
+-+
+-+/*
+-+ * SIGUSR1 handler.  Sets CS and SS as requested and points IP to the
+-+ * int3 trampoline.  Sets SP to a large known value so that we can see
+-+ * whether the value round-trips back to user mode correctly.
+-+ */
+-+static void sigusr1(int sig, siginfo_t *info, void *ctx_void)
+-+{
+-+	ucontext_t *ctx = (ucontext_t*)ctx_void;
+-+
+-+	validate_signal_ss(sig, ctx);
+-+
+-+	memcpy(&initial_regs, &ctx->uc_mcontext.gregs, sizeof(gregset_t));
+-+
+-+	*csptr(ctx) = sig_cs;
+-+	*ssptr(ctx) = sig_ss;
+-+
+-+	ctx->uc_mcontext.gregs[REG_IP] =
+-+		sig_cs == code16_sel ? 0 : (unsigned long)&int3;
+-+	ctx->uc_mcontext.gregs[REG_SP] = (unsigned long)0x8badf00d5aadc0deULL;
+-+	ctx->uc_mcontext.gregs[REG_CX] = 0;
+-+
+-+#ifdef __i386__
+-+	/*
+-+	 * Make sure the kernel doesn't inadvertently use DS or ES-relative
+-+	 * accesses in a region where user DS or ES is loaded.
+-+	 *
+-+	 * Skip this for 64-bit builds because long mode doesn't care about
+-+	 * DS and ES and skipping it increases test coverage a little bit,
+-+	 * since 64-bit kernels can still run the 32-bit build.
+-+	 */
+-+	ctx->uc_mcontext.gregs[REG_DS] = 0;
+-+	ctx->uc_mcontext.gregs[REG_ES] = 0;
+-+#endif
+-+
+-+	memcpy(&requested_regs, &ctx->uc_mcontext.gregs, sizeof(gregset_t));
+-+	requested_regs[REG_CX] = *ssptr(ctx);	/* The asm code does this. */
+-+
+-+	return;
+-+}
+-+
+-+/*
+-+ * Called after a successful sigreturn (via int3) or from a failed
+-+ * sigreturn (directly by kernel).  Restores our state so that the
+-+ * original raise(SIGUSR1) returns.
+-+ */
+-+static void sigtrap(int sig, siginfo_t *info, void *ctx_void)
+-+{
+-+	ucontext_t *ctx = (ucontext_t*)ctx_void;
+-+
+-+	validate_signal_ss(sig, ctx);
+-+
+-+	sig_err = ctx->uc_mcontext.gregs[REG_ERR];
+-+	sig_trapno = ctx->uc_mcontext.gregs[REG_TRAPNO];
+-+
+-+	unsigned short ss;
+-+	asm ("mov %%ss,%0" : "=r" (ss));
+-+
+-+	greg_t asm_ss = ctx->uc_mcontext.gregs[REG_CX];
+-+	if (asm_ss != sig_ss && sig == SIGTRAP) {
+-+		/* Sanity check failure. */
+-+		printf("[FAIL]\tSIGTRAP: ss = %hx, frame ss = %hx, ax = %llx\n",
+-+		       ss, *ssptr(ctx), (unsigned long long)asm_ss);
+-+		nerrs++;
+-+	}
+-+
+-+	memcpy(&resulting_regs, &ctx->uc_mcontext.gregs, sizeof(gregset_t));
+-+	memcpy(&ctx->uc_mcontext.gregs, &initial_regs, sizeof(gregset_t));
+-+
+-+#ifdef __x86_64__
+-+	if (sig_corrupt_final_ss) {
+-+		if (ctx->uc_flags & UC_STRICT_RESTORE_SS) {
+-+			printf("[FAIL]\tUC_STRICT_RESTORE_SS was set inappropriately\n");
+-+			nerrs++;
+-+		} else {
+-+			/*
+-+			 * DOSEMU transitions from 32-bit to 64-bit mode by
+-+			 * adjusting sigcontext, and it requires that this work
+-+			 * even if the saved SS is bogus.
+-+			 */
+-+			printf("\tCorrupting SS on return to 64-bit mode\n");
+-+			*ssptr(ctx) = 0;
+-+		}
+-+	}
+-+#endif
+-+
+-+	sig_trapped = sig;
+-+}
+-+
+-+#ifdef __x86_64__
+-+/* Tests recovery if !UC_STRICT_RESTORE_SS */
+-+static void sigusr2(int sig, siginfo_t *info, void *ctx_void)
+-+{
+-+	ucontext_t *ctx = (ucontext_t*)ctx_void;
+-+
+-+	if (!(ctx->uc_flags & UC_STRICT_RESTORE_SS)) {
+-+		printf("[FAIL]\traise(2) didn't set UC_STRICT_RESTORE_SS\n");
+-+		nerrs++;
+-+		return;  /* We can't do the rest. */
+-+	}
+-+
+-+	ctx->uc_flags &= ~UC_STRICT_RESTORE_SS;
+-+	*ssptr(ctx) = 0;
+-+
+-+	/* Return.  The kernel should recover without sending another signal. */
+-+}
+-+
+-+static int test_nonstrict_ss(void)
+-+{
+-+	clearhandler(SIGUSR1);
+-+	clearhandler(SIGTRAP);
+-+	clearhandler(SIGSEGV);
+-+	clearhandler(SIGILL);
+-+	sethandler(SIGUSR2, sigusr2, 0);
+-+
+-+	nerrs = 0;
+-+
+-+	printf("[RUN]\tClear UC_STRICT_RESTORE_SS and corrupt SS\n");
+-+	raise(SIGUSR2);
+-+	if (!nerrs)
+-+		printf("[OK]\tIt worked\n");
+-+
+-+	return nerrs;
+-+}
+-+#endif
+-+
+-+/* Finds a usable code segment of the requested bitness. */
+-+int find_cs(int bitness)
+-+{
+-+	unsigned short my_cs;
+-+
+-+	asm ("mov %%cs,%0" :  "=r" (my_cs));
+-+
+-+	if (cs_bitness(my_cs) == bitness)
+-+		return my_cs;
+-+	if (cs_bitness(my_cs + (2 << 3)) == bitness)
+-+		return my_cs + (2 << 3);
+-+	if (my_cs > (2<<3) && cs_bitness(my_cs - (2 << 3)) == bitness)
+-+	    return my_cs - (2 << 3);
+-+	if (cs_bitness(code16_sel) == bitness)
+-+		return code16_sel;
+-+
+-+	printf("[WARN]\tCould not find %d-bit CS\n", bitness);
+-+	return -1;
+-+}
+-+
+-+static int test_valid_sigreturn(int cs_bits, bool use_16bit_ss, int force_ss)
+-+{
+-+	int cs = find_cs(cs_bits);
+-+	if (cs == -1) {
+-+		printf("[SKIP]\tCode segment unavailable for %d-bit CS, %d-bit SS\n",
+-+		       cs_bits, use_16bit_ss ? 16 : 32);
+-+		return 0;
+-+	}
+-+
+-+	if (force_ss != -1) {
+-+		sig_ss = force_ss;
+-+	} else {
+-+		if (use_16bit_ss) {
+-+			if (!data16_sel) {
+-+				printf("[SKIP]\tData segment unavailable for %d-bit CS, 16-bit SS\n",
+-+				       cs_bits);
+-+				return 0;
+-+			}
+-+			sig_ss = data16_sel;
+-+		} else {
+-+			asm volatile ("mov %%ss,%0" : "=r" (sig_ss));
+-+		}
+-+	}
+-+
+-+	sig_cs = cs;
+-+
+-+	printf("[RUN]\tValid sigreturn: %d-bit CS (%hx), %d-bit SS (%hx%s)\n",
+-+	       cs_bits, sig_cs, use_16bit_ss ? 16 : 32, sig_ss,
+-+	       (sig_ss & 4) ? "" : ", GDT");
+-+
+-+	raise(SIGUSR1);
+-+
+-+	nerrs = 0;
+-+
+-+	/*
+-+	 * Check that each register had an acceptable value when the
+-+	 * int3 trampoline was invoked.
+-+	 */
+-+	for (int i = 0; i < NGREG; i++) {
+-+		greg_t req = requested_regs[i], res = resulting_regs[i];
+-+
+-+		if (i == REG_TRAPNO || i == REG_IP)
+-+			continue;	/* don't care */
+-+
+-+		if (i == REG_SP) {
+-+			/*
+-+			 * If we were using a 16-bit stack segment, then
+-+			 * the kernel is a bit stuck: IRET only restores
+-+			 * the low 16 bits of ESP/RSP if SS is 16-bit.
+-+			 * The kernel uses a hack to restore bits 31:16,
+-+			 * but that hack doesn't help with bits 63:32.
+-+			 * On Intel CPUs, bits 63:32 end up zeroed, and, on
+-+			 * AMD CPUs, they leak the high bits of the kernel
+-+			 * espfix64 stack pointer.  There's very little that
+-+			 * the kernel can do about it.
+-+			 *
+-+			 * Similarly, if we are returning to a 32-bit context,
+-+			 * the CPU will often lose the high 32 bits of RSP.
+-+			 */
+-+
+-+			if (res == req)
+-+				continue;
+-+
+-+			if (cs_bits != 64 && ((res ^ req) & 0xFFFFFFFF) == 0) {
+-+				printf("[NOTE]\tSP: %llx -> %llx\n",
+-+				       (unsigned long long)req,
+-+				       (unsigned long long)res);
+-+				continue;
+-+			}
+-+
+-+			printf("[FAIL]\tSP mismatch: requested 0x%llx; got 0x%llx\n",
+-+			       (unsigned long long)requested_regs[i],
+-+			       (unsigned long long)resulting_regs[i]);
+-+			nerrs++;
+-+			continue;
+-+		}
+-+
+-+		bool ignore_reg = false;
+-+#ifdef __i386__
+-+		if (i == REG_UESP)
+-+			ignore_reg = true;
+-+#else
+-+		if (i == REG_CSGSFS) {
+-+			struct selectors *req_sels =
+-+				(void *)&requested_regs[REG_CSGSFS];
+-+			struct selectors *res_sels =
+-+				(void *)&resulting_regs[REG_CSGSFS];
+-+			if (req_sels->cs != res_sels->cs) {
+-+				printf("[FAIL]\tCS mismatch: requested 0x%hx; got 0x%hx\n",
+-+				       req_sels->cs, res_sels->cs);
+-+				nerrs++;
+-+			}
+-+
+-+			if (req_sels->ss != res_sels->ss) {
+-+				printf("[FAIL]\tSS mismatch: requested 0x%hx; got 0x%hx\n",
+-+				       req_sels->ss, res_sels->ss);
+-+				nerrs++;
+-+			}
+-+
+-+			continue;
+-+		}
+-+#endif
+-+
+-+		/* Sanity check on the kernel */
+-+		if (i == REG_CX && req != res) {
+-+			printf("[FAIL]\tCX (saved SP) mismatch: requested 0x%llx; got 0x%llx\n",
+-+			       (unsigned long long)req,
+-+			       (unsigned long long)res);
+-+			nerrs++;
+-+			continue;
+-+		}
+-+
+-+		if (req != res && !ignore_reg) {
+-+			printf("[FAIL]\tReg %d mismatch: requested 0x%llx; got 0x%llx\n",
+-+			       i, (unsigned long long)req,
+-+			       (unsigned long long)res);
+-+			nerrs++;
+-+		}
+-+	}
+-+
+-+	if (nerrs == 0)
+-+		printf("[OK]\tall registers okay\n");
+-+
+-+	return nerrs;
+-+}
+-+
+-+static int test_bad_iret(int cs_bits, unsigned short ss, int force_cs)
+-+{
+-+	int cs = force_cs == -1 ? find_cs(cs_bits) : force_cs;
+-+	if (cs == -1)
+-+		return 0;
+-+
+-+	sig_cs = cs;
+-+	sig_ss = ss;
+-+
+-+	printf("[RUN]\t%d-bit CS (%hx), bogus SS (%hx)\n",
+-+	       cs_bits, sig_cs, sig_ss);
+-+
+-+	sig_trapped = 0;
+-+	raise(SIGUSR1);
+-+	if (sig_trapped) {
+-+		char errdesc[32] = "";
+-+		if (sig_err) {
+-+			const char *src = (sig_err & 1) ? " EXT" : "";
+-+			const char *table;
+-+			if ((sig_err & 0x6) == 0x0)
+-+				table = "GDT";
+-+			else if ((sig_err & 0x6) == 0x4)
+-+				table = "LDT";
+-+			else if ((sig_err & 0x6) == 0x2)
+-+				table = "IDT";
+-+			else
+-+				table = "???";
+-+
+-+			sprintf(errdesc, "%s%s index %d, ",
+-+				table, src, sig_err >> 3);
+-+		}
+-+
+-+		char trapname[32];
+-+		if (sig_trapno == 13)
+-+			strcpy(trapname, "GP");
+-+		else if (sig_trapno == 11)
+-+			strcpy(trapname, "NP");
+-+		else if (sig_trapno == 12)
+-+			strcpy(trapname, "SS");
+-+		else if (sig_trapno == 32)
+-+			strcpy(trapname, "IRET");  /* X86_TRAP_IRET */
+-+		else
+-+			sprintf(trapname, "%d", sig_trapno);
+-+
+-+		printf("[OK]\tGot #%s(0x%lx) (i.e. %s%s)\n",
+-+		       trapname, (unsigned long)sig_err,
+-+		       errdesc, strsignal(sig_trapped));
+-+		return 0;
+-+	} else {
+-+		/*
+-+		 * This also implicitly tests UC_STRICT_RESTORE_SS:
+-+		 * We check that these signals set UC_STRICT_RESTORE_SS and,
+-+		 * if UC_STRICT_RESTORE_SS doesn't cause strict behavior,
+-+		 * then we won't get SIGSEGV.
+-+		 */
+-+		printf("[FAIL]\tDid not get SIGSEGV\n");
+-+		return 1;
+-+	}
+-+}
+-+
+-+static int
+-+do_test (void)
+-+{
+-+	int total_nerrs = 0;
+-+	unsigned short my_cs, my_ss;
+-+
+-+#if defined(__x86_64__) && defined(__CET__)
+-+	void *ssp_base;
+-+	unsigned long ssp_64, ssp_32;
+-+
+-+	ssp_64 = _get_ssp();
+-+
+-+	if (ssp_64 != 0) {
+-+		/* Allocate a shadow stack within 32-bit address range */
+-+		ssp_base = mmap (0, 0x1000, PROT_READ | PROT_WRITE,
+-+				 MAP_ANONYMOUS | MAP_PRIVATE | MAP_32BIT,
+-+				 -1, 0);
+-+		if (ssp_base == MAP_FAILED) {
+-+			printf("[FAIL]\tCannot allocate shadow stack\n");
+-+			return 1;
+-+		}
+-+
+-+		/*
+-+		 * The top of shadow stack is an 8-byte token, point ssp_32
+-+		 * to the token.
+-+		 */
+-+		ssp_32 = (uintptr_t) ssp_base + 0x1000 - 8;
+-+		/* Store the token.  */
+-+		*(unsigned long long *) ((uintptr_t) ssp_32)
+-+			= (uintptr_t) (ssp_base + 0x1001);
+-+		/* Enable shadow stack with PROT_SHSTK.  */
+-+		if (mprotect (ssp_base, 0x1000, PROT_READ | PROT_SHSTK)) {
+-+			printf("[FAIL]\tCannot enable shadow stack\n");
+-+			return 1;
+-+		}
+-+		asm volatile("rstorssp (%0)\n":: "r" (ssp_32));
+-+		asm volatile("saveprevssp");
+-+	}
+-+#endif
+-+
+-+	asm volatile ("mov %%cs,%0" : "=r" (my_cs));
+-+	asm volatile ("mov %%ss,%0" : "=r" (my_ss));
+-+	setup_ldt();
+-+
+-+	stack_t stack = {
+-+		.ss_sp = altstack_data,
+-+		.ss_size = SIGSTKSZ,
+-+	};
+-+	if (sigaltstack(&stack, NULL) != 0)
+-+		err(1, "sigaltstack");
+-+
+-+	sethandler(SIGUSR1, sigusr1, 0);
+-+	sethandler(SIGTRAP, sigtrap, SA_ONSTACK);
+-+
+-+	/* Easy cases: return to a 32-bit SS in each possible CS bitness. */
+-+	total_nerrs += test_valid_sigreturn(64, false, -1);
+-+	total_nerrs += test_valid_sigreturn(32, false, -1);
+-+	total_nerrs += test_valid_sigreturn(16, false, -1);
+-+
+-+	/*
+-+	 * Test easy espfix cases: return to a 16-bit LDT SS in each possible
+-+	 * CS bitness.  NB: with a long mode CS, the SS bitness is irrelevant.
+-+	 *
+-+	 * This catches the original missing-espfix-on-64-bit-kernels issue
+-+	 * as well as CVE-2014-8134.
+-+	 */
+-+	total_nerrs += test_valid_sigreturn(64, true, -1);
+-+	total_nerrs += test_valid_sigreturn(32, true, -1);
+-+	total_nerrs += test_valid_sigreturn(16, true, -1);
+-+
+-+	if (gdt_data16_idx) {
+-+		/*
+-+		 * For performance reasons, Linux skips espfix if SS points
+-+		 * to the GDT.  If we were able to allocate a 16-bit SS in
+-+		 * the GDT, see if it leaks parts of the kernel stack pointer.
+-+		 *
+-+		 * This tests for CVE-2014-8133.
+-+		 */
+-+		total_nerrs += test_valid_sigreturn(64, true,
+-+						    GDT3(gdt_data16_idx));
+-+		total_nerrs += test_valid_sigreturn(32, true,
+-+						    GDT3(gdt_data16_idx));
+-+		total_nerrs += test_valid_sigreturn(16, true,
+-+						    GDT3(gdt_data16_idx));
+-+	}
+-+
+-+#ifdef __x86_64__
+-+	/* Nasty ABI case: check SS corruption handling. */
+-+	sig_corrupt_final_ss = 1;
+-+	total_nerrs += test_valid_sigreturn(32, false, -1);
+-+	total_nerrs += test_valid_sigreturn(32, true, -1);
+-+	sig_corrupt_final_ss = 0;
+-+#endif
+-+
+-+	/*
+-+	 * We're done testing valid sigreturn cases.  Now we test states
+-+	 * for which sigreturn itself will succeed but the subsequent
+-+	 * entry to user mode will fail.
+-+	 *
+-+	 * Depending on the failure mode and the kernel bitness, these
+-+	 * entry failures can generate SIGSEGV, SIGBUS, or SIGILL.
+-+	 */
+-+	clearhandler(SIGTRAP);
+-+	sethandler(SIGSEGV, sigtrap, SA_ONSTACK);
+-+	sethandler(SIGBUS, sigtrap, SA_ONSTACK);
+-+	sethandler(SIGILL, sigtrap, SA_ONSTACK);  /* 32-bit kernels do this */
+-+
+-+	/* Easy failures: invalid SS, resulting in #GP(0) */
+-+	test_bad_iret(64, ldt_nonexistent_sel, -1);
+-+	test_bad_iret(32, ldt_nonexistent_sel, -1);
+-+	test_bad_iret(16, ldt_nonexistent_sel, -1);
+-+
+-+	/* These fail because SS isn't a data segment, resulting in #GP(SS) */
+-+	test_bad_iret(64, my_cs, -1);
+-+	test_bad_iret(32, my_cs, -1);
+-+	test_bad_iret(16, my_cs, -1);
+-+
+-+	/* Try to return to a not-present code segment, triggering #NP(SS). */
+-+	test_bad_iret(32, my_ss, npcode32_sel);
+-+
+-+	/*
+-+	 * Try to return to a not-present but otherwise valid data segment.
+-+	 * This will cause IRET to fail with #SS on the espfix stack.  This
+-+	 * exercises CVE-2014-9322.
+-+	 *
+-+	 * Note that, if espfix is enabled, 64-bit Linux will lose track
+-+	 * of the actual cause of failure and report #GP(0) instead.
+-+	 * This would be very difficult for Linux to avoid, because
+-+	 * espfix64 causes IRET failures to be promoted to #DF, so the
+-+	 * original exception frame is never pushed onto the stack.
+-+	 */
+-+	test_bad_iret(32, npdata32_sel, -1);
+-+
+-+	/*
+-+	 * Try to return to a not-present but otherwise valid data
+-+	 * segment without invoking espfix.  Newer kernels don't allow
+-+	 * this to happen in the first place.  On older kernels, though,
+-+	 * this can trigger CVE-2014-9322.
+-+	 */
+-+	if (gdt_npdata32_idx)
+-+		test_bad_iret(32, GDT3(gdt_npdata32_idx), -1);
+-+
+-+#ifdef __x86_64__
+-+	total_nerrs += test_nonstrict_ss();
+-+
+-+#ifdef __CET__
+-+	if (ssp_64 != 0) {
+-+		/* Point ssp_64 to the restore token */
+-+		ssp_64 -= 8;
+-+		asm volatile("rstorssp (%0)\n":: "r" (ssp_64));
+-+		asm volatile("saveprevssp");
+-+		munmap(ssp_base, 0x1000);
+-+	}
+-+#endif
+-+#endif
+-+
+-+	return total_nerrs ? 1 : 0;
+-+}
+-+
+-+#include <support/test-driver.c>
+--- 
+-2.33.1
+-
+diff --git a/0004-x86-Add-fixup-asm-unistd.h-and-regenerate-arch-sysca.patch b/0004-x86-Add-fixup-asm-unistd.h-and-regenerate-arch-sysca.patch
+new file mode 100644
+index 0000000..13c3eaf
+--- /dev/null
++++ b/0004-x86-Add-fixup-asm-unistd.h-and-regenerate-arch-sysca.patch
+@@ -0,0 +1,120 @@
++From 099f462902b901a429ecdefbad1100dfc4982641 Mon Sep 17 00:00:00 2001
++From: "H.J. Lu" <hjl.tools@gmail.com>
++Date: Fri, 7 Jan 2022 14:31:25 -0800
++Subject: [PATCH 04/11] x86: Add <fixup-asm-unistd.h> and regenerate
++ arch-syscall.h
++
++The following example demonstrates how to create a new shadow stack with
++map_shadow_stack:
++
++void *shadow_stack = map_shadow_stack(stack_size, SHADOW_STACK_SET_TOKEN);
++
++from kernel:
++
++commit 0d0097782691045006f56b7c64c4a569bbd41323
++Author: Rick Edgecombe <rick.p.edgecombe@intel.com>
++Date:   Thu Oct 7 16:30:54 2021 -0700
++
++    x86/cet/shstk: Introduce map_shadow_stack syscall
++---
++ sysdeps/unix/sysv/linux/i386/arch-syscall.h   |  1 +
++ sysdeps/unix/sysv/linux/syscall-names.list    |  1 +
++ .../unix/sysv/linux/x86/fixup-asm-unistd.h    | 20 +++++++++++++++++++
++ .../unix/sysv/linux/x86_64/64/arch-syscall.h  |  1 +
++ .../unix/sysv/linux/x86_64/x32/arch-syscall.h |  1 +
++ .../sysv/linux/x86_64/x32/fixup-asm-unistd.h  |  4 ++++
++ 6 files changed, 28 insertions(+)
++ create mode 100644 sysdeps/unix/sysv/linux/x86/fixup-asm-unistd.h
++
++diff --git a/sysdeps/unix/sysv/linux/i386/arch-syscall.h b/sysdeps/unix/sysv/linux/i386/arch-syscall.h
++index c86ccbda46..857dc195af 100644
++--- a/sysdeps/unix/sysv/linux/i386/arch-syscall.h
+++++ b/sysdeps/unix/sysv/linux/i386/arch-syscall.h
++@@ -181,6 +181,7 @@
++ #define __NR_lstat 107
++ #define __NR_lstat64 196
++ #define __NR_madvise 219
+++#define __NR_map_shadow_stack 450
++ #define __NR_mbind 274
++ #define __NR_membarrier 375
++ #define __NR_memfd_create 356
++diff --git a/sysdeps/unix/sysv/linux/syscall-names.list b/sysdeps/unix/sysv/linux/syscall-names.list
++index 0bc2af37df..a78505a29b 100644
++--- a/sysdeps/unix/sysv/linux/syscall-names.list
+++++ b/sysdeps/unix/sysv/linux/syscall-names.list
++@@ -245,6 +245,7 @@ lsetxattr
++ lstat
++ lstat64
++ madvise
+++map_shadow_stack
++ mbind
++ membarrier
++ memfd_create
++diff --git a/sysdeps/unix/sysv/linux/x86/fixup-asm-unistd.h b/sysdeps/unix/sysv/linux/x86/fixup-asm-unistd.h
++new file mode 100644
++index 0000000000..7fd16d9ef6
++--- /dev/null
+++++ b/sysdeps/unix/sysv/linux/x86/fixup-asm-unistd.h
++@@ -0,0 +1,20 @@
+++/* Regularize <asm/unistd.h> definitions.  X86 version.
+++   Copyright (C) 2022 Free Software Foundation, Inc.
+++
+++   The GNU C Library is free software; you can redistribute it and/or
+++   modify it under the terms of the GNU Lesser General Public
+++   License as published by the Free Software Foundation; either
+++   version 2.1 of the License, or (at your option) any later version.
+++
+++   The GNU C Library is distributed in the hope that it will be useful,
+++   but WITHOUT ANY WARRANTY; without even the implied warranty of
+++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+++   Lesser General Public License for more details.
+++
+++   You should have received a copy of the GNU Lesser General Public
+++   License along with the GNU C Library; if not, see
+++   <http://www.gnu.org/licenses/>.  */
+++
+++#ifndef __NR_map_shadow_stack
+++# define __NR_map_shadow_stack 450
+++#endif
++diff --git a/sysdeps/unix/sysv/linux/x86_64/64/arch-syscall.h b/sysdeps/unix/sysv/linux/x86_64/64/arch-syscall.h
++index 28558279b4..888b1eab89 100644
++--- a/sysdeps/unix/sysv/linux/x86_64/64/arch-syscall.h
+++++ b/sysdeps/unix/sysv/linux/x86_64/64/arch-syscall.h
++@@ -152,6 +152,7 @@
++ #define __NR_lsetxattr 189
++ #define __NR_lstat 6
++ #define __NR_madvise 28
+++#define __NR_map_shadow_stack 450
++ #define __NR_mbind 237
++ #define __NR_membarrier 324
++ #define __NR_memfd_create 319
++diff --git a/sysdeps/unix/sysv/linux/x86_64/x32/arch-syscall.h b/sysdeps/unix/sysv/linux/x86_64/x32/arch-syscall.h
++index c1ab8ec45e..d8bc166926 100644
++--- a/sysdeps/unix/sysv/linux/x86_64/x32/arch-syscall.h
+++++ b/sysdeps/unix/sysv/linux/x86_64/x32/arch-syscall.h
++@@ -146,6 +146,7 @@
++ #define __NR_lsetxattr 1073742013
++ #define __NR_lstat 1073741830
++ #define __NR_madvise 1073741852
+++#define __NR_map_shadow_stack 1073742274
++ #define __NR_mbind 1073742061
++ #define __NR_membarrier 1073742148
++ #define __NR_memfd_create 1073742143
++diff --git a/sysdeps/unix/sysv/linux/x86_64/x32/fixup-asm-unistd.h b/sysdeps/unix/sysv/linux/x86_64/x32/fixup-asm-unistd.h
++index 1489fc9336..abd66b8db2 100644
++--- a/sysdeps/unix/sysv/linux/x86_64/x32/fixup-asm-unistd.h
+++++ b/sysdeps/unix/sysv/linux/x86_64/x32/fixup-asm-unistd.h
++@@ -15,6 +15,10 @@
++    License along with the GNU C Library; if not, see
++    <http://www.gnu.org/licenses/>.  */
++ 
+++#ifndef __NR_map_shadow_stack
+++# define __NR_map_shadow_stack 1073742274
+++#endif
+++
++ /* X32 uses the same 64-bit syscall interface for set_thread_area.   */
++ #ifndef __NR_set_thread_area
++ # define __NR_set_thread_area 1073742029
++-- 
++2.34.1
++
+diff --git a/0004-x86-Extend-CET-features-to-cover-other-features.patch b/0005-x86-cet-Sync-with-the-kernel-CET-interface.patch
+similarity index 53%
+rename from 0004-x86-Extend-CET-features-to-cover-other-features.patch
+rename to 0005-x86-cet-Sync-with-the-kernel-CET-interface.patch
+index 5facc0d..ac74a00 100644
+--- a/0004-x86-Extend-CET-features-to-cover-other-features.patch
++++ b/0005-x86-cet-Sync-with-the-kernel-CET-interface.patch
+@@ -1,43 +1,60 @@
+-From 438c5b6ec5a464b472e79c751058a5d12643a75e Mon Sep 17 00:00:00 2001
++From 5f5ba0282d83fdfcb79a3292e501881e952aad25 Mon Sep 17 00:00:00 2001
+ From: "H.J. Lu" <hjl.tools@gmail.com>
+-Date: Sun, 25 Jul 2021 08:30:14 -0700
+-Subject: [PATCH 4/7] x86: Extend CET features to cover other features
++Date: Sat, 15 Aug 2020 08:04:23 -0700
++Subject: [PATCH 05/11] x86/cet: Sync with the kernel CET interface
+ 
+-1. Rename CET_ENABLED to X86_FEATURE_ENABLED.
+-2. Rename CET control functions to feature_1 control functions.
+-3. Rename CET files to feature files.
+-4. Rename arch_prctl commands to ARCH_X86_FEATURE_1_XXX to support other
+-features.
++1. Rename arch_prctl commands to ARCH_X86_FEATURE_1_XXX, add
++ARCH_X86_FEATURE_1_ENABLE and remove ARCH_CET_ALLOC_SHSTK to match the
++kernel header files.
++2. Pass feature bits to ARCH_X86_FEATURE_1_LOCK.
++3. Rename CET_ENABLED to X86_FEATURE_ENABLED.
++4. Rename CET control functions to feature_1 control functions.
++5. Rename CET files to feature files.
++6. Since the final CET kernel will support shadow stack allocation with:
++
++void *shadow_stack = map_shadow_stack(stack_size, SHADOW_STACK_SET_TOKEN);
++
++add __allocate_shadow_stack to use map_shadow_stack.
+ ---
+  config.h.in                                   |  2 +-
+  sysdeps/unix/sysv/linux/i386/getcontext.S     |  2 +-
++ sysdeps/unix/sysv/linux/i386/makecontext.S    | 88 +++++++------------
+  sysdeps/unix/sysv/linux/i386/swapcontext.S    |  2 +-
+- sysdeps/unix/sysv/linux/x86/cpu-features.c    | 12 ++--
+- .../sysv/linux/x86/{dl-cet.h => dl-feature.h} | 14 ++--
+- .../unix/sysv/linux/x86/include/asm/prctl.h   | 15 ++--
++ sysdeps/unix/sysv/linux/x86/Makefile          |  1 +
++ .../sysv/linux/x86/allocate-shadow-stack.c    | 50 +++++++++++
++ .../sysv/linux/x86/allocate-shadow-stack.h    | 27 ++++++
++ sysdeps/unix/sysv/linux/x86/bits/mman.h       |  3 +
++ sysdeps/unix/sysv/linux/x86/cpu-features.c    | 11 +--
++ .../sysv/linux/x86/{dl-cet.h => dl-feature.h} | 17 ++--
++ .../unix/sysv/linux/x86/include/asm/prctl.h   | 22 +++--
++ .../sysv/linux/x86/tst-cet-setcontext-1.c     |  2 +-
++ .../unix/sysv/linux/x86_64/__start_context.S  | 38 ++------
+  sysdeps/unix/sysv/linux/x86_64/getcontext.S   |  2 +-
++ sysdeps/unix/sysv/linux/x86_64/makecontext.c  | 29 +++---
+  sysdeps/unix/sysv/linux/x86_64/swapcontext.S  |  2 +-
+  sysdeps/x86/Makefile                          |  2 +-
+  sysdeps/x86/configure                         |  4 +-
+  sysdeps/x86/configure.ac                      |  4 +-
+- sysdeps/x86/cpu-features.c                    | 49 ++++++-------
+- sysdeps/x86/cpu-tunables.c                    | 14 ++--
+- sysdeps/x86/{dl-cet.c => dl-feature.c}        | 68 +++++++++----------
+- sysdeps/x86/dl-prop.h                         | 12 ++--
+- .../x86/{cet-control.h => feature-control.h}  | 32 ++++-----
++ sysdeps/x86/cpu-features.c                    | 51 ++++++-----
++ sysdeps/x86/cpu-tunables.c                    | 14 +--
++ sysdeps/x86/{dl-cet.c => dl-feature.c}        | 80 +++++++++--------
++ sysdeps/x86/dl-prop.h                         | 12 +--
++ .../x86/{cet-control.h => feature-control.h}  | 32 +++----
+  sysdeps/x86/ldsodefs.h                        |  2 +-
+  sysdeps/x86/sysdep.h                          |  6 ++
+- 18 files changed, 127 insertions(+), 117 deletions(-)
+- rename sysdeps/unix/sysv/linux/x86/{dl-cet.h => dl-feature.h} (74%)
+- rename sysdeps/x86/{dl-cet.c => dl-feature.c} (79%)
++ 26 files changed, 279 insertions(+), 226 deletions(-)
++ create mode 100644 sysdeps/unix/sysv/linux/x86/allocate-shadow-stack.c
++ create mode 100644 sysdeps/unix/sysv/linux/x86/allocate-shadow-stack.h
++ rename sysdeps/unix/sysv/linux/x86/{dl-cet.h => dl-feature.h} (67%)
++ rename sysdeps/x86/{dl-cet.c => dl-feature.c} (74%)
+  rename sysdeps/x86/{cet-control.h => feature-control.h} (59%)
+ 
+ diff --git a/config.h.in b/config.h.in
+-index 8b45a3a61d..14e9f4df7f 100644
++index 37207df94f..6bfc935579 100644
+ --- a/config.h.in
+ +++ b/config.h.in
+-@@ -288,7 +288,7 @@
+- #define CAN_USE_REGISTER_ASM_EBP 0
++@@ -284,7 +284,7 @@
++ #define ENABLE_STATIC_PIE 0
+  
+  /* The default value of x86 CET control.  */
+ -#define DEFAULT_DL_X86_CET_CONTROL cet_elf_property
+@@ -46,36 +63,293 @@ index 8b45a3a61d..14e9f4df7f 100644
+  /* Define if x86 ISA level should be included in shared libraries.  */
+  #undef INCLUDE_X86_ISA_LEVEL
+ diff --git a/sysdeps/unix/sysv/linux/i386/getcontext.S b/sysdeps/unix/sysv/linux/i386/getcontext.S
+-index 61c0195b33..efe42ac61d 100644
++index 95e8d06dd1..efe42ac61d 100644
+ --- a/sysdeps/unix/sysv/linux/i386/getcontext.S
+ +++ b/sysdeps/unix/sysv/linux/i386/getcontext.S
+ @@ -63,7 +63,7 @@ ENTRY(__getcontext)
+  	   been recorded yet.  */
+  	sub	$24, %esp
+  	mov	%esp, %ecx
+--	movl	$ARCH_X86_CET_STATUS, %ebx
++-	movl	$ARCH_CET_STATUS, %ebx
+ +	movl	$ARCH_X86_FEATURE_1_STATUS, %ebx
+  	movl	$__NR_arch_prctl, %eax
+  	ENTER_KERNEL
+  	testl	%eax, %eax
++diff --git a/sysdeps/unix/sysv/linux/i386/makecontext.S b/sysdeps/unix/sysv/linux/i386/makecontext.S
++index 059fa5a95e..3609fff7ac 100644
++--- a/sysdeps/unix/sysv/linux/i386/makecontext.S
+++++ b/sysdeps/unix/sysv/linux/i386/makecontext.S
++@@ -74,28 +74,37 @@ ENTRY(__makecontext)
++ 	testl	$X86_FEATURE_1_SHSTK, %gs:FEATURE_1_OFFSET
++ 	jz	L(skip_ssp)
++ 
++-	/* Reload the pointer to ucontext.  */
++-	movl	4(%esp), %eax
+++	/* Shadow stack is enabled.  Load the pointer to ucontext in
+++	   ECX.  */
+++	movl	4(%esp), %ecx
+++
+++	/* Pass the address of __ssp[1] in EDX.  */
+++	leal	(oSSP + 4)(%ecx), %edx
+++	/* Pass stack size in EAX.  */
+++	movl	oSS_SIZE(%ecx), %eax
+++
+++	/* Call __allocate_shadow_stack to allocate a new shadow stack.  */
+++	call	__allocate_shadow_stack
+++	/* Check for error return.  */
+++	testl	%eax, %eax
+++	jne	L(hlt)		/* This should never happen.  */
++ 
++-	/* Shadow stack is enabled.  We need to allocate a new shadow
++-	   stack.  */
++-	subl	oSS_SP(%eax), %edx
++-	shrl	$STACK_SIZE_TO_SHADOW_STACK_SIZE_SHIFT, %edx
+++	/* Reload the pointer to ucontext into ECX.  */
+++	movl	4(%esp), %ecx
++ 
++-	/* Align shadow stack size to 8 bytes.  */
++-	addl	$7, %edx
++-	andl	$-8, %edx
+++	/* Load the base address of the new shadow stack into EAX.  */
+++	movl	(oSSP + 4)(%ecx), %eax
++ 
++-	/* Store shadow stack size in __ssp[2].  */
++-	movl	%edx, (oSSP + 8)(%eax)
+++	/* Store the new shadow stack pointer, the shadow stack base +
+++	   the shadow stack size - 4, in __ssp[0].  */
+++	addl	(oSSP + 8)(%ecx), %eax
+++	subl	$4, %eax
+++	movl	%eax, oSSP(%ecx)
++ 
++ 	/* Save ESI in the second scratch register slot.  */
++-	movl	%esi, oSCRATCH2(%eax)
+++	movl	%esi, oSCRATCH2(%ecx)
++ 	/* Save EDI in the third scratch register slot.  */
++-	movl	%edi, oSCRATCH3(%eax)
++-
++-	/* Save the pointer to ucontext.  */
++-	movl	%eax, %edi
+++	movl	%edi, oSCRATCH3(%ecx)
++ 
++ 	/* Get the original shadow stack pointer.  */
++ 	rdsspd	%esi
++@@ -105,7 +114,7 @@ ENTRY(__makecontext)
++ 	andl	$-8, %esi
++ 
++ 	/* Load the top of the new stack into EDX.  */
++-	movl	oESP(%eax), %edx
+++	movl	oESP(%ecx), %edx
++ 
++ 	/* We need to terminate the FDE here because the unwinder looks
++ 	   at ra-1 for unwind information.  */
++@@ -119,39 +128,14 @@ ENTRY(__makecontext)
++ 	   onto stack.  */
++ 	addl	$4, %esp
++ 
++-	/* Allocate the new shadow stack.  Save EBX in the first scratch
++-	   register slot.  */
++-	movl	%ebx, oSCRATCH1(%eax)
++-
++-	/* CET syscall takes 64-bit sizes.  */
++-	subl	$16, %esp
++-	movl	(oSSP + 8)(%eax), %ecx
++-	movl	%ecx, (%esp)
++-	movl	$0, 4(%esp)
++-	movl	%ecx, 8(%esp)
++-	movl	$0, 12(%esp)
++-	movl	%esp, %ecx
++-
++-	movl	$ARCH_CET_ALLOC_SHSTK, %ebx
++-	movl	$__NR_arch_prctl, %eax
++-	ENTER_KERNEL
++-	testl	%eax, %eax
++-	jne	L(hlt)		/* This should never happen.  */
++-
++-	/* Copy the base address of the new shadow stack to __ssp[1].  */
++-	movl	(%esp), %eax
++-	movl	%eax, (oSSP + 4)(%edi)
++-
++-	addl	$16, %esp
+++	/* Load the new shadow stack base in __ssp[1] into EAX.  */
+++	movl	(oSSP + 4)(%ecx), %eax
++ 
++-	/* Restore EBX from the first scratch register slot.  */
++-	movl	oSCRATCH1(%edi), %ebx
++-
++-	/* Get the size of the new shadow stack.  */
++-	movl	(oSSP + 8)(%edi), %ecx
+++	/* Load the new shadow stack size in __ssp[2] into EDI.  */
+++	movl	(oSSP + 8)(%ecx), %edi
++ 
++ 	/* Use the restore stoken to restore the new shadow stack.  */
++-	rstorssp -8(%eax, %ecx)
+++	rstorssp -8(%eax, %edi)
++ 
++ 	/* Save the restore token at the next 8 byte aligned boundary
++ 	   on the original shadow stack.  */
++@@ -163,27 +147,21 @@ ENTRY(__makecontext)
++ 	jmp	L(exitcode)
++ 1:
++ 
++-	/* Get the new shadow stack pointer.  */
++-	rdsspd	%eax
++-
++ 	/* Use the restore stoken to restore the original shadow stack.  */
++ 	rstorssp -8(%esi)
++ 
++ 	/* Save the restore token on the new shadow stack.  */
++ 	saveprevssp
++ 
++-	/* Store the new shadow stack pointer in __ssp[0].  */
++-	movl	%eax, oSSP(%edi)
++-
++ 	/* Restore the original stack.  */
++ 	mov	%edx, %esp
++ 
++ 	cfi_startproc
++ 
++ 	/* Restore ESI from the second scratch register slot.  */
++-	movl	oSCRATCH2(%edi), %esi
+++	movl	oSCRATCH2(%ecx), %esi
++ 	/* Restore EDI from the third scratch register slot.  */
++-	movl	oSCRATCH3(%edi), %edi
+++	movl	oSCRATCH3(%ecx), %edi
++ 
++ 	ret
++ 
+ diff --git a/sysdeps/unix/sysv/linux/i386/swapcontext.S b/sysdeps/unix/sysv/linux/i386/swapcontext.S
+-index e9111d5d19..05eddd884d 100644
++index 369c22f7f2..05eddd884d 100644
+ --- a/sysdeps/unix/sysv/linux/i386/swapcontext.S
+ +++ b/sysdeps/unix/sysv/linux/i386/swapcontext.S
+ @@ -91,7 +91,7 @@ ENTRY(__swapcontext)
+  	   been recorded yet.  */
+  	sub	$24, %esp
+  	mov	%esp, %ecx
+--	movl	$ARCH_X86_CET_STATUS, %ebx
++-	movl	$ARCH_CET_STATUS, %ebx
+ +	movl	$ARCH_X86_FEATURE_1_STATUS, %ebx
+  	movl	$__NR_arch_prctl, %eax
+  	ENTER_KERNEL
+  	testl	%eax, %eax
++diff --git a/sysdeps/unix/sysv/linux/x86/Makefile b/sysdeps/unix/sysv/linux/x86/Makefile
++index 9dfdd689a9..ed0d6500b9 100644
++--- a/sysdeps/unix/sysv/linux/x86/Makefile
+++++ b/sysdeps/unix/sysv/linux/x86/Makefile
++@@ -44,6 +44,7 @@ CFLAGS-tst-cet-vfork-1.c += -mshstk
++ endif
++ 
++ ifeq ($(subdir),stdlib)
+++sysdep_routines += allocate-shadow-stack
++ tests += tst-cet-setcontext-1
++ CFLAGS-tst-cet-setcontext-1.c += -mshstk
++ endif
++diff --git a/sysdeps/unix/sysv/linux/x86/allocate-shadow-stack.c b/sysdeps/unix/sysv/linux/x86/allocate-shadow-stack.c
++new file mode 100644
++index 0000000000..6ded547d8b
++--- /dev/null
+++++ b/sysdeps/unix/sysv/linux/x86/allocate-shadow-stack.c
++@@ -0,0 +1,50 @@
+++/* Helper function to allocate shadow stack.
+++   Copyright (C) 2022 Free Software Foundation, Inc.
+++   This file is part of the GNU C Library.
+++
+++   The GNU C Library is free software; you can redistribute it and/or
+++   modify it under the terms of the GNU Lesser General Public
+++   License as published by the Free Software Foundation; either
+++   version 2.1 of the License, or (at your option) any later version.
+++
+++   The GNU C Library is distributed in the hope that it will be useful,
+++   but WITHOUT ANY WARRANTY; without even the implied warranty of
+++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+++   Lesser General Public License for more details.
+++
+++   You should have received a copy of the GNU Lesser General Public
+++   License along with the GNU C Library; if not, see
+++   <https://www.gnu.org/licenses/>.  */
+++
+++#include <sysdep.h>
+++#include <stdint.h>
+++#include <errno.h>
+++#include <sys/mman.h>
+++#include <libc-pointer-arith.h>
+++#include <allocate-shadow-stack.h>
+++
+++/* NB: This can be treated as a syscall by caller.  */
+++
+++#ifndef __x86_64__
+++__attribute__ ((regparm (2)))
+++#endif
+++long int
+++__allocate_shadow_stack (size_t stack_size,
+++			 shadow_stack_size_t *child_stack)
+++{
+++  size_t shadow_stack_size
+++    = stack_size >> STACK_SIZE_TO_SHADOW_STACK_SIZE_SHIFT;
+++  /* Align shadow stack to 8 bytes.  */
+++  shadow_stack_size = ALIGN_UP (shadow_stack_size, 8);
+++  void *shadow_stack = (void *)INLINE_SYSCALL_CALL
+++    (map_shadow_stack, shadow_stack_size, SHADOW_STACK_SET_TOKEN);
+++  /* Report the map_shadow_stack error.  */
+++  if (shadow_stack == MAP_FAILED)
+++    return -errno;
+++
+++  /* Save the shadow stack base and size on child stack.  */
+++  child_stack[0] = (uintptr_t) shadow_stack;
+++  child_stack[1] = shadow_stack_size;
+++
+++  return 0;
+++}
++diff --git a/sysdeps/unix/sysv/linux/x86/allocate-shadow-stack.h b/sysdeps/unix/sysv/linux/x86/allocate-shadow-stack.h
++new file mode 100644
++index 0000000000..25e3814867
++--- /dev/null
+++++ b/sysdeps/unix/sysv/linux/x86/allocate-shadow-stack.h
++@@ -0,0 +1,27 @@
+++/* Helper function to allocate shadow stack.
+++   Copyright (C) 2020 Free Software Foundation, Inc.
+++   This file is part of the GNU C Library.
+++
+++   The GNU C Library is free software; you can redistribute it and/or
+++   modify it under the terms of the GNU Lesser General Public
+++   License as published by the Free Software Foundation; either
+++   version 2.1 of the License, or (at your option) any later version.
+++
+++   The GNU C Library is distributed in the hope that it will be useful,
+++   but WITHOUT ANY WARRANTY; without even the implied warranty of
+++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+++   Lesser General Public License for more details.
+++
+++   You should have received a copy of the GNU Lesser General Public
+++   License along with the GNU C Library; if not, see
+++   <https://www.gnu.org/licenses/>.  */
+++
+++#include <ucontext.h>
+++
+++typedef __typeof (((ucontext_t *) 0)->__ssp[0]) shadow_stack_size_t;
+++
+++extern long int __allocate_shadow_stack (size_t, shadow_stack_size_t *)
+++#ifndef __x86_64__
+++  __attribute__ ((regparm (2)))
+++#endif
+++  attribute_hidden;
++diff --git a/sysdeps/unix/sysv/linux/x86/bits/mman.h b/sysdeps/unix/sysv/linux/x86/bits/mman.h
++index b2ae788555..66f36360de 100644
++--- a/sysdeps/unix/sysv/linux/x86/bits/mman.h
+++++ b/sysdeps/unix/sysv/linux/x86/bits/mman.h
++@@ -26,6 +26,9 @@
++ /* Other flags.  */
++ #ifdef __USE_MISC
++ # define MAP_32BIT	0x40		/* Only give out 32-bit addresses.  */
+++
+++/* Set up a restore token in the newly allocatd shadow stack */
+++# define SHADOW_STACK_SET_TOKEN 0x1
++ #endif
++ 
++ #include <bits/mman-map-flags-generic.h>
+ diff --git a/sysdeps/unix/sysv/linux/x86/cpu-features.c b/sysdeps/unix/sysv/linux/x86/cpu-features.c
+-index 76ef99d4a1..5a170bc134 100644
++index 60f766853d..5a170bc134 100644
+ --- a/sysdeps/unix/sysv/linux/x86/cpu-features.c
+ +++ b/sysdeps/unix/sysv/linux/x86/cpu-features.c
+-@@ -16,17 +16,17 @@
++@@ -16,16 +16,17 @@
+     License along with the GNU C Library; if not, see
+     <https://www.gnu.org/licenses/>.  */
+  
+@@ -89,8 +363,7 @@ index 76ef99d4a1..5a170bc134 100644
+ +get_feature_1_status (void)
+  {
+ -  unsigned long long cet_status[3];
+--  if (INTERNAL_SYSCALL_CALL (arch_prctl, ARCH_X86_CET_STATUS,
+--			     cet_status) == 0)
++-  if (INTERNAL_SYSCALL_CALL (arch_prctl, ARCH_CET_STATUS, cet_status) == 0)
+ -    return cet_status[0];
+ +  unsigned long long feature_1_status[3];
+ +  if (INTERNAL_SYSCALL_CALL (arch_prctl, ARCH_X86_FEATURE_1_STATUS,
+@@ -100,26 +373,28 @@ index 76ef99d4a1..5a170bc134 100644
+  }
+  
+ diff --git a/sysdeps/unix/sysv/linux/x86/dl-cet.h b/sysdeps/unix/sysv/linux/x86/dl-feature.h
+-similarity index 74%
++similarity index 67%
+ rename from sysdeps/unix/sysv/linux/x86/dl-cet.h
+ rename to sysdeps/unix/sysv/linux/x86/dl-feature.h
+-index a431b601cc..847aa3f1e7 100644
++index 86151d8bbd..03eb7f3b80 100644
+ --- a/sysdeps/unix/sysv/linux/x86/dl-cet.h
+ +++ b/sysdeps/unix/sysv/linux/x86/dl-feature.h
+-@@ -1,4 +1,4 @@
++@@ -1,5 +1,5 @@
+ -/* Linux/x86 CET initializers function.
++-   Copyright (C) 2018-2021 Free Software Foundation, Inc.
+ +/* Linux/x86 feature initializers function.
+-    Copyright (C) 2018-2021 Free Software Foundation, Inc.
+++   Copyright (C) 2018-2022 Free Software Foundation, Inc.
+  
+     The GNU C Library is free software; you can redistribute it and/or
+-@@ -19,14 +19,16 @@
++    modify it under the terms of the GNU Lesser General Public
++@@ -19,14 +19,17 @@
+  #include <asm/prctl.h>
+  
+  static inline int __attribute__ ((always_inline))
+ -dl_cet_disable_cet (unsigned int cet_feature)
+ +dl_feature_1_disable (unsigned int feature_1)
+  {
+--  return (int) INTERNAL_SYSCALL_CALL (arch_prctl, ARCH_X86_CET_DISABLE,
++-  return (int) INTERNAL_SYSCALL_CALL (arch_prctl, ARCH_CET_DISABLE,
+ -				      cet_feature);
+ +  return (int) INTERNAL_SYSCALL_CALL (arch_prctl,
+ +				      ARCH_X86_FEATURE_1_DISABLE,
+@@ -128,64 +403,212 @@ index a431b601cc..847aa3f1e7 100644
+  
+  static inline int __attribute__ ((always_inline))
+ -dl_cet_lock_cet (void)
+-+dl_feature_1_lock (void)
+++dl_feature_1_lock (unsigned int feature_1)
+  {
+--  return (int) INTERNAL_SYSCALL_CALL (arch_prctl, ARCH_X86_CET_LOCK, 0);
++-  return (int) INTERNAL_SYSCALL_CALL (arch_prctl, ARCH_CET_LOCK, 0);
+ +  return (int) INTERNAL_SYSCALL_CALL (arch_prctl,
+-+				      ARCH_X86_FEATURE_1_LOCK, 0);
+++				      ARCH_X86_FEATURE_1_LOCK,
+++				      feature_1);
+  }
+ diff --git a/sysdeps/unix/sysv/linux/x86/include/asm/prctl.h b/sysdeps/unix/sysv/linux/x86/include/asm/prctl.h
+-index d58754018b..4ac763d44a 100644
++index 45ad0b052f..51a731c53e 100644
+ --- a/sysdeps/unix/sysv/linux/x86/include/asm/prctl.h
+ +++ b/sysdeps/unix/sysv/linux/x86/include/asm/prctl.h
+ @@ -4,7 +4,7 @@
+  
+  #include_next <asm/prctl.h>
+  
+--#ifndef ARCH_X86_CET_STATUS
++-#ifndef ARCH_CET_STATUS
+ +#ifndef ARCH_X86_FEATURE_1_STATUS
+  /* CET features:
+     IBT:   GNU_PROPERTY_X86_FEATURE_1_IBT
+     SHSTK: GNU_PROPERTY_X86_FEATURE_1_SHSTK
+-@@ -14,9 +14,10 @@
++@@ -14,14 +14,12 @@
+       shadow stack base address: addr[1].
+       shadow stack size: addr[2].
+   */
+--# define ARCH_X86_CET_STATUS	0x3001
++-# define ARCH_CET_STATUS	0x3001
+ -/* Disable CET features in unsigned int features.  */
+--# define ARCH_X86_CET_DISABLE	0x3002
++-# define ARCH_CET_DISABLE	0x3002
+ -/* Lock all CET features.  */
+--# define ARCH_X86_CET_LOCK		0x3003
+--#endif /* ARCH_X86_CET_STATUS */
++-# define ARCH_CET_LOCK		0x3003
++-/* Allocate a new shadow stack with unsigned long long *addr:
++-     IN: requested shadow stack size: *addr.
++-     OUT: allocated shadow stack address: *addr.
++- */
++-# define ARCH_CET_ALLOC_SHSTK	0x3004
++-#endif /* ARCH_CET_STATUS */
+ +# define ARCH_X86_FEATURE_1_STATUS	0x3001
+ +/* Disable FEATURE_1 features in unsigned int features.  */
+ +# define ARCH_X86_FEATURE_1_DISABLE	0x3002
+-+/* Lock FEATURE_1 features.  */
+++/* Lock FEATURE_1 features in unsigned int features.  */
+ +# define ARCH_X86_FEATURE_1_LOCK	0x3003
+++/* Enable FEATURE_1 features in unsigned int features.  */
+++# define ARCH_X86_FEATURE_1_ENABLE	0x3004
+ +
+ +#endif /* ARCH_X86_FEATURE_1_STATUS */
++diff --git a/sysdeps/unix/sysv/linux/x86/tst-cet-setcontext-1.c b/sysdeps/unix/sysv/linux/x86/tst-cet-setcontext-1.c
++index 38ca4b1d05..74a9a55677 100644
++--- a/sysdeps/unix/sysv/linux/x86/tst-cet-setcontext-1.c
+++++ b/sysdeps/unix/sysv/linux/x86/tst-cet-setcontext-1.c
++@@ -88,7 +88,7 @@ do_test (void)
++   makecontext (&ctx[4], (void (*) (void)) f1, 0);
++ 
++   /* NB: When shadow stack is enabled, makecontext calls arch_prctl
++-     with ARCH_CET_ALLOC_SHSTK to allocate a new shadow stack which
+++     with ARCH_X86_CET_MMAP_SHSTK to allocate a new shadow stack which
++      can be unmapped.  The base address and size of the new shadow
++      stack are returned in __ssp[1] and __ssp[2].  makecontext is
++      called for CTX1, CTX3 and CTX4.  But only CTX1 is used.  New
++diff --git a/sysdeps/unix/sysv/linux/x86_64/__start_context.S b/sysdeps/unix/sysv/linux/x86_64/__start_context.S
++index 49381e369e..bfde78d814 100644
++--- a/sysdeps/unix/sysv/linux/x86_64/__start_context.S
+++++ b/sysdeps/unix/sysv/linux/x86_64/__start_context.S
++@@ -25,20 +25,14 @@
++ /* Use CALL to push __start_context onto the new stack as well as the new
++    shadow stack.  RDI points to ucontext:
++    Incoming:
++-     __ssp[0]: The original caller's shadow stack pointer.
++-     __ssp[1]: The size of the new shadow stack.
++-     __ssp[2]: The size of the new shadow stack.
++-   Outgoing:
++      __ssp[0]: The new shadow stack pointer.
++      __ssp[1]: The base address of the new shadow stack.
++      __ssp[2]: The size of the new shadow stack.
++  */
++ 
++ ENTRY(__push___start_context)
++-	/* Save the pointer to ucontext.  */
++-	movq	%rdi, %r9
++ 	/* Get the original shadow stack pointer.  */
++-	rdsspq	%r8
+++	rdsspq	%rcx
++ 	/* Save the original stack pointer.  */
++ 	movq	%rsp, %rdx
++ 	/* Load the top of the new stack into RSI.  */
++@@ -46,24 +40,12 @@ ENTRY(__push___start_context)
++ 	/* Add 8 bytes to RSI since CALL will push the 8-byte return
++ 	   address onto stack.  */
++ 	leaq	8(%rsi), %rsp
++-	/* Allocate the new shadow stack.  The size of the new shadow
++-	   stack is passed in __ssp[1].  */
++-	lea	(oSSP + 8)(%rdi), %RSI_LP
++-	movl	$ARCH_CET_ALLOC_SHSTK, %edi
++-	movl	$__NR_arch_prctl, %eax
++-	/* The new shadow stack base is returned in __ssp[1].  */
++-	syscall
++-	testq	%rax, %rax
++-	jne	L(hlt)		/* This should never happen.  */
++-
++-	/* Get the size of the new shadow stack.  */
++-	movq	8(%rsi), %rdi
++-
++-	/* Get the base address of the new shadow stack.  */
++-	movq	(%rsi), %rsi
++-
+++	/* The size of the new shadow stack is stored in __ssp[2].  */
+++	mov	(oSSP + 16)(%rdi), %RSI_LP
+++	/* The new shadow stack base is stored in __ssp[1].  */
+++	mov	(oSSP + 8)(%rdi), %RAX_LP
++ 	/* Use the restore stoken to restore the new shadow stack.  */
++-	rstorssp -8(%rsi, %rdi)
+++	rstorssp -8(%rax, %rsi)
++ 
++ 	/* Save the restore token on the original shadow stack.  */
++ 	saveprevssp
++@@ -74,18 +56,12 @@ ENTRY(__push___start_context)
++ 	jmp	__start_context
++ 1:
++ 
++-	/* Get the new shadow stack pointer.  */
++-	rdsspq	%rdi
++-
++ 	/* Use the restore stoken to restore the original shadow stack.  */
++-	rstorssp -8(%r8)
+++	rstorssp -8(%rcx)
++ 
++ 	/* Save the restore token on the new shadow stack.  */
++ 	saveprevssp
++ 
++-	/* Store the new shadow stack pointer in __ssp[0].  */
++-	movq	%rdi, oSSP(%r9)
++-
++ 	/* Restore the original stack.  */
++ 	mov	%rdx, %rsp
++ 	ret
+ diff --git a/sysdeps/unix/sysv/linux/x86_64/getcontext.S b/sysdeps/unix/sysv/linux/x86_64/getcontext.S
+-index aee363b000..e28be78a8c 100644
++index 5ca779b15b..e28be78a8c 100644
+ --- a/sysdeps/unix/sysv/linux/x86_64/getcontext.S
+ +++ b/sysdeps/unix/sysv/linux/x86_64/getcontext.S
+ @@ -71,7 +71,7 @@ ENTRY(__getcontext)
+  	   been recorded yet.  */
+  	sub	$24, %RSP_LP
+  	mov	%RSP_LP, %RSI_LP
+--	movl	$ARCH_X86_CET_STATUS, %edi
++-	movl	$ARCH_CET_STATUS, %edi
+ +	movl	$ARCH_X86_FEATURE_1_STATUS, %edi
+  	movl	$__NR_arch_prctl, %eax
+  	syscall
+  	testq	%rax, %rax
++diff --git a/sysdeps/unix/sysv/linux/x86_64/makecontext.c b/sysdeps/unix/sysv/linux/x86_64/makecontext.c
++index ceb5c02bad..950e3b1201 100644
++--- a/sysdeps/unix/sysv/linux/x86_64/makecontext.c
+++++ b/sysdeps/unix/sysv/linux/x86_64/makecontext.c
++@@ -25,6 +25,8 @@
++ # include <pthread.h>
++ # include <libc-pointer-arith.h>
++ # include <sys/prctl.h>
+++# include <sys/mman.h>
+++# include <allocate-shadow-stack.h>
++ #endif
++ 
++ #include "ucontext_i.h"
++@@ -89,23 +91,24 @@ __makecontext (ucontext_t *ucp, void (*func) (void), int argc, ...)
++   if ((feature_1 & X86_FEATURE_1_SHSTK) != 0)
++     {
++       /* Shadow stack is enabled.  We need to allocate a new shadow
++-         stack.  */
++-      unsigned long ssp_size = (((uintptr_t) sp
++-				 - (uintptr_t) ucp->uc_stack.ss_sp)
++-				>> STACK_SIZE_TO_SHADOW_STACK_SIZE_SHIFT);
++-      /* Align shadow stack to 8 bytes.  */
++-      ssp_size = ALIGN_UP (ssp_size, 8);
++-
++-      ucp->__ssp[1] = ssp_size;
++-      ucp->__ssp[2] = ssp_size;
++-
++-      /* Call __push___start_context to allocate a new shadow stack,
++-	 push __start_context onto the new stack as well as the new
++-	 shadow stack.  NB: After __push___start_context returns,
+++         stack.  NB:
++ 	   ucp->__ssp[0]: The new shadow stack pointer.
++ 	   ucp->__ssp[1]: The base address of the new shadow stack.
++ 	   ucp->__ssp[2]: The size of the new shadow stack.
++        */
+++      long int ret
+++	= __allocate_shadow_stack (((uintptr_t) sp
+++				    - (uintptr_t) ucp->uc_stack.ss_sp),
+++				   &ucp->__ssp[1]);
+++      if (ret != 0)
+++	{
+++	  /* FIXME: What should we do?  */
+++	  abort ();
+++	}
+++
+++      ucp->__ssp[0] = ucp->__ssp[1] + ucp->__ssp[2] - 8;
+++      /* Call __push___start_context to push __start_context onto the new
+++	 stack as well as the new shadow stack.  */
++       __push___start_context (ucp);
++     }
++   else
+ diff --git a/sysdeps/unix/sysv/linux/x86_64/swapcontext.S b/sysdeps/unix/sysv/linux/x86_64/swapcontext.S
+-index 16648a6080..475f6ab13e 100644
++index dbc1a3a840..475f6ab13e 100644
+ --- a/sysdeps/unix/sysv/linux/x86_64/swapcontext.S
+ +++ b/sysdeps/unix/sysv/linux/x86_64/swapcontext.S
+ @@ -115,7 +115,7 @@ ENTRY(__swapcontext)
+  	   been recorded yet.  */
+  	sub	$24, %RSP_LP
+  	mov	%RSP_LP, %RSI_LP
+--	movl	$ARCH_X86_CET_STATUS, %edi
++-	movl	$ARCH_CET_STATUS, %edi
+ +	movl	$ARCH_X86_FEATURE_1_STATUS, %edi
+  	movl	$__NR_arch_prctl, %eax
+  	syscall
+@@ -237,7 +660,7 @@ index bca97fdc2f..f24f17c99a 100644
+  LIBC_CONFIG_VAR([enable-cet], [$enable_cet])
+  
+ diff --git a/sysdeps/x86/cpu-features.c b/sysdeps/x86/cpu-features.c
+-index 645bba6314..f4c16dfc6b 100644
++index 645bba6314..f258791b5d 100644
+ --- a/sysdeps/x86/cpu-features.c
+ +++ b/sysdeps/x86/cpu-features.c
+ @@ -27,7 +27,7 @@
+@@ -269,7 +692,7 @@ index 645bba6314..f4c16dfc6b 100644
+  # if HAVE_TUNABLES
+    TUNABLE_GET (x86_ibt, tunable_val_t *,
+  	       TUNABLE_CALLBACK (set_x86_ibt));
+-@@ -797,48 +797,49 @@ no_cpuid:
++@@ -797,48 +797,51 @@ no_cpuid:
+  	       TUNABLE_CALLBACK (set_x86_shstk));
+  # endif
+  
+@@ -335,7 +758,9 @@ index 645bba6314..f4c16dfc6b 100644
+ -	    dl_cet_lock_cet ();
+ +	  if (GL(dl_x86_feature_control).ibt != x86_feature_permissive
+ +	      && GL(dl_x86_feature_control).shstk != x86_feature_permissive)
+-+	    dl_feature_1_lock ();
+++	    dl_feature_1_lock (GL(dl_x86_feature_1)
+++			       & (GNU_PROPERTY_X86_FEATURE_1_IBT
+++				  | GNU_PROPERTY_X86_FEATURE_1_SHSTK));
+  	}
+  # endif
+      }
+@@ -384,18 +809,20 @@ index 00fe5045eb..86f587995f 100644
+  # endif
+  #endif
+ diff --git a/sysdeps/x86/dl-cet.c b/sysdeps/x86/dl-feature.c
+-similarity index 79%
++similarity index 74%
+ rename from sysdeps/x86/dl-cet.c
+ rename to sysdeps/x86/dl-feature.c
+-index c74e577289..e18fb5c6ed 100644
++index c74e577289..d9d312622a 100644
+ --- a/sysdeps/x86/dl-cet.c
+ +++ b/sysdeps/x86/dl-feature.c
+-@@ -1,4 +1,4 @@
++@@ -1,5 +1,5 @@
+ -/* x86 CET initializers function.
++-   Copyright (C) 2018-2021 Free Software Foundation, Inc.
+ +/* x86 feature initializers function.
+-    Copyright (C) 2018-2021 Free Software Foundation, Inc.
+++   Copyright (C) 2018-2022 Free Software Foundation, Inc.
+  
+     The GNU C Library is free software; you can redistribute it and/or
++    modify it under the terms of the GNU Lesser General Public
+ @@ -19,7 +19,7 @@
+  #include <errno.h>
+  #include <libintl.h>
+@@ -405,7 +832,7 @@ index c74e577289..e18fb5c6ed 100644
+  
+  /* GNU_PROPERTY_X86_FEATURE_1_IBT and GNU_PROPERTY_X86_FEATURE_1_SHSTK
+     are defined in <elf.h>, which are only available for C sources.
+-@@ -32,21 +32,21 @@
++@@ -32,32 +32,34 @@
+  # error GNU_PROPERTY_X86_FEATURE_1_SHSTK != X86_FEATURE_1_SHSTK
+  #endif
+  
+@@ -425,15 +852,31 @@ index c74e577289..e18fb5c6ed 100644
+ +  enum dl_x86_feature_control_enum enable_shstk_type
+      = GL(dl_x86_feature_control).shstk;
+  
+++  unsigned int feature_1_status = GL(dl_x86_feature_1);
+++
+    /* No legacy object check if both IBT and SHSTK are always on.  */
+ -  if (enable_ibt_type == cet_always_on
+ -      && enable_shstk_type == cet_always_on)
+ +  if (enable_ibt_type == x86_feature_always_on
+ +      && enable_shstk_type == x86_feature_always_on)
+      {
+-       THREAD_SETMEM (THREAD_SELF, header.feature_1, GL(dl_x86_feature_1));
++-      THREAD_SETMEM (THREAD_SELF, header.feature_1, GL(dl_x86_feature_1));
+++      THREAD_SETMEM (THREAD_SELF, header.feature_1, feature_1_status);
+        return;
+-@@ -67,9 +67,9 @@ dl_cet_check (struct link_map *m, const char *program)
++     }
++ 
++   /* Check if IBT is enabled by kernel.  */
++   bool ibt_enabled
++-    = (GL(dl_x86_feature_1) & GNU_PROPERTY_X86_FEATURE_1_IBT) != 0;
+++    = (feature_1_status & GNU_PROPERTY_X86_FEATURE_1_IBT) != 0;
++   /* Check if SHSTK is enabled by kernel.  */
++   bool shstk_enabled
++-    = (GL(dl_x86_feature_1) & GNU_PROPERTY_X86_FEATURE_1_SHSTK) != 0;
+++    = (feature_1_status & GNU_PROPERTY_X86_FEATURE_1_SHSTK) != 0;
++ 
++   if (ibt_enabled || shstk_enabled)
++     {
++@@ -67,9 +69,9 @@ dl_cet_check (struct link_map *m, const char *program)
+  
+        /* Check if IBT and SHSTK are enabled in object.  */
+        bool enable_ibt = (ibt_enabled
+@@ -445,7 +888,7 @@ index c74e577289..e18fb5c6ed 100644
+        if (program)
+  	{
+  	  /* Enable IBT and SHSTK only if they are enabled in executable.
+-@@ -78,11 +78,11 @@ dl_cet_check (struct link_map *m, const char *program)
++@@ -78,11 +80,11 @@ dl_cet_check (struct link_map *m, const char *program)
+  	     GLIBC_TUNABLES=glibc.cpu.hwcaps=-IBT,-SHSTK
+  	   */
+  	  enable_ibt &= (CPU_FEATURE_USABLE (IBT)
+@@ -459,7 +902,7 @@ index c74e577289..e18fb5c6ed 100644
+  			       || (m->l_x86_feature_1_and
+  				   & GNU_PROPERTY_X86_FEATURE_1_SHSTK) != 0));
+  	}
+-@@ -115,7 +115,7 @@ dl_cet_check (struct link_map *m, const char *program)
++@@ -115,7 +117,7 @@ dl_cet_check (struct link_map *m, const char *program)
+  
+  	      /* IBT is enabled only if it is enabled in executable as
+  		 well as all shared objects.  */
+@@ -468,7 +911,7 @@ index c74e577289..e18fb5c6ed 100644
+  			     || (l->l_x86_feature_1_and
+  				 & GNU_PROPERTY_X86_FEATURE_1_IBT) != 0);
+  	      if (!found_ibt_legacy && enable_ibt != ibt_enabled)
+-@@ -126,7 +126,7 @@ dl_cet_check (struct link_map *m, const char *program)
++@@ -126,7 +128,7 @@ dl_cet_check (struct link_map *m, const char *program)
+  
+  	      /* SHSTK is enabled only if it is enabled in executable as
+  		 well as all shared objects.  */
+@@ -477,7 +920,7 @@ index c74e577289..e18fb5c6ed 100644
+  			       || (l->l_x86_feature_1_and
+  				   & GNU_PROPERTY_X86_FEATURE_1_SHSTK) != 0);
+  	      if (enable_shstk != shstk_enabled)
+-@@ -137,13 +137,13 @@ dl_cet_check (struct link_map *m, const char *program)
++@@ -137,13 +139,13 @@ dl_cet_check (struct link_map *m, const char *program)
+  	    }
+  	}
+  
+@@ -493,7 +936,7 @@ index c74e577289..e18fb5c6ed 100644
+  		{
+  		  /* When IBT is enabled, we cannot dlopen a shared
+  		     object without IBT.  */
+-@@ -154,7 +154,7 @@ dl_cet_check (struct link_map *m, const char *program)
++@@ -154,7 +156,7 @@ dl_cet_check (struct link_map *m, const char *program)
+  				      N_("rebuild shared object with IBT support enabled"));
+  		}
+  
+@@ -502,7 +945,7 @@ index c74e577289..e18fb5c6ed 100644
+  		{
+  		  /* When SHSTK is enabled, we cannot dlopen a shared
+  		     object without SHSTK.  */
+-@@ -165,21 +165,21 @@ dl_cet_check (struct link_map *m, const char *program)
++@@ -165,21 +167,21 @@ dl_cet_check (struct link_map *m, const char *program)
+  				      N_("rebuild shared object with SHSTK support enabled"));
+  		}
+  
+@@ -530,7 +973,7 @@ index c74e577289..e18fb5c6ed 100644
+  	  if (res != 0)
+  	    {
+  	      if (program)
+-@@ -196,32 +196,32 @@ dl_cet_check (struct link_map *m, const char *program)
++@@ -196,32 +198,34 @@ dl_cet_check (struct link_map *m, const char *program)
+  	    }
+  
+  	  /* Clear the disabled bits in dl_x86_feature_1.  */
+@@ -554,7 +997,9 @@ index c74e577289..e18fb5c6ed 100644
+  	      /* Lock CET if IBT or SHSTK is enabled in executable unless
+  	         IBT or SHSTK is enabled permissively.  */
+ -	      int res = dl_cet_lock_cet ();
+-+	      int res = dl_feature_1_lock ();
+++	      int res = dl_feature_1_lock
+++		(feature_1_status & (GNU_PROPERTY_X86_FEATURE_1_IBT
+++				     | GNU_PROPERTY_X86_FEATURE_1_SHSTK));
+  	      if (res != 0)
+  		_dl_fatal_printf ("%s: can't lock CET\n", program);
+  	    }
+@@ -570,7 +1015,7 @@ index c74e577289..e18fb5c6ed 100644
+  	{
+  	  unsigned int feature_1 = 0;
+  	  if (enable_ibt)
+-@@ -235,9 +235,9 @@ dl_cet_check (struct link_map *m, const char *program)
++@@ -235,9 +239,9 @@ dl_cet_check (struct link_map *m, const char *program)
+  }
+  
+  void
+@@ -582,7 +1027,7 @@ index c74e577289..e18fb5c6ed 100644
+  }
+  
+  #ifdef SHARED
+-@@ -248,8 +248,8 @@ _dl_cet_open_check (struct link_map *l)
++@@ -248,8 +252,8 @@ _dl_cet_open_check (struct link_map *l)
+  
+  LINKAGE
+  void
+@@ -594,7 +1039,7 @@ index c74e577289..e18fb5c6ed 100644
+  }
+  #endif /* SHARED */
+ diff --git a/sysdeps/x86/dl-prop.h b/sysdeps/x86/dl-prop.h
+-index 56bd020b3c..5358086a64 100644
++index 385548fad3..234fa67ada 100644
+ --- a/sysdeps/x86/dl-prop.h
+ +++ b/sysdeps/x86/dl-prop.h
+ @@ -21,9 +21,9 @@
+@@ -717,5 +1162,5 @@ index cac1d762fb..667ffd6260 100644
+     space to preserve RCX, RDX, RSI, RDI, R8, R9 and RAX.  It must be
+     aligned to 16 bytes for fxsave and 64 bytes for xsave.  */
+ -- 
+-2.33.1
++2.34.1
+ 
+diff --git a/0006-x86-Check-PT_GNU_PROPERTY-early.patch b/0006-x86-Check-PT_GNU_PROPERTY-early.patch
+new file mode 100644
+index 0000000..6bc9915
+--- /dev/null
++++ b/0006-x86-Check-PT_GNU_PROPERTY-early.patch
+@@ -0,0 +1,357 @@
++From d4dc4553000fd1bb2cecff0be37375f42217f8b5 Mon Sep 17 00:00:00 2001
++From: "H.J. Lu" <hjl.tools@gmail.com>
++Date: Thu, 13 Jan 2022 14:45:46 -0800
++Subject: [PATCH 06/11] x86: Check PT_GNU_PROPERTY early
++
++The PT_GNU_PROPERTY segment is scanned before PT_NOTE.  For binaries
++with the PT_GNU_PROPERTY segment, we can check it to avoid scan of
++the PT_NOTE segment.
++
++Add <dl-start.h> to define RTLD_MEMCMP for the working during startup.
++---
++ elf/dl-load.c              |   3 +-
++ sysdeps/generic/dl-start.h |  25 ++++++++
++ sysdeps/x86/cpu-tunables.c |  36 ++++-------
++ sysdeps/x86/dl-prop.h      | 120 ++++++++++++++++++++++++-------------
++ sysdeps/x86/dl-start.h     |  35 +++++++++++
++ 5 files changed, 154 insertions(+), 65 deletions(-)
++ create mode 100644 sysdeps/generic/dl-start.h
++ create mode 100644 sysdeps/x86/dl-start.h
++
++diff --git a/elf/dl-load.c b/elf/dl-load.c
++index 0976977fbd..b946728975 100644
++--- a/elf/dl-load.c
+++++ b/elf/dl-load.c
++@@ -25,6 +25,7 @@
++ #include <string.h>
++ #include <unistd.h>
++ #include <ldsodefs.h>
+++#include <dl-start.h>
++ #include <bits/wordsize.h>
++ #include <sys/mman.h>
++ #include <sys/param.h>
++@@ -882,7 +883,7 @@ _dl_process_pt_gnu_property (struct link_map *l, int fd, const ElfW(Phdr) *ph)
++       /* Find the NT_GNU_PROPERTY_TYPE_0 note.  */
++       if (note->n_namesz == 4
++ 	  && note->n_type == NT_GNU_PROPERTY_TYPE_0
++-	  && memcmp (note + 1, "GNU", 4) == 0)
+++	  && RTLD_MEMCMP (note + 1, "GNU", 4) == 0)
++ 	{
++ 	  /* Check for invalid property.  */
++ 	  if (note->n_descsz < 8
++diff --git a/sysdeps/generic/dl-start.h b/sysdeps/generic/dl-start.h
++new file mode 100644
++index 0000000000..b2fa378b7e
++--- /dev/null
+++++ b/sysdeps/generic/dl-start.h
++@@ -0,0 +1,25 @@
+++/* Definitions for startup in ld.so.
+++   Copyright (C) 2022 Free Software Foundation, Inc.
+++   This file is part of the GNU C Library.
+++
+++   The GNU C Library is free software; you can redistribute it and/or
+++   modify it under the terms of the GNU Lesser General Public
+++   License as published by the Free Software Foundation; either
+++   version 2.1 of the License, or (at your option) any later version.
+++
+++   The GNU C Library is distributed in the hope that it will be useful,
+++   but WITHOUT ANY WARRANTY; without even the implied warranty of
+++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+++   Lesser General Public License for more details.
+++
+++   You should have received a copy of the GNU Lesser General Public
+++   License along with the GNU C Library; if not, see
+++   <https://www.gnu.org/licenses/>.  */
+++
+++#ifndef _dl_start_h
+++#define _dl_start_h
+++
+++/* The working memcmp during startup in ld.so.  */
+++#define RTLD_MEMCMP memcmp
+++
+++/* _dl_start_h */
++diff --git a/sysdeps/x86/cpu-tunables.c b/sysdeps/x86/cpu-tunables.c
++index 86f587995f..5249aa50ac 100644
++--- a/sysdeps/x86/cpu-tunables.c
+++++ b/sysdeps/x86/cpu-tunables.c
++@@ -25,23 +25,11 @@
++ # include <string.h>
++ # include <cpu-features.h>
++ # include <ldsodefs.h>
++-
++-/* We can't use IFUNC memcmp nor strlen in init_cpu_features from libc.a
++-   since IFUNC must be set up by init_cpu_features.  */
++-# if defined USE_MULTIARCH && !defined SHARED
++-#  ifdef __x86_64__
++-#   define DEFAULT_MEMCMP	__memcmp_sse2
++-#  else
++-#   define DEFAULT_MEMCMP	__memcmp_ia32
++-#  endif
++-extern __typeof (memcmp) DEFAULT_MEMCMP;
++-# else
++-#  define DEFAULT_MEMCMP	memcmp
++-# endif
+++# include <dl-start.h>
++ 
++ # define CHECK_GLIBC_IFUNC_CPU_OFF(f, cpu_features, name, len)		\
++   _Static_assert (sizeof (#name) - 1 == len, #name " != " #len);	\
++-  if (!DEFAULT_MEMCMP (f, #name, len))					\
+++  if (!RTLD_MEMCMP (f, #name, len))					\
++     {									\
++       CPU_FEATURE_UNSET (cpu_features, name)				\
++       break;								\
++@@ -51,7 +39,7 @@ extern __typeof (memcmp) DEFAULT_MEMCMP;
++    which isn't available.  */
++ # define CHECK_GLIBC_IFUNC_PREFERRED_OFF(f, cpu_features, name, len)	\
++   _Static_assert (sizeof (#name) - 1 == len, #name " != " #len);	\
++-  if (!DEFAULT_MEMCMP (f, #name, len))					\
+++  if (!RTLD_MEMCMP (f, #name, len))					\
++     {									\
++       cpu_features->preferred[index_arch_##name]			\
++ 	&= ~bit_arch_##name;						\
++@@ -62,7 +50,7 @@ extern __typeof (memcmp) DEFAULT_MEMCMP;
++ # define CHECK_GLIBC_IFUNC_PREFERRED_BOTH(f, cpu_features, name,	\
++ 					  disable, len)			\
++   _Static_assert (sizeof (#name) - 1 == len, #name " != " #len);	\
++-  if (!DEFAULT_MEMCMP (f, #name, len))					\
+++  if (!RTLD_MEMCMP (f, #name, len))					\
++     {									\
++       if (disable)							\
++ 	cpu_features->preferred[index_arch_##name] &= ~bit_arch_##name;	\
++@@ -76,7 +64,7 @@ extern __typeof (memcmp) DEFAULT_MEMCMP;
++ # define CHECK_GLIBC_IFUNC_PREFERRED_NEED_BOTH(f, cpu_features, name,	\
++ 					       need, disable, len)	\
++   _Static_assert (sizeof (#name) - 1 == len, #name " != " #len);	\
++-  if (!DEFAULT_MEMCMP (f, #name, len))					\
+++  if (!RTLD_MEMCMP (f, #name, len))					\
++     {									\
++       if (disable)							\
++ 	cpu_features->preferred[index_arch_##name] &= ~bit_arch_##name;	\
++@@ -177,7 +165,7 @@ TUNABLE_CALLBACK (set_hwcaps) (tunable_val_t *valp)
++ 	      CHECK_GLIBC_IFUNC_CPU_OFF (n, cpu_features, POPCNT, 6);
++ 	      CHECK_GLIBC_IFUNC_CPU_OFF (n, cpu_features, SSE4_1, 6);
++ 	      CHECK_GLIBC_IFUNC_CPU_OFF (n, cpu_features, SSE4_2, 6);
++-	      if (!DEFAULT_MEMCMP (n, "XSAVEC", 6))
+++	      if (!RTLD_MEMCMP (n, "XSAVEC", 6))
++ 		{
++ 		  /* Update xsave_state_size to XSAVE state size.  */
++ 		  cpu_features->xsave_state_size
++@@ -300,11 +288,11 @@ attribute_hidden
++ void
++ TUNABLE_CALLBACK (set_x86_ibt) (tunable_val_t *valp)
++ {
++-  if (DEFAULT_MEMCMP (valp->strval, "on", sizeof ("on")) == 0)
+++  if (RTLD_MEMCMP (valp->strval, "on", sizeof ("on")) == 0)
++     GL(dl_x86_feature_control).ibt = x86_feature_always_on;
++-  else if (DEFAULT_MEMCMP (valp->strval, "off", sizeof ("off")) == 0)
+++  else if (RTLD_MEMCMP (valp->strval, "off", sizeof ("off")) == 0)
++     GL(dl_x86_feature_control).ibt = x86_feature_always_off;
++-  else if (DEFAULT_MEMCMP (valp->strval, "permissive",
+++  else if (RTLD_MEMCMP (valp->strval, "permissive",
++ 			   sizeof ("permissive")) == 0)
++     GL(dl_x86_feature_control).ibt = x86_feature_permissive;
++ }
++@@ -313,11 +301,11 @@ attribute_hidden
++ void
++ TUNABLE_CALLBACK (set_x86_shstk) (tunable_val_t *valp)
++ {
++-  if (DEFAULT_MEMCMP (valp->strval, "on", sizeof ("on")) == 0)
+++  if (RTLD_MEMCMP (valp->strval, "on", sizeof ("on")) == 0)
++     GL(dl_x86_feature_control).shstk = x86_feature_always_on;
++-  else if (DEFAULT_MEMCMP (valp->strval, "off", sizeof ("off")) == 0)
+++  else if (RTLD_MEMCMP (valp->strval, "off", sizeof ("off")) == 0)
++     GL(dl_x86_feature_control).shstk = x86_feature_always_off;
++-  else if (DEFAULT_MEMCMP (valp->strval, "permissive",
+++  else if (RTLD_MEMCMP (valp->strval, "permissive",
++ 			   sizeof ("permissive")) == 0)
++     GL(dl_x86_feature_control).shstk = x86_feature_permissive;
++ }
++diff --git a/sysdeps/x86/dl-prop.h b/sysdeps/x86/dl-prop.h
++index 234fa67ada..a32eeb108b 100644
++--- a/sysdeps/x86/dl-prop.h
+++++ b/sysdeps/x86/dl-prop.h
++@@ -81,6 +81,60 @@ _dl_open_check (struct link_map *m)
++ #endif
++ }
++ 
+++/* Check the GNU property and return its value.  It returns:
+++   -1: Skip this note.
+++    0: Stop checking.
+++    1: Continue to check.
+++ */
+++static inline int
+++_dl_check_gnu_property (unsigned int type, unsigned int datasz,
+++			void *ptr, unsigned int *feature_1_and,
+++			unsigned int *needed_1,
+++			unsigned int *isa_1_needed)
+++{
+++  if (type == GNU_PROPERTY_X86_FEATURE_1_AND
+++      || type == GNU_PROPERTY_X86_ISA_1_NEEDED
+++      || type == GNU_PROPERTY_1_NEEDED)
+++    {
+++      /* The sizes of types which we are searching for are
+++	 4 bytes.  There is no point to continue if this
+++	 note is ill-formed.  */
+++      if (datasz != 4)
+++	return -1;
+++
+++      /* NB: Stop the scan only after seeing all types which
+++	 we are searching for.  */
+++      _Static_assert (((GNU_PROPERTY_X86_ISA_1_NEEDED
+++			> GNU_PROPERTY_X86_FEATURE_1_AND)
+++		       && (GNU_PROPERTY_X86_FEATURE_1_AND
+++			   > GNU_PROPERTY_1_NEEDED)),
+++		      "GNU_PROPERTY_X86_ISA_1_NEEDED > "
+++		      "GNU_PROPERTY_X86_FEATURE_1_AND && "
+++		      "GNU_PROPERTY_X86_FEATURE_1_AND > "
+++		      "GNU_PROPERTY_1_NEEDED");
+++      if (type == GNU_PROPERTY_X86_FEATURE_1_AND)
+++	*feature_1_and = *(unsigned int *) ptr;
+++      else if (type == GNU_PROPERTY_1_NEEDED)
+++	*needed_1 = *(unsigned int *) ptr;
+++      else
+++	{
+++	  *isa_1_needed = *(unsigned int *) ptr;
+++
+++	  /* Keep searching for the next GNU property note
+++	     generated by the older linker.  */
+++	  return 0;
+++	}
+++    }
+++  else if (type > GNU_PROPERTY_X86_ISA_1_NEEDED)
+++    {
+++      /* Stop the scan since property type is in ascending
+++	 order.  */
+++      return 0;
+++    }
+++
+++  return 1;
+++}
+++
++ static inline void __attribute__ ((unused))
++ _dl_process_property_note (struct link_map *l, const ElfW(Nhdr) *note,
++ 			   const ElfW(Addr) size, const ElfW(Addr) align)
++@@ -141,45 +195,14 @@ _dl_process_property_note (struct link_map *l, const ElfW(Nhdr) *note,
++ 
++ 	      last_type = type;
++ 
++-	      if (type == GNU_PROPERTY_X86_FEATURE_1_AND
++-		  || type == GNU_PROPERTY_X86_ISA_1_NEEDED
++-		  || type == GNU_PROPERTY_1_NEEDED)
++-		{
++-		  /* The sizes of types which we are searching for are
++-		     4 bytes.  There is no point to continue if this
++-		     note is ill-formed.  */
++-		  if (datasz != 4)
++-		    return;
++-
++-		  /* NB: Stop the scan only after seeing all types which
++-		     we are searching for.  */
++-		  _Static_assert (((GNU_PROPERTY_X86_ISA_1_NEEDED
++-				    > GNU_PROPERTY_X86_FEATURE_1_AND)
++-				   && (GNU_PROPERTY_X86_FEATURE_1_AND
++-				       > GNU_PROPERTY_1_NEEDED)),
++-				  "GNU_PROPERTY_X86_ISA_1_NEEDED > "
++-				  "GNU_PROPERTY_X86_FEATURE_1_AND && "
++-				  "GNU_PROPERTY_X86_FEATURE_1_AND > "
++-				  "GNU_PROPERTY_1_NEEDED");
++-		  if (type == GNU_PROPERTY_X86_FEATURE_1_AND)
++-		    feature_1_and = *(unsigned int *) ptr;
++-		  else if (type == GNU_PROPERTY_1_NEEDED)
++-		    needed_1 = *(unsigned int *) ptr;
++-		  else
++-		    {
++-		      isa_1_needed = *(unsigned int *) ptr;
++-
++-		      /* Keep searching for the next GNU property note
++-			 generated by the older linker.  */
++-		      break;
++-		    }
++-		}
++-	      else if (type > GNU_PROPERTY_X86_ISA_1_NEEDED)
++-		{
++-		  /* Stop the scan since property type is in ascending
++-		     order.  */
++-		  break;
++-		}
+++	      int result = _dl_check_gnu_property (type, datasz, ptr,
+++						   &feature_1_and,
+++						   &needed_1,
+++						   &isa_1_needed);
+++	      if (result == -1)
+++		return;		/* Skip this note.  */
+++	      else if (result == 0)
+++		break; /* Stop checking.  */
++ 
++ 	      /* Check the next property item.  */
++ 	      ptr += ALIGN_UP (datasz, sizeof (ElfW(Addr)));
++@@ -217,7 +240,24 @@ static inline int __attribute__ ((always_inline))
++ _dl_process_gnu_property (struct link_map *l, int fd, uint32_t type,
++ 			  uint32_t datasz, void *data)
++ {
++-  return 0;
+++  /* This is called on each GNU property.  */
+++  unsigned int needed_1 = 0;
+++  unsigned int feature_1_and = 0;
+++  unsigned int isa_1_needed = 0;
+++  int result = _dl_check_gnu_property (type, datasz, data,
+++				       &feature_1_and, &needed_1,
+++				       &isa_1_needed);
+++  if (needed_1 != 0)
+++    l->l_1_needed = needed_1;
+++  if (isa_1_needed != 0)
+++    l->l_x86_isa_1_needed = isa_1_needed;
+++  if (feature_1_and != 0)
+++    l->l_x86_feature_1_and = feature_1_and;
+++  if ((needed_1 | isa_1_needed | feature_1_and) != 0)
+++    l->l_property = lc_property_valid;
+++  else if (l->l_property == lc_property_unknown)
+++    l->l_property = lc_property_none;
+++  return result <= 0 ? 0 : result;
++ }
++ 
++ #endif /* _DL_PROP_H */
++diff --git a/sysdeps/x86/dl-start.h b/sysdeps/x86/dl-start.h
++new file mode 100644
++index 0000000000..917882a506
++--- /dev/null
+++++ b/sysdeps/x86/dl-start.h
++@@ -0,0 +1,35 @@
+++/* X86 definitions to enable CPU features in ld.so.
+++   Copyright (C) 2022 Free Software Foundation, Inc.
+++   This file is part of the GNU C Library.
+++
+++   The GNU C Library is free software; you can redistribute it and/or
+++   modify it under the terms of the GNU Lesser General Public
+++   License as published by the Free Software Foundation; either
+++   version 2.1 of the License, or (at your option) any later version.
+++
+++   The GNU C Library is distributed in the hope that it will be useful,
+++   but WITHOUT ANY WARRANTY; without even the implied warranty of
+++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+++   Lesser General Public License for more details.
+++
+++   You should have received a copy of the GNU Lesser General Public
+++   License along with the GNU C Library; if not, see
+++   <https://www.gnu.org/licenses/>.  */
+++
+++#ifndef _dl_start_h
+++#define _dl_start_h
+++
+++/* We can't use IFUNC memcmp in libc.a before IFUNC is set up by
+++   init_cpu_features.  */
+++#if defined USE_MULTIARCH && !defined SHARED
+++# ifdef __x86_64__
+++#  define RTLD_MEMCMP	__memcmp_sse2
+++# else
+++#  define RTLD_MEMCMP	__memcmp_ia32
+++# endif
+++extern __typeof (memcmp) RTLD_MEMCMP;
+++#else
+++# define RTLD_MEMCMP	memcmp
+++#endif
+++
+++#endif /* _dl_start_h */
++-- 
++2.34.1
++
+diff --git a/0007-elf-Always-define-_dl_get_dl_main_map-in-libc.a.patch b/0007-elf-Always-define-_dl_get_dl_main_map-in-libc.a.patch
+new file mode 100644
+index 0000000..9b49337
+--- /dev/null
++++ b/0007-elf-Always-define-_dl_get_dl_main_map-in-libc.a.patch
+@@ -0,0 +1,58 @@
++From 7d044f61316bb940bd22b162286e98866c7b4a0f Mon Sep 17 00:00:00 2001
++From: "H.J. Lu" <hjl.tools@gmail.com>
++Date: Fri, 14 Jan 2022 06:04:25 -0800
++Subject: [PATCH 07/11] elf: Always define _dl_get_dl_main_map in libc.a
++
++Always define _dl_get_dl_main_map in libc.a.  It will be used by
++sysdeps/x86/libc-start.c.
++
++(cherry picked from commit 95c89140a27de5b1613e0aa1b98fbe7036f454bd)
++---
++ elf/dl-support.c           | 2 --
++ sysdeps/generic/ldsodefs.h | 8 ++++----
++ 2 files changed, 4 insertions(+), 6 deletions(-)
++
++diff --git a/elf/dl-support.c b/elf/dl-support.c
++index d8c06ba7eb..b87b5caffc 100644
++--- a/elf/dl-support.c
+++++ b/elf/dl-support.c
++@@ -425,7 +425,6 @@ _dl_non_dynamic_init (void)
++ DL_SYSINFO_IMPLEMENTATION
++ #endif
++ 
++-#if ENABLE_STATIC_PIE
++ /* Since relocation to hidden _dl_main_map causes relocation overflow on
++    aarch64, a function is used to get the address of _dl_main_map.  */
++ 
++@@ -434,4 +433,3 @@ _dl_get_dl_main_map (void)
++ {
++   return &_dl_main_map;
++ }
++-#endif
++diff --git a/sysdeps/generic/ldsodefs.h b/sysdeps/generic/ldsodefs.h
++index fcbbf69748..6ba71c2b44 100644
++--- a/sysdeps/generic/ldsodefs.h
+++++ b/sysdeps/generic/ldsodefs.h
++@@ -1216,15 +1216,15 @@ void __libc_setup_tls (void);
++ # if ENABLE_STATIC_PIE
++ /* Relocate static executable with PIE.  */
++ extern void _dl_relocate_static_pie (void) attribute_hidden;
++-
++-/* Get a pointer to _dl_main_map.  */
++-extern struct link_map * _dl_get_dl_main_map (void)
++-  __attribute__ ((visibility ("hidden")));
++ # else
++ #  define _dl_relocate_static_pie()
++ # endif
++ #endif
++ 
+++/* Get a pointer to _dl_main_map.  */
+++extern struct link_map * _dl_get_dl_main_map (void)
+++  __attribute__ ((visibility ("hidden")));
+++
++ /* Initialization of libpthread for statically linked applications.
++    If libpthread is not linked in, this is an empty function.  */
++ void __pthread_initialize_minimal (void) weak_function;
++-- 
++2.34.1
++
+diff --git a/0008-x86-Enable-x86-CPU-features-during-startup.patch b/0008-x86-Enable-x86-CPU-features-during-startup.patch
+new file mode 100644
+index 0000000..4e9052a
+--- /dev/null
++++ b/0008-x86-Enable-x86-CPU-features-during-startup.patch
+@@ -0,0 +1,383 @@
++From 481899354562a4da48303e74806cecccdfce0d6e Mon Sep 17 00:00:00 2001
++From: "H.J. Lu" <hjl.tools@gmail.com>
++Date: Thu, 13 Jan 2022 15:35:07 -0800
++Subject: [PATCH 08/11] x86: Enable x86 CPU features during startup
++
++1: Enable x86 CPU features at startup in ld.so
++
++Define RTLD_START_ENABLE_X86_FEATURES in <dl-start.h> for instruction
++sequence to enable x86 CPU features at startup in ld.so.  When CET is
++enabled, on x86-64, the startup code sequence is changed to:
++
++(gdb) disass _start
++Dump of assembler code for function _start:
++   0x0000000000002090 <+0>:	mov    $0x3,%esi
++   0x0000000000002095 <+5>:	mov    $0x3005,%edi
++   0x000000000000209a <+10>:	mov    $0x9e,%eax
++   0x000000000000209f <+15>:	syscall
++   0x00000000000020a1 <+17>:	mov    %rsp,%rdi
++   0x00000000000020a4 <+20>:	call   0x2d80 <_dl_start>
++
++and on i386, the startup code sequence is changed to:
++
++(gdb) disass _start
++Dump of assembler code for function _start:
++   0x000010b0 <+0>:	mov    $0x3,%ecx
++   0x000010b5 <+5>:	mov    $0x3005,%ebx
++   0x000010ba <+10>:	mov    $0x180,%eax
++   0x000010bf <+15>:	int    $0x80
++   0x000010c1 <+17>:	mov    %esp,%eax
++   0x000010c3 <+19>:	sub    $0xc,%esp
++   0x000010c6 <+22>:	push   %eax
++   0x000010c7 <+23>:	call   0x1fb0 <_dl_start>
++   0x000010cc <+28>:	add    $0x10,%esp
++
++2. Enable x86 CPU features in __libc_start_main in libc.a
++
++Call arch_prctl (ARCH_X86_FEATURE_1_ENABLE) from __libc_start_main in
++static executable if x86 CPU features are enabled in static executable.
++Since __libc_start_main never returns, it is OK to enable shadow stack
++here.
++---
++ sysdeps/i386/dl-machine.h                 |  4 ++
++ sysdeps/unix/sysv/linux/i386/dl-start.h   | 27 +++++++++
++ sysdeps/unix/sysv/linux/i386/startup.h    |  7 ++-
++ sysdeps/unix/sysv/linux/x86/dl-feature.h  | 13 ++++
++ sysdeps/unix/sysv/linux/x86/dl-start.h    | 60 ++++++++++++++++++
++ sysdeps/unix/sysv/linux/x86_64/dl-start.h | 27 +++++++++
++ sysdeps/x86/dl-start.h                    |  5 ++
++ sysdeps/x86/libc-start.c                  | 74 +++++++++++++++++++++++
++ sysdeps/x86_64/dl-machine.h               |  4 ++
++ 9 files changed, 219 insertions(+), 2 deletions(-)
++ create mode 100644 sysdeps/unix/sysv/linux/i386/dl-start.h
++ create mode 100644 sysdeps/unix/sysv/linux/x86/dl-start.h
++ create mode 100644 sysdeps/unix/sysv/linux/x86_64/dl-start.h
++
++diff --git a/sysdeps/i386/dl-machine.h b/sysdeps/i386/dl-machine.h
++index 590b41d8d7..469ffba4b3 100644
++--- a/sysdeps/i386/dl-machine.h
+++++ b/sysdeps/i386/dl-machine.h
++@@ -25,6 +25,7 @@
++ #include <sysdep.h>
++ #include <tls.h>
++ #include <dl-tlsdesc.h>
+++#include <dl-start.h>
++ 
++ /* Return nonzero iff ELF header is compatible with the running host.  */
++ static inline int __attribute__ ((unused))
++@@ -158,6 +159,9 @@ extern ElfW(Addr) _dl_profile_fixup (struct link_map *l,
++ .globl _start\n\
++ .globl _dl_start_user\n\
++ _start:\n\
+++" \
+++RTLD_START_ENABLE_X86_FEATURES \
+++"\
++ 	movl %esp, %eax\n\
++         subl $12, %esp\n\
++         pushl %eax\n\
++diff --git a/sysdeps/unix/sysv/linux/i386/dl-start.h b/sysdeps/unix/sysv/linux/i386/dl-start.h
++new file mode 100644
++index 0000000000..a46a7d1cf7
++--- /dev/null
+++++ b/sysdeps/unix/sysv/linux/i386/dl-start.h
++@@ -0,0 +1,27 @@
+++/* Linux/i386 definitions to enable CPU features in ld.so.
+++   Copyright (C) 2022 Free Software Foundation, Inc.
+++   This file is part of the GNU C Library.
+++
+++   The GNU C Library is free software; you can redistribute it and/or
+++   modify it under the terms of the GNU Lesser General Public
+++   License as published by the Free Software Foundation; either
+++   version 2.1 of the License, or (at your option) any later version.
+++
+++   The GNU C Library is distributed in the hope that it will be useful,
+++   but WITHOUT ANY WARRANTY; without even the implied warranty of
+++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+++   Lesser General Public License for more details.
+++
+++   You should have received a copy of the GNU Lesser General Public
+++   License along with the GNU C Library; if not, see
+++   <https://www.gnu.org/licenses/>.  */
+++
+++#ifndef _dl_start_h
+++
+++#define THE_FIRST_REG		%ebx
+++#define THE_SECOND_REG		%ecx
+++#define STARTUP_ENTER_KERNEL	int $0x80
+++
+++#include <sysdeps/unix/sysv/linux/x86/dl-start.h>
+++
+++#endif /* _dl_start_h */
++diff --git a/sysdeps/unix/sysv/linux/i386/startup.h b/sysdeps/unix/sysv/linux/i386/startup.h
++index dee7a4f1d3..fa547fe244 100644
++--- a/sysdeps/unix/sysv/linux/i386/startup.h
+++++ b/sysdeps/unix/sysv/linux/i386/startup.h
++@@ -16,10 +16,13 @@
++    License along with the GNU C Library; if not, see
++    <https://www.gnu.org/licenses/>.  */
++ 
++-#if BUILD_PIE_DEFAULT
++-/* Can't use "call *%gs:SYSINFO_OFFSET" during statup in static PIE.  */
+++#if BUILD_PIE_DEFAULT || defined __CET__
+++/* Can't use "call *%gs:SYSINFO_OFFSET" during statup in static
+++   executable.  */
++ # define I386_USE_SYSENTER 0
+++#endif
++ 
+++#if BUILD_PIE_DEFAULT
++ # include <sysdep.h>
++ # include <abort-instr.h>
++ 
++diff --git a/sysdeps/unix/sysv/linux/x86/dl-feature.h b/sysdeps/unix/sysv/linux/x86/dl-feature.h
++index 03eb7f3b80..e5b5b5f2fe 100644
++--- a/sysdeps/unix/sysv/linux/x86/dl-feature.h
+++++ b/sysdeps/unix/sysv/linux/x86/dl-feature.h
++@@ -15,9 +15,20 @@
++    License along with the GNU C Library; if not, see
++    <https://www.gnu.org/licenses/>.  */
++ 
+++#ifndef _dl_feature_h
+++#define _dl_feature_h
+++
++ #include <sys/prctl.h>
++ #include <asm/prctl.h>
++ 
+++static inline int __attribute__ ((always_inline))
+++dl_feature_1_enable (unsigned int feature_1)
+++{
+++  return (int) INTERNAL_SYSCALL_CALL (arch_prctl,
+++				      ARCH_X86_FEATURE_1_ENABLE,
+++				      feature_1);
+++}
+++
++ static inline int __attribute__ ((always_inline))
++ dl_feature_1_disable (unsigned int feature_1)
++ {
++@@ -33,3 +44,5 @@ dl_feature_1_lock (unsigned int feature_1)
++ 				      ARCH_X86_FEATURE_1_LOCK,
++ 				      feature_1);
++ }
+++
+++#endif
++diff --git a/sysdeps/unix/sysv/linux/x86/dl-start.h b/sysdeps/unix/sysv/linux/x86/dl-start.h
++new file mode 100644
++index 0000000000..09fe88511a
++--- /dev/null
+++++ b/sysdeps/unix/sysv/linux/x86/dl-start.h
++@@ -0,0 +1,60 @@
+++/* Linux/x86 definitions to enable CPU features in ld.so.
+++   Copyright (C) 2022 Free Software Foundation, Inc.
+++   This file is part of the GNU C Library.
+++
+++   The GNU C Library is free software; you can redistribute it and/or
+++   modify it under the terms of the GNU Lesser General Public
+++   License as published by the Free Software Foundation; either
+++   version 2.1 of the License, or (at your option) any later version.
+++
+++   The GNU C Library is distributed in the hope that it will be useful,
+++   but WITHOUT ANY WARRANTY; without even the implied warranty of
+++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+++   Lesser General Public License for more details.
+++
+++   You should have received a copy of the GNU Lesser General Public
+++   License along with the GNU C Library; if not, see
+++   <https://www.gnu.org/licenses/>.  */
+++
+++#ifndef _dl_start_h
+++
+++#include <sysdeps/x86/dl-start.h>
+++
+++/* Instruction sequence to enable x86 CPU features at startup.  */
+++
+++#ifdef __CET__
+++# include <asm/prctl.h>
+++
+++# define PASTER(x)	#x
+++# define EVALUATOR(x)	PASTER (x)
+++
+++/* Enable CET features if CET is enabled.  */
+++# define X86_FEATURE_1_BITS \
+++  (__CET__ & (X86_FEATURE_1_IBT | X86_FEATURE_1_SHSTK))
+++
+++# define X86_FEATURE_1_BITS_STRING \
+++  EVALUATOR (X86_FEATURE_1_BITS)
+++# define ARCH_X86_FEATURE_1_ENABLE_STRING \
+++  EVALUATOR (ARCH_X86_FEATURE_1_ENABLE)
+++# define SYSCALL_STRING \
+++  EVALUATOR (__NR_arch_prctl)
+++# define THE_FIRST_REG_STRING \
+++  EVALUATOR (THE_FIRST_REG)
+++# define THE_SECOND_REG_STRING \
+++  EVALUATOR (THE_SECOND_REG)
+++# define STARTUP_ENTER_KERNEL_STRING \
+++  EVALUATOR (STARTUP_ENTER_KERNEL)
+++
+++/* This is used by RTLD_START in dl-machine.h.  Ask the kernel to enable
+++   the CET features.  The syscall errror is ignored.  */
+++# undef RTLD_START_ENABLE_X86_FEATURES
+++# define RTLD_START_ENABLE_X86_FEATURES \
+++	"movl	$" X86_FEATURE_1_BITS_STRING ", " \
+++		THE_SECOND_REG_STRING "; \
+++	 movl	$" ARCH_X86_FEATURE_1_ENABLE_STRING ", " \
+++		THE_FIRST_REG_STRING "; \
+++	 movl	$" SYSCALL_STRING ", %eax;" \
+++	 STARTUP_ENTER_KERNEL_STRING ";"
+++#endif
+++
+++#endif /* _dl_start_h */
++diff --git a/sysdeps/unix/sysv/linux/x86_64/dl-start.h b/sysdeps/unix/sysv/linux/x86_64/dl-start.h
++new file mode 100644
++index 0000000000..7a5681220b
++--- /dev/null
+++++ b/sysdeps/unix/sysv/linux/x86_64/dl-start.h
++@@ -0,0 +1,27 @@
+++/* Linux/x86-64 definitions to enable CPU features in ld.so.
+++   Copyright (C) 2022 Free Software Foundation, Inc.
+++   This file is part of the GNU C Library.
+++
+++   The GNU C Library is free software; you can redistribute it and/or
+++   modify it under the terms of the GNU Lesser General Public
+++   License as published by the Free Software Foundation; either
+++   version 2.1 of the License, or (at your option) any later version.
+++
+++   The GNU C Library is distributed in the hope that it will be useful,
+++   but WITHOUT ANY WARRANTY; without even the implied warranty of
+++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+++   Lesser General Public License for more details.
+++
+++   You should have received a copy of the GNU Lesser General Public
+++   License along with the GNU C Library; if not, see
+++   <https://www.gnu.org/licenses/>.  */
+++
+++#ifndef _dl_start_h
+++
+++#define THE_FIRST_REG		%edi
+++#define THE_SECOND_REG		%esi
+++#define STARTUP_ENTER_KERNEL	syscall
+++
+++#include <sysdeps/unix/sysv/linux/x86/dl-start.h>
+++
+++#endif /* _dl_start_h */
++diff --git a/sysdeps/x86/dl-start.h b/sysdeps/x86/dl-start.h
++index 917882a506..af11da2c4a 100644
++--- a/sysdeps/x86/dl-start.h
+++++ b/sysdeps/x86/dl-start.h
++@@ -32,4 +32,9 @@ extern __typeof (memcmp) RTLD_MEMCMP;
++ # define RTLD_MEMCMP	memcmp
++ #endif
++ 
+++/* Instruction sequence to enable x86 CPU features at startup.  */
+++
+++/* This is used by RTLD_START in dl-machine.h.  */
+++#define RTLD_START_ENABLE_X86_FEATURES
+++
++ #endif /* _dl_start_h */
++diff --git a/sysdeps/x86/libc-start.c b/sysdeps/x86/libc-start.c
++index d30aec2aa1..fc780c3885 100644
++--- a/sysdeps/x86/libc-start.c
+++++ b/sysdeps/x86/libc-start.c
++@@ -31,5 +31,79 @@ extern struct cpu_features _dl_x86_cpu_features;
++ 
++ # define ARCH_INIT_CPU_FEATURES() init_cpu_features (&_dl_x86_cpu_features)
++ 
+++# include <sysdep.h>
+++
+++# ifdef __CET__
+++/* The main work is done in the generic function.  */
+++#  define LIBC_START_MAIN generic_start_main
+++# endif
++ #endif /* !SHARED */
+++
++ #include <csu/libc-start.c>
+++
+++#if defined __CET__ && !defined SHARED
+++# if BUILD_PIE_DEFAULT
+++#  include <dl-machine.h>
+++# endif
+++# include <dl-feature.h>
+++
+++extern const ElfW(Ehdr) __ehdr_start
+++# if BUILD_PIE_DEFAULT
+++  __attribute__ ((visibility ("hidden")));
+++# else
+++  __attribute__ ((weak, visibility ("hidden")));
+++# endif
+++
+++int
+++__libc_start_main_impl (int (*main) (int, char **,
+++				     char ** MAIN_AUXVEC_DECL),
+++			int argc, char **argv, __typeof (main) init,
+++			void (*fini) (void),
+++			void (*rtld_fini) (void), void *stack_end)
+++{
+++  if (GL(dl_phdr) == NULL)
+++    {
+++# if !BUILD_PIE_DEFAULT
+++      if (&__ehdr_start != NULL)
+++# endif
+++        {
+++          assert (__ehdr_start.e_phentsize == sizeof *GL(dl_phdr));
+++          GL(dl_phdr) = (const void *) &__ehdr_start + __ehdr_start.e_phoff;
+++          GL(dl_phnum) = __ehdr_start.e_phnum;
+++        }
+++    }
+++
+++  struct link_map *main_map = _dl_get_dl_main_map ();
+++
+++# if BUILD_PIE_DEFAULT
+++  /* Figure out the run-time load address of static PIE.  */
+++  if (__ehdr_start.e_type == ET_DYN)
+++    main_map->l_addr = elf_machine_load_address ();
+++# endif
+++
+++  /* Scan program headers backward to check PT_GNU_PROPERTY early for
+++     x86 feature bits on static executable.  */
+++  const ElfW(Phdr) *phdr = GL(dl_phdr);
+++  const ElfW(Phdr) *ph;
+++  for (ph = phdr + GL(dl_phnum); ph != phdr; ph--)
+++    if (ph[-1].p_type == PT_GNU_PROPERTY)
+++      {
+++	_dl_process_pt_gnu_property (main_map, -1, &ph[-1]);
+++	/* Enable IBT and SHSTK only if they are enabled on static
+++	   executable.  */
+++	unsigned int x86_feature_1 = (main_map->l_x86_feature_1_and
+++				      & (X86_FEATURE_1_IBT
+++					 | X86_FEATURE_1_SHSTK));
+++	if (x86_feature_1)
+++	  dl_feature_1_enable (x86_feature_1);
+++
+++	break;
+++      }
+++
+++  /* This function should never return.  */
+++  return generic_start_main (main, argc, argv, init, fini,
+++			     rtld_fini, stack_end);
+++}
+++
+++DEFINE_LIBC_START_MAIN_VERSION
+++#endif /* LIBC_START_MAIN */
++diff --git a/sysdeps/x86_64/dl-machine.h b/sysdeps/x86_64/dl-machine.h
++index a8596aa3fa..4944edb638 100644
++--- a/sysdeps/x86_64/dl-machine.h
+++++ b/sysdeps/x86_64/dl-machine.h
++@@ -26,6 +26,7 @@
++ #include <sysdep.h>
++ #include <tls.h>
++ #include <dl-tlsdesc.h>
+++#include <dl-start.h>
++ 
++ /* Return nonzero iff ELF header is compatible with the running host.  */
++ static inline int __attribute__ ((unused))
++@@ -139,6 +140,9 @@ elf_machine_runtime_setup (struct link_map *l, int lazy, int profile)
++ .globl _start\n\
++ .globl _dl_start_user\n\
++ _start:\n\
+++" \
+++RTLD_START_ENABLE_X86_FEATURES \
+++"\
++ 	movq %rsp, %rdi\n\
++ 	call _dl_start\n\
++ _dl_start_user:\n\
++-- 
++2.34.1
++
+diff --git a/0005-x86-Modularize-sysdeps-x86-dl-feature.c.patch b/0009-x86-Modularize-sysdeps-x86-dl-feature.c.patch
+similarity index 94%
+rename from 0005-x86-Modularize-sysdeps-x86-dl-feature.c.patch
+rename to 0009-x86-Modularize-sysdeps-x86-dl-feature.c.patch
+index 8338e17..ca1fd00 100644
+--- a/0005-x86-Modularize-sysdeps-x86-dl-feature.c.patch
++++ b/0009-x86-Modularize-sysdeps-x86-dl-feature.c.patch
+@@ -1,7 +1,7 @@
+-From 46f04cded0be992af1e1dea0d678fa8a6fceb461 Mon Sep 17 00:00:00 2001
+-From: Joao Moreira <joao.moreira@intel.com>
+-Date: Mon, 11 Jan 2021 17:44:22 -0800
+-Subject: [PATCH 5/7] x86: Modularize sysdeps/x86/dl-feature.c
++From d16452c2f010eefcef8a323a91ea8efe6e4eb9cf Mon Sep 17 00:00:00 2001
++From: "H.J. Lu" <hjl.tools@gmail.com>
++Date: Fri, 14 Jan 2022 18:54:02 -0800
++Subject: [PATCH 09/11] x86: Modularize sysdeps/x86/dl-feature.c
+ 
+ Improve readability and make maintenance easier for dl-feature.c by
+ modularizing sysdeps/x86/dl-feature.c:
+@@ -12,11 +12,11 @@ modularizing sysdeps/x86/dl-feature.c:
+ 2. Lock CET features only if IBT or SHSTK are enabled and are not
+ enabled permissively.
+ ---
+- sysdeps/x86/dl-feature.c | 457 ++++++++++++++++++++++++---------------
+- 1 file changed, 280 insertions(+), 177 deletions(-)
++ sysdeps/x86/dl-feature.c | 462 ++++++++++++++++++++++++---------------
++ 1 file changed, 281 insertions(+), 181 deletions(-)
+ 
+ diff --git a/sysdeps/x86/dl-feature.c b/sysdeps/x86/dl-feature.c
+-index e18fb5c6ed..31880ca97a 100644
++index d9d312622a..b7f66e4833 100644
+ --- a/sysdeps/x86/dl-feature.c
+ +++ b/sysdeps/x86/dl-feature.c
+ @@ -24,7 +24,7 @@
+@@ -28,7 +28,7 @@ index e18fb5c6ed..31880ca97a 100644
+  #if GNU_PROPERTY_X86_FEATURE_1_IBT != X86_FEATURE_1_IBT
+  # error GNU_PROPERTY_X86_FEATURE_1_IBT != X86_FEATURE_1_IBT
+  #endif
+-@@ -32,206 +32,309 @@
++@@ -32,210 +32,310 @@
+  # error GNU_PROPERTY_X86_FEATURE_1_SHSTK != X86_FEATURE_1_SHSTK
+  #endif
+  
+@@ -69,6 +69,8 @@ index e18fb5c6ed..31880ca97a 100644
+ -  enum dl_x86_feature_control_enum enable_shstk_type
+ -    = GL(dl_x86_feature_control).shstk;
+ -
++-  unsigned int feature_1_status = GL(dl_x86_feature_1);
++-
+ -  /* No legacy object check if both IBT and SHSTK are always on.  */
+ -  if (enable_ibt_type == x86_feature_always_on
+ -      && enable_shstk_type == x86_feature_always_on)
+@@ -78,7 +80,7 @@ index e18fb5c6ed..31880ca97a 100644
+ +  i = m->l_searchlist.r_nlist;
+ +  while (i-- > 0)
+      {
+--      THREAD_SETMEM (THREAD_SELF, header.feature_1, GL(dl_x86_feature_1));
++-      THREAD_SETMEM (THREAD_SELF, header.feature_1, feature_1_status);
+ -      return;
+ -    }
+ +      /* Check each shared object to see if IBT and SHSTK are enabled.  */
+@@ -86,10 +88,10 @@ index e18fb5c6ed..31880ca97a 100644
+  
+ -  /* Check if IBT is enabled by kernel.  */
+ -  bool ibt_enabled
+--    = (GL(dl_x86_feature_1) & GNU_PROPERTY_X86_FEATURE_1_IBT) != 0;
++-    = (feature_1_status & GNU_PROPERTY_X86_FEATURE_1_IBT) != 0;
+ -  /* Check if SHSTK is enabled by kernel.  */
+ -  bool shstk_enabled
+--    = (GL(dl_x86_feature_1) & GNU_PROPERTY_X86_FEATURE_1_SHSTK) != 0;
++-    = (feature_1_status & GNU_PROPERTY_X86_FEATURE_1_SHSTK) != 0;
+ +      if (l->l_init_called)
+ +        continue;
+  
+@@ -265,7 +267,8 @@ index e18fb5c6ed..31880ca97a 100644
+ +	  && info->enable_shstk_type != x86_feature_permissive)
+ +	feature_1_lock |= GNU_PROPERTY_X86_FEATURE_1_SHSTK;
+ +
+-+      if (feature_1_lock != 0 && dl_feature_1_lock () != 0)
+++      if (feature_1_lock != 0
+++	  && dl_feature_1_lock (feature_1_lock) != 0)
+ +	_dl_fatal_printf ("%s: can't lock CET\n", info->program);
+ +    }
+ +
+@@ -394,7 +397,9 @@ index e18fb5c6ed..31880ca97a 100644
+ -	    {
+ -	      /* Lock CET if IBT or SHSTK is enabled in executable unless
+ -	         IBT or SHSTK is enabled permissively.  */
+--	      int res = dl_feature_1_lock ();
++-	      int res = dl_feature_1_lock
++-		(feature_1_status & (GNU_PROPERTY_X86_FEATURE_1_IBT
++-				     | GNU_PROPERTY_X86_FEATURE_1_SHSTK));
+ -	      if (res != 0)
+ -		_dl_fatal_printf ("%s: can't lock CET\n", program);
+ -	    }
+@@ -515,5 +520,5 @@ index e18fb5c6ed..31880ca97a 100644
+  
+  void
+ -- 
+-2.33.1
++2.34.1
+ 
+diff --git a/0006-x86-64-Initial-Intel-LAM-support.patch b/0010-x86-64-Initial-Intel-LAM-support.patch
+similarity index 84%
+rename from 0006-x86-64-Initial-Intel-LAM-support.patch
+rename to 0010-x86-64-Initial-Intel-LAM-support.patch
+index d988f2d..803193b 100644
+--- a/0006-x86-64-Initial-Intel-LAM-support.patch
++++ b/0010-x86-64-Initial-Intel-LAM-support.patch
+@@ -1,7 +1,7 @@
+-From 878d9b264c8e552449d2aefa90ae2bce3db10c86 Mon Sep 17 00:00:00 2001
++From 53866fbaf5b720575a1147b6cb3c4a9a8ba6203d Mon Sep 17 00:00:00 2001
+ From: "H.J. Lu" <hjl.tools@gmail.com>
+ Date: Thu, 7 Jan 2021 06:45:56 -0800
+-Subject: [PATCH 6/7] x86-64: Initial Intel LAM support
++Subject: [PATCH 10/11] x86-64: Initial Intel LAM support
+ 
+ 1. Add GNU_PROPERTY_X86_FEATURE_1_LAM_U[48|57]
+ 2. Add ARCH_X86_FEATURE_1_ENABLE
+@@ -15,13 +15,12 @@ anymore.
+ ---
+  csu/libc-start.c                              |  6 +++
+  elf/elf.h                                     |  4 ++
+- .../unix/sysv/linux/x86/include/asm/prctl.h   |  2 +
+  .../unix/sysv/linux/x86_64/64/arch_prctl.c    | 47 +++++++++++++++++++
+  sysdeps/unix/sysv/linux/x86_64/Makefile       |  2 +-
+  sysdeps/unix/sysv/linux/x86_64/x32/Makefile   |  4 --
+  sysdeps/x86/dl-procruntime.c                  | 14 ++++++
+- sysdeps/x86/libc-start.c                      | 13 +++++
+- 8 files changed, 87 insertions(+), 5 deletions(-)
++ sysdeps/x86/libc-start.c                      | 15 +++++-
++ 7 files changed, 85 insertions(+), 7 deletions(-)
+  create mode 100644 sysdeps/unix/sysv/linux/x86_64/64/arch_prctl.c
+ 
+ diff --git a/csu/libc-start.c b/csu/libc-start.c
+@@ -49,10 +48,10 @@ index 0350b006fd..6531cfa537 100644
+  }
+  
+ diff --git a/elf/elf.h b/elf/elf.h
+-index 4738dfa28f..583a4ce7e0 100644
++index 50f87baceb..c14455616f 100644
+ --- a/elf/elf.h
+ +++ b/elf/elf.h
+-@@ -1356,6 +1356,10 @@ typedef struct
++@@ -1373,6 +1373,10 @@ typedef struct
+  /* This indicates that all executable sections are compatible with
+     SHSTK.  */
+  #define GNU_PROPERTY_X86_FEATURE_1_SHSTK	(1U << 1)
+@@ -63,18 +62,6 @@ index 4738dfa28f..583a4ce7e0 100644
+  
+  /* Move records.  */
+  typedef struct
+-diff --git a/sysdeps/unix/sysv/linux/x86/include/asm/prctl.h b/sysdeps/unix/sysv/linux/x86/include/asm/prctl.h
+-index 4ac763d44a..f7a01b739b 100644
+---- a/sysdeps/unix/sysv/linux/x86/include/asm/prctl.h
+-+++ b/sysdeps/unix/sysv/linux/x86/include/asm/prctl.h
+-@@ -19,5 +19,7 @@
+- # define ARCH_X86_FEATURE_1_DISABLE	0x3002
+- /* Lock FEATURE_1 features.  */
+- # define ARCH_X86_FEATURE_1_LOCK	0x3003
+-+/* Enable FEATURE_1 features in unsigned int features.  */
+-+# define ARCH_X86_FEATURE_1_ENABLE	0x3004
+- 
+- #endif /* ARCH_X86_FEATURE_1_STATUS */
+ diff --git a/sysdeps/unix/sysv/linux/x86_64/64/arch_prctl.c b/sysdeps/unix/sysv/linux/x86_64/64/arch_prctl.c
+ new file mode 100644
+ index 0000000000..68c56596f8
+@@ -180,16 +167,25 @@ index a2a4ab6a5f..e429d7f1e6 100644
+  # if !defined PROCINFO_DECL && defined SHARED
+    ._dl_x86_feature_control
+ diff --git a/sysdeps/x86/libc-start.c b/sysdeps/x86/libc-start.c
+-index d30aec2aa1..fda96e8fb8 100644
++index fc780c3885..6f1326c85b 100644
+ --- a/sysdeps/x86/libc-start.c
+ +++ b/sysdeps/x86/libc-start.c
+-@@ -32,4 +32,17 @@ extern struct cpu_features _dl_x86_cpu_features;
+- # define ARCH_INIT_CPU_FEATURES() init_cpu_features (&_dl_x86_cpu_features)
++@@ -15,8 +15,9 @@
++    License along with the GNU C Library; if not, see
++    <https://www.gnu.org/licenses/>.  */
+  
+- #endif /* !SHARED */
+-+
++-#ifndef SHARED
++-
+++#ifdef SHARED
+ +# include <ldsodefs.h>
+-+
+++#else
++ /* Mark symbols hidden in static PIE for early self relocation to work.  */
++ # if BUILD_PIE_DEFAULT
++ #  pragma GCC visibility push(hidden)
++@@ -39,6 +40,16 @@ extern struct cpu_features _dl_x86_cpu_features;
++ # endif
++ #endif /* !SHARED */
++ 
+ +/* LAM can only be changed before main.  */
+ +# define ARCH_BEFORE_MAIN()			\
+ +  do						\
+@@ -201,6 +197,8 @@ index d30aec2aa1..fda96e8fb8 100644
+ +  while (0)
+ +
+  #include <csu/libc-start.c>
++ 
++ #if defined __CET__ && !defined SHARED
+ -- 
+-2.33.1
++2.34.1
+ 
+diff --git a/0007-x86-64-Add-LAM-tests.patch b/0011-x86-64-Add-LAM-tests.patch
+similarity index 99%
+rename from 0007-x86-64-Add-LAM-tests.patch
+rename to 0011-x86-64-Add-LAM-tests.patch
+index 200b583..3046b13 100644
+--- a/0007-x86-64-Add-LAM-tests.patch
++++ b/0011-x86-64-Add-LAM-tests.patch
+@@ -1,7 +1,7 @@
+-From a044667e713792ec02d7e9455fa6ef7548ce8063 Mon Sep 17 00:00:00 2001
++From b336fb40e4ba27deafdd375b896b1d36da6a3338 Mon Sep 17 00:00:00 2001
+ From: "H.J. Lu" <hjl.tools@gmail.com>
+ Date: Sat, 30 Jan 2021 20:21:23 -0800
+-Subject: [PATCH 7/7] x86-64: Add LAM tests
++Subject: [PATCH 11/11] x86-64: Add LAM tests
+ 
+ 1. Add tst-lam-1, tst-lam-1-static, tst-lam-2, tst-lam-3, tst-lam-4 and
+ tst-lam-4-static.
+@@ -930,5 +930,5 @@ index 0000000000..e9fa5c7e97
+ +
+ +exit $?
+ -- 
+-2.33.1
++2.34.1
+ 
+diff --git a/glibc.spec b/glibc.spec
+index 22bb480..ac2efb3 100644
+--- a/glibc.spec
++++ b/glibc.spec
+@@ -321,16 +321,17 @@ Patch100005: 0001-x86-64-Improve-EVEX-strcmp-with-masked-load.patch
+ Patch100006: 0002-x86-64-Remove-Prefer_AVX2_STRCMP.patch
+ Patch100007: 0001-x86-64-Use-notl-in-EVEX-strcmp-BZ-28646.patch
+ 
+-Patch200001: 0001-Disable-symbol-hack-in-libc_nonshared.a.patch
+-Patch200002: 0002-x86-Replace-ARCH_CET_ALLOC_SHSTK-with-PROT_SHSTK.patch
+-Patch200003: 0003-x86-Add-tst-sigreturn-1.c-from-Linux-kernel.patch
+-Patch200004: 0004-x86-Extend-CET-features-to-cover-other-features.patch
+-Patch200005: 0005-x86-Modularize-sysdeps-x86-dl-feature.c.patch
+-Patch200006: 0006-x86-64-Initial-Intel-LAM-support.patch
+-Patch200007: 0007-x86-64-Add-LAM-tests.patch
+-
+-Patch300001: 0001-Initial-support-for-GNU_PROPERTY_1_NEEDED.patch
+-Patch300002: 0002-Add-run-time-check-for-indirect-external-access.patch
++Patch200001: 0001-Initial-support-for-GNU_PROPERTY_1_NEEDED.patch
++Patch200002: 0002-Add-run-time-check-for-indirect-external-access.patch
++Patch200003: 0003-Disable-symbol-hack-in-libc_nonshared.a.patch
++Patch200004: 0004-x86-Add-fixup-asm-unistd.h-and-regenerate-arch-sysca.patch
++Patch200005: 0005-x86-cet-Sync-with-the-kernel-CET-interface.patch
++Patch200006: 0006-x86-Check-PT_GNU_PROPERTY-early.patch
++Patch200007: 0007-elf-Always-define-_dl_get_dl_main_map-in-libc.a.patch
++Patch200008: 0008-x86-Enable-x86-CPU-features-during-startup.patch
++Patch200009: 0009-x86-Modularize-sysdeps-x86-dl-feature.c.patch
++Patch200010: 0010-x86-64-Initial-Intel-LAM-support.patch
++Patch200011: 0011-x86-64-Add-LAM-tests.patch
+ 
+ Patch400001: 0001-Properly-check-linker-option-in-LIBC_LINKER_FEATURE-.patch
+ Patch400002: 0002-elf-Support-DT_RELR-relative-relocation-format-BZ-27.patch
+-- 
+2.34.1
+
