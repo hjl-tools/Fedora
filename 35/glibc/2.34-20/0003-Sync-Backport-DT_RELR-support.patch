@@ -1,0 +1,78 @@
+From 8a236f80222b80449b6ffd87096a02843513ad1f Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Fri, 21 Jan 2022 05:41:19 -0800
+Subject: [PATCH 3/3] Sync Backport DT_RELR support
+
+Sync with glibc-2.34-20.fc35
+---
+ ...ELR-relative-relocation-format-BZ-27.patch |  6 ++--
+ ...LIBC_ABI_DT_RELR-for-DT_RELR-support.patch | 28 +++++++++----------
+ 2 files changed, 16 insertions(+), 18 deletions(-)
+
+diff --git a/0002-elf-Support-DT_RELR-relative-relocation-format-BZ-27.patch b/0002-elf-Support-DT_RELR-relative-relocation-format-BZ-27.patch
+index 674cc6d..4333110 100644
+--- a/0002-elf-Support-DT_RELR-relative-relocation-format-BZ-27.patch
++++ b/0002-elf-Support-DT_RELR-relative-relocation-format-BZ-27.patch
+@@ -176,9 +176,9 @@ diff --git a/elf/Makefile b/elf/Makefile
+ index 118d579c42..2c18e06aaf 100644
+ --- a/elf/Makefile
+ +++ b/elf/Makefile
+-@@ -238,6 +238,13 @@ selinux-enabled := $(shell cat /selinux/enforce 2> /dev/null)
+- ifneq ($(selinux-enabled),1)
+- tests-execstack-yes = tst-execstack tst-execstack-needed tst-execstack-prog
++@@ -489,6 +489,13 @@ tests-execstack-yes = \
++   tst-execstack-prog \
++   # tests-execstack-yes
+  endif
+ +ifeq ($(have-dt-relr),yes)
+ +tests += tst-relr tst-relr-no-pie
+diff --git a/0004-Add-GLIBC_ABI_DT_RELR-for-DT_RELR-support.patch b/0004-Add-GLIBC_ABI_DT_RELR-for-DT_RELR-support.patch
+index 50ae4eb..8698bd2 100644
+--- a/0004-Add-GLIBC_ABI_DT_RELR-for-DT_RELR-support.patch
++++ b/0004-Add-GLIBC_ABI_DT_RELR-for-DT_RELR-support.patch
+@@ -31,18 +31,16 @@ diff --git a/elf/Makefile b/elf/Makefile
+ index 2c18e06aaf..3680e89131 100644
+ --- a/elf/Makefile
+ +++ b/elf/Makefile
+-@@ -25,7 +25,8 @@ headers		= elf.h bits/elfclass.h link.h bits/link.h
+- routines	= $(all-dl-routines) dl-support dl-iteratephdr \
+- 		  dl-addr dl-addr-obj enbl-secure dl-profstub \
+- 		  dl-origin dl-libc dl-sym dl-sysdep dl-error \
+--		  dl-reloc-static-pie libc_early_init rtld_static_init
+-+		  dl-reloc-static-pie libc_early_init rtld_static_init \
+-+		  libc-abi-version
+- 
+- # The core dynamic linking functions are in libc for the static and
+- # profiled libraries.
+-@@ -477,8 +478,10 @@ tests-special += $(objpfx)order-cmp.out $(objpfx)tst-array1-cmp.out \
+- 		 $(objpfx)tst-unused-dep-cmp.out
++@@ -42,6 +42,7 @@ routines = \
++   dl-sym \
++   dl-sysdep \
++   enbl-secure \
+++  libc-abi-version \
++   libc_early_init \
++   rtld_static_init \
++   # routines
++@@ -984,8 +984,10 @@ $(eval $(call include_dsosort_tests,dso-
++ $(eval $(call include_dsosort_tests,dso-sort-tests-2.def))
+  endif
+  
+ -check-abi: $(objpfx)check-abi-ld.out
+@@ -54,10 +52,10 @@ index 2c18e06aaf..3680e89131 100644
+  update-abi: update-abi-ld
+  update-all-abi: update-all-abi-ld
+  
+-@@ -1921,3 +1924,13 @@ $(objpfx)tst-ro-dynamic-mod.so: $(objpfx)tst-ro-dynamic-mod.os \
+- 	$(LINK.o) -nostdlib -nostartfiles -shared -o $@ \
+- 		-Wl,--script=tst-ro-dynamic-mod.map \
++@@ -2438,3 +2440,13 @@ $(objpfx)tst-ro-dynamic-mod.so: $(objpfx
+  		$(objpfx)tst-ro-dynamic-mod.os
++ 
++ $(objpfx)tst-rtld-run-static.out: $(objpfx)/ldconfig
+ +
+ +$(objpfx)check-abi-version-libc.out: libc-abi-version.exp \
+ +  $(objpfx)libc.symlist-abi-version
+-- 
+2.34.1
+

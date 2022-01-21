@@ -1,0 +1,931 @@
+From 7b875c5833d7534b190f074fc4f4c839e02b9b4c Mon Sep 17 00:00:00 2001
+From: "H.J. Lu" <hjl.tools@gmail.com>
+Date: Fri, 21 Jan 2022 05:12:46 -0800
+Subject: [PATCH 2/3] Update Backport DT_RELR support
+
+0e4ae45dd9 Add GLIBC_ABI_DT_RELR for DT_RELR support
+a15df7ed82 elf: Properly handle zero DT_RELA/DT_REL values
+268016b764 elf: Support DT_RELR relative relocation format [BZ #27924]
+394bb7a6cb Properly check linker option in LIBC_LINKER_FEATURE [BZ #28738]
+---
+ ...inker-option-in-LIBC_LINKER_FEATURE-.patch |   4 +-
+ ...ELR-relative-relocation-format-BZ-27.patch | 126 ++++--
+ ...LIBC_ABI_DT_RELR-for-DT_RELR-support.patch | 414 ------------------
+ ...ly-handle-zero-DT_RELA-DT_REL-values.patch |   8 +-
+ ...LIBC_ABI_DT_RELR-for-DT_RELR-support.patch | 134 ++++++
+ ...T_RELR-relocation-only-once-on-ld.so.patch |  40 --
+ glibc.spec                                    |   5 +-
+ 7 files changed, 222 insertions(+), 509 deletions(-)
+ delete mode 100644 0003-Add-GLIBC_ABI_DT_RELR-for-DT_RELR-support.patch
+ rename 0004-elf-Properly-handle-zero-DT_RELA-DT_REL-values.patch => 0003-elf-Properly-handle-zero-DT_RELA-DT_REL-values.patch (94%)
+ create mode 100644 0004-Add-GLIBC_ABI_DT_RELR-for-DT_RELR-support.patch
+ delete mode 100644 0005-elf-Perform-DT_RELR-relocation-only-once-on-ld.so.patch
+
+diff --git a/0001-Properly-check-linker-option-in-LIBC_LINKER_FEATURE-.patch b/0001-Properly-check-linker-option-in-LIBC_LINKER_FEATURE-.patch
+index 529c1f1..5d9a673 100644
+--- a/0001-Properly-check-linker-option-in-LIBC_LINKER_FEATURE-.patch
++++ b/0001-Properly-check-linker-option-in-LIBC_LINKER_FEATURE-.patch
+@@ -1,7 +1,7 @@
+ From 394bb7a6cb2e2eeed462ad0ff8f9e98e63bb46ff Mon Sep 17 00:00:00 2001
+ From: "H.J. Lu" <hjl.tools@gmail.com>
+ Date: Sun, 2 Jan 2022 06:01:21 -0800
+-Subject: [PATCH 1/5] Properly check linker option in LIBC_LINKER_FEATURE [BZ
++Subject: [PATCH 1/4] Properly check linker option in LIBC_LINKER_FEATURE [BZ
+  #28738]
+ 
+ Update LIBC_LINKER_FEATURE to also check linker warning message since
+@@ -93,5 +93,5 @@ index 9619c10991..5578d39c69 100755
+      rm -f conftest*
+    fi
+ -- 
+-2.33.1
++2.34.1
+ 
+diff --git a/0002-elf-Support-DT_RELR-relative-relocation-format-BZ-27.patch b/0002-elf-Support-DT_RELR-relative-relocation-format-BZ-27.patch
+index 56acb4e..674cc6d 100644
+--- a/0002-elf-Support-DT_RELR-relative-relocation-format-BZ-27.patch
++++ b/0002-elf-Support-DT_RELR-relative-relocation-format-BZ-27.patch
+@@ -1,7 +1,7 @@
+-From 9b3fed8741c46f3bd4d53e3dcad549a669ca0d69 Mon Sep 17 00:00:00 2001
++From 268016b7647908d08d93a6082336e75ba66548de Mon Sep 17 00:00:00 2001
+ From: Fangrui Song <maskray@google.com>
+-Date: Mon, 18 Oct 2021 12:47:16 -0700
+-Subject: [PATCH 2/5] elf: Support DT_RELR relative relocation format [BZ
++Date: Tue, 4 Jan 2022 18:41:03 -0800
++Subject: [PATCH 2/4] elf: Support DT_RELR relative relocation format [BZ
+  #27924]
+ 
+ PIE and shared objects usually have many relative relocations. In
+@@ -53,49 +53,61 @@ As of linker support (to the best of my knowledge):
+   has a gold patch.
+ * GNU ld feature request https://sourceware.org/bugzilla/show_bug.cgi?id=27923
+ 
+-I wish that GNU ld and gold maintainers can implement the feature as well :)
++Changes from the original patch:
+ 
+-Tested on aarch64 and x86_64.
+-
+-Changes from v2
+-
+-* Check -z pack-relative-dyn-relocs instead of --pack-dyn-relocs=relr.
+-
+-Changes from v1 (https://sourceware.org/pipermail/libc-alpha/2021-October/131768.html)
+-* Fix style, simplify code
+-* Improve test
++1. Check the linker option, -z pack-relative-relocs, which add a
++GLIBC_ABI_DT_RELR symbol version dependency on the shared C library if
++it provides a GLIBC_2.XX symbol version.
++2. Define HAVE_DT_RELR and support DT_RELR only if -z pack-relative-relocs
++is available.
++3. Change make variale to have-dt-relr.
+ ---
+- configure              | 41 ++++++++++++++++++++++++++++++++++++++
+- configure.ac           |  5 +++++
+- elf/Makefile           |  7 +++++++
+- elf/dynamic-link.h     | 28 ++++++++++++++++++++++++++
+- elf/elf.h              | 13 ++++++++++--
++ config.h.in            |  3 +++
++ configure              | 50 ++++++++++++++++++++++++++++++++++++++++++
++ configure.ac           | 11 ++++++++++
++ elf/Makefile           |  7 ++++++
++ elf/dynamic-link.h     | 34 ++++++++++++++++++++++++++++
++ elf/elf.h              | 13 +++++++++--
+  elf/get-dynamic-info.h |  3 +++
+  elf/tst-relr-no-pie.c  |  1 +
+- elf/tst-relr.c         | 45 ++++++++++++++++++++++++++++++++++++++++++
+- 8 files changed, 141 insertions(+), 2 deletions(-)
++ elf/tst-relr.c         | 45 +++++++++++++++++++++++++++++++++++++
++ 9 files changed, 165 insertions(+), 2 deletions(-)
+  create mode 100644 elf/tst-relr-no-pie.c
+  create mode 100644 elf/tst-relr.c
+ 
++diff --git a/config.h.in b/config.h.in
++index 8b45a3a61d..fd15826bd1 100644
++--- a/config.h.in
+++++ b/config.h.in
++@@ -59,6 +59,9 @@
++ /* Define if the linker supports the -z combreloc option.  */
++ #undef	HAVE_Z_COMBRELOC
++ 
+++/* Define if the linker supports the -z pack-relative-relocs option.  */
+++#undef	HAVE_DT_RELR
+++
++ /* Define if _rtld_local structure should be forced into .sdata section.  */
++ #undef	HAVE_SDATA_SECTION
++ 
+ diff --git a/configure b/configure
+-index 5578d39c69..c1a3cfc12b 100755
++index 5578d39c69..a6e2593239 100755
+ --- a/configure
+ +++ b/configure
+-@@ -5983,6 +5983,47 @@ $as_echo "$libc_linker_feature" >&6; }
++@@ -5983,6 +5983,56 @@ $as_echo "$libc_linker_feature" >&6; }
+  config_vars="$config_vars
+  have-z-start-stop-gc = $libc_cv_z_start_stop_gc"
+  
+-+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for linker that supports -z pack-relative-dyn-relocs" >&5
+-+$as_echo_n "checking for linker that supports -z pack-relative-dyn-relocs... " >&6; }
+++{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for linker that supports -z pack-relative-relocs" >&5
+++$as_echo_n "checking for linker that supports -z pack-relative-relocs... " >&6; }
+ +libc_linker_feature=no
+ +if test x"$gnu_ld" = x"yes"; then
+-+  libc_linker_check=`$LD -v --help 2>/dev/null | grep "\-z pack-relative-dyn-relocs"`
+++  libc_linker_check=`$LD -v --help 2>/dev/null | grep "\-z pack-relative-relocs"`
+ +  if test -n "$libc_linker_check"; then
+ +    cat > conftest.c <<EOF
+ +int _start (void) { return 42; }
+ +EOF
+ +    if { ac_try='${CC-cc} $CFLAGS $CPPFLAGS $LDFLAGS $no_ssp
+-+				-Wl,-z,pack-relative-dyn-relocs -nostdlib -nostartfiles
+++				-Wl,-z,pack-relative-relocs -nostdlib -nostartfiles
+ +				-fPIC -shared -o conftest.so conftest.c
+ +				1>&5'
+ +  { { eval echo "\"\$as_me\":${as_lineno-$LINENO}: \"$ac_try\""; } >&5
+@@ -104,10 +116,10 @@ index 5578d39c69..c1a3cfc12b 100755
+ +  $as_echo "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
+ +  test $ac_status = 0; }; }
+ +    then
+-+      if ${CC-cc} $CFLAGS $CPPFLAGS $LDFLAGS $no_ssp -Wl,-z,pack-relative-dyn-relocs \
+++      if ${CC-cc} $CFLAGS $CPPFLAGS $LDFLAGS $no_ssp -Wl,-z,pack-relative-relocs \
+ +		-nostdlib -nostartfiles -fPIC -shared -o conftest.so \
+ +		conftest.c 2>&1 \
+-+	| grep "warning: -z pack-relative-dyn-relocs ignored" > /dev/null 2>&1; then
+++	| grep "warning: -z pack-relative-relocs ignored" > /dev/null 2>&1; then
+ +        true
+ +      else
+ +        libc_linker_feature=yes
+@@ -117,57 +129,72 @@ index 5578d39c69..c1a3cfc12b 100755
+ +  fi
+ +fi
+ +if test $libc_linker_feature = yes; then
+-+  libc_cv_relr=yes
+++  libc_cv_dt_relr=yes
+ +else
+-+  libc_cv_relr=no
+++  libc_cv_dt_relr=no
+ +fi
+ +{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $libc_linker_feature" >&5
+ +$as_echo "$libc_linker_feature" >&6; }
+ +config_vars="$config_vars
+-+have-relr = $libc_cv_relr"
+++have-dt-relr = $libc_cv_dt_relr"
+++if test "$libc_cv_dt_relr" = yes; then
+++  have_dt_relr=1
+++else
+++  have_dt_relr=0
+++fi
+++cat >>confdefs.h <<_ACEOF
+++#define HAVE_DT_RELR $have_dt_relr
+++_ACEOF
+++
+ +
+  { $as_echo "$as_me:${as_lineno-$LINENO}: checking for linker that supports --no-dynamic-linker" >&5
+  $as_echo_n "checking for linker that supports --no-dynamic-linker... " >&6; }
+  libc_linker_feature=no
+ diff --git a/configure.ac b/configure.ac
+-index 34ecbba540..cef35214c1 100644
++index 34ecbba540..dae7c8aba2 100644
+ --- a/configure.ac
+ +++ b/configure.ac
+-@@ -1337,6 +1337,11 @@ LIBC_LINKER_FEATURE([-z start-stop-gc], [-Wl,-z,start-stop-gc],
++@@ -1337,6 +1337,17 @@ LIBC_LINKER_FEATURE([-z start-stop-gc], [-Wl,-z,start-stop-gc],
+  		    [libc_cv_z_start_stop_gc=yes], [libc_cv_z_start_stop_gc=no])
+  LIBC_CONFIG_VAR([have-z-start-stop-gc], [$libc_cv_z_start_stop_gc])
+  
+-+LIBC_LINKER_FEATURE([-z pack-relative-dyn-relocs],
+-+		    [-Wl,-z,pack-relative-dyn-relocs],
+-+		    [libc_cv_relr=yes], [libc_cv_relr=no])
+-+LIBC_CONFIG_VAR([have-relr], [$libc_cv_relr])
+++LIBC_LINKER_FEATURE([-z pack-relative-relocs],
+++		    [-Wl,-z,pack-relative-relocs],
+++		    [libc_cv_dt_relr=yes], [libc_cv_dt_relr=no])
+++LIBC_CONFIG_VAR([have-dt-relr], [$libc_cv_dt_relr])
+++if test "$libc_cv_dt_relr" = yes; then
+++  have_dt_relr=1
+++else
+++  have_dt_relr=0
+++fi
+++AC_DEFINE_UNQUOTED(HAVE_DT_RELR, $have_dt_relr)
+ +
+  LIBC_LINKER_FEATURE([--no-dynamic-linker],
+  		    [-Wl,--no-dynamic-linker],
+  		    [libc_cv_no_dynamic_linker=yes],
+ diff --git a/elf/Makefile b/elf/Makefile
+-index 118d579c42..91a657a7a5 100644
++index 118d579c42..2c18e06aaf 100644
+ --- a/elf/Makefile
+ +++ b/elf/Makefile
+ @@ -238,6 +238,13 @@ selinux-enabled := $(shell cat /selinux/enforce 2> /dev/null)
+  ifneq ($(selinux-enabled),1)
+  tests-execstack-yes = tst-execstack tst-execstack-needed tst-execstack-prog
+  endif
+-+ifeq ($(have-relr),yes)
+++ifeq ($(have-dt-relr),yes)
+ +tests += tst-relr tst-relr-no-pie
+ +tests-pie += tst-relr
+ +tests-no-pie += tst-relr-no-pie
+-+LDFLAGS-tst-relr += -Wl,-z,pack-relative-dyn-relocs
+-+LDFLAGS-tst-relr-no-pie += -Wl,-z,pack-relative-dyn-relocs
+++LDFLAGS-tst-relr += -Wl,-z,pack-relative-relocs
+++LDFLAGS-tst-relr-no-pie += -Wl,-z,pack-relative-relocs
+ +endif
+  endif
+  tests += $(tests-execstack-$(have-z-execstack))
+  ifeq ($(run-built-tests),yes)
+ diff --git a/elf/dynamic-link.h b/elf/dynamic-link.h
+-index 3eb24ba3a6..0fcfa3c599 100644
++index 3eb24ba3a6..6a6796483f 100644
+ --- a/elf/dynamic-link.h
+ +++ b/elf/dynamic-link.h
+-@@ -190,6 +190,33 @@ elf_machine_lazy_rel (struct link_map *map,
++@@ -190,14 +190,48 @@ elf_machine_lazy_rel (struct link_map *map,
+  #  define ELF_DYNAMIC_DO_RELA(map, lazy, skip_ifunc) /* Nothing to do.  */
+  # endif
+  
+@@ -200,12 +227,19 @@ index 3eb24ba3a6..0fcfa3c599 100644
+ +
+  /* This can't just be an inline function because GCC is too dumb
+     to inline functions containing inlines themselves.  */
+++# ifdef RTLD_BOOTSTRAP
+++#  define DO_RTLD_BOOTSTRAP 1
+++# else
+++#  define DO_RTLD_BOOTSTRAP 0
+++# endif
+  # define ELF_DYNAMIC_RELOCATE(map, lazy, consider_profile, skip_ifunc) \
+-@@ -198,6 +225,7 @@ elf_machine_lazy_rel (struct link_map *map,
++   do {									      \
++     int edr_lazy = elf_machine_runtime_setup ((map), (lazy),		      \
+  					      (consider_profile));	      \
+      ELF_DYNAMIC_DO_REL ((map), edr_lazy, skip_ifunc);			      \
+      ELF_DYNAMIC_DO_RELA ((map), edr_lazy, skip_ifunc);			      \
+-+    ELF_DYNAMIC_DO_RELR ((map));					      \
+++    if (HAVE_DT_RELR && ((map) != &GL(dl_rtld_map) || DO_RTLD_BOOTSTRAP))     \
+++      ELF_DYNAMIC_DO_RELR (map);					      \
+    } while (0)
+  
+  #endif
+@@ -327,5 +361,5 @@ index 0000000000..0b0fe5ed17
+ +
+ +#include <support/test-driver.c>
+ -- 
+-2.33.1
++2.34.1
+ 
+diff --git a/0003-Add-GLIBC_ABI_DT_RELR-for-DT_RELR-support.patch b/0003-Add-GLIBC_ABI_DT_RELR-for-DT_RELR-support.patch
+deleted file mode 100644
+index 4e12e3e..0000000
+--- a/0003-Add-GLIBC_ABI_DT_RELR-for-DT_RELR-support.patch
++++ /dev/null
+@@ -1,414 +0,0 @@
+-From 23afc558ef62e61d4be15385d25e3c9f2703f036 Mon Sep 17 00:00:00 2001
+-From: "H.J. Lu" <hjl.tools@gmail.com>
+-Date: Fri, 19 Nov 2021 06:18:56 -0800
+-Subject: [PATCH 3/5] Add GLIBC_ABI_DT_RELR for DT_RELR support
+-
+-The EI_ABIVERSION field of the ELF header in executables and shared
+-libraries can be bumped to indicate the minimum ABI requirement on the
+-dynamic linker.  However, EI_ABIVERSION in executables isn't checked by
+-the Linux kernel ELF loader nor the existing dynamic linker.  Executables
+-will crash mysteriously if the dynamic linker doesn't support the ABI
+-features required by the EI_ABIVERSION field.  The dynamic linker should
+-be changed to check EI_ABIVERSION in executables.
+-
+-Add a glibc version, GLIBC_ABI_DT_RELR, to indicate DT_RELR support so
+-that the existing dynamic linkers will issue an error on executables
+-with GLIBC_ABI_DT_RELR depdendency.
+-
+-A dummy symbol, __libc_abi_version_placeholder, is added since linker
+-won't create a symbol version node with an empty symbol list.
+----
+- elf/Makefile                                  |  3 ++-
+- elf/Versions                                  |  3 +++
+- elf/libc-abi-version.c                        | 21 +++++++++++++++++++
+- sysdeps/mach/hurd/i386/libc.abilist           |  1 +
+- sysdeps/unix/sysv/linux/aarch64/libc.abilist  |  1 +
+- sysdeps/unix/sysv/linux/alpha/libc.abilist    |  1 +
+- sysdeps/unix/sysv/linux/arc/libc.abilist      |  1 +
+- sysdeps/unix/sysv/linux/arm/be/libc.abilist   |  1 +
+- sysdeps/unix/sysv/linux/arm/le/libc.abilist   |  1 +
+- sysdeps/unix/sysv/linux/csky/libc.abilist     |  1 +
+- sysdeps/unix/sysv/linux/hppa/libc.abilist     |  1 +
+- sysdeps/unix/sysv/linux/i386/libc.abilist     |  1 +
+- sysdeps/unix/sysv/linux/ia64/libc.abilist     |  1 +
+- .../sysv/linux/m68k/coldfire/libc.abilist     |  1 +
+- .../unix/sysv/linux/m68k/m680x0/libc.abilist  |  1 +
+- .../sysv/linux/microblaze/be/libc.abilist     |  1 +
+- .../sysv/linux/microblaze/le/libc.abilist     |  1 +
+- .../sysv/linux/mips/mips32/fpu/libc.abilist   |  1 +
+- .../sysv/linux/mips/mips32/nofpu/libc.abilist |  1 +
+- .../sysv/linux/mips/mips64/n32/libc.abilist   |  1 +
+- .../sysv/linux/mips/mips64/n64/libc.abilist   |  1 +
+- sysdeps/unix/sysv/linux/nios2/libc.abilist    |  1 +
+- .../linux/powerpc/powerpc32/fpu/libc.abilist  |  1 +
+- .../powerpc/powerpc32/nofpu/libc.abilist      |  1 +
+- .../linux/powerpc/powerpc64/be/libc.abilist   |  1 +
+- .../linux/powerpc/powerpc64/le/libc.abilist   |  1 +
+- .../unix/sysv/linux/riscv/rv32/libc.abilist   |  1 +
+- .../unix/sysv/linux/riscv/rv64/libc.abilist   |  1 +
+- .../unix/sysv/linux/s390/s390-32/libc.abilist |  1 +
+- .../unix/sysv/linux/s390/s390-64/libc.abilist |  1 +
+- sysdeps/unix/sysv/linux/sh/be/libc.abilist    |  1 +
+- sysdeps/unix/sysv/linux/sh/le/libc.abilist    |  1 +
+- .../sysv/linux/sparc/sparc32/libc.abilist     |  1 +
+- .../sysv/linux/sparc/sparc64/libc.abilist     |  1 +
+- .../unix/sysv/linux/x86_64/64/libc.abilist    |  1 +
+- .../unix/sysv/linux/x86_64/x32/libc.abilist   |  1 +
+- 36 files changed, 59 insertions(+), 1 deletion(-)
+- create mode 100644 elf/libc-abi-version.c
+-
+-diff --git a/elf/Makefile b/elf/Makefile
+-index 2c18e06aaf..83164a4a7b 100644
+---- a/elf/Makefile
+-+++ b/elf/Makefile
+-@@ -25,7 +25,8 @@ headers		= elf.h bits/elfclass.h link.h bits/link.h
+- routines	= $(all-dl-routines) dl-support dl-iteratephdr \
+- 		  dl-addr dl-addr-obj enbl-secure dl-profstub \
+- 		  dl-origin dl-libc dl-sym dl-sysdep dl-error \
+--		  dl-reloc-static-pie libc_early_init rtld_static_init
+-+		  dl-reloc-static-pie libc_early_init rtld_static_init \
+-+		  libc-abi-version
+- 
+- # The core dynamic linking functions are in libc for the static and
+- # profiled libraries.
+-diff --git a/elf/Versions b/elf/Versions
+-index 775aab62af..5d7d9ac9b8 100644
+---- a/elf/Versions
+-+++ b/elf/Versions
+-@@ -20,6 +20,9 @@ libc {
+-     __register_frame_info_table_bases; _Unwind_Find_FDE;
+-   }
+- %endif
+-+  GLIBC_ABI_DT_RELR {
+-+    __libc_abi_version_placeholder;
+-+  }
+-   GLIBC_PRIVATE {
+-     # functions used in other libraries
+-     __libc_early_init;
+-diff --git a/elf/libc-abi-version.c b/elf/libc-abi-version.c
+-new file mode 100644
+-index 0000000000..8b0a34f3bc
+---- /dev/null
+-+++ b/elf/libc-abi-version.c
+-@@ -0,0 +1,21 @@
+-+/* Placeholder definition for GLIBC_ABI_VERSION nodes.
+-+   Copyright (C) 2022 Free Software Foundation, Inc.
+-+   This file is part of the GNU C Library.
+-+
+-+   The GNU C Library is free software; you can redistribute it and/or
+-+   modify it under the terms of the GNU Lesser General Public
+-+   License as published by the Free Software Foundation; either
+-+   version 2.1 of the License, or (at your option) any later version.
+-+
+-+   The GNU C Library is distributed in the hope that it will be useful,
+-+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+-+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+-+   Lesser General Public License for more details.
+-+
+-+   You should have received a copy of the GNU Lesser General Public
+-+   License along with the GNU C Library; if not, see
+-+   <https://www.gnu.org/licenses/>.  */
+-+
+-+#ifdef SHARED
+-+char __libc_abi_version_placeholder attribute_compat_data_section;
+-+#endif
+-diff --git a/sysdeps/mach/hurd/i386/libc.abilist b/sysdeps/mach/hurd/i386/libc.abilist
+-index c5da10a0cd..3a67a2aaa8 100644
+---- a/sysdeps/mach/hurd/i386/libc.abilist
+-+++ b/sysdeps/mach/hurd/i386/libc.abilist
+-@@ -2423,3 +2423,4 @@ HURD_CTHREADS_0.3 __spin_lock_init F
+- HURD_CTHREADS_0.3 __spin_lock_solid F
+- HURD_CTHREADS_0.3 __spin_try_lock F
+- HURD_CTHREADS_0.3 __spin_unlock F
+-+GLIBC_ABI_DT_RELR __libc_abi_version_placeholder D 0x1
+-diff --git a/sysdeps/unix/sysv/linux/aarch64/libc.abilist b/sysdeps/unix/sysv/linux/aarch64/libc.abilist
+-index 21a2e50a88..10646eb557 100644
+---- a/sysdeps/unix/sysv/linux/aarch64/libc.abilist
+-+++ b/sysdeps/unix/sysv/linux/aarch64/libc.abilist
+-@@ -2612,3 +2612,4 @@ GLIBC_2.34 tss_create F
+- GLIBC_2.34 tss_delete F
+- GLIBC_2.34 tss_get F
+- GLIBC_2.34 tss_set F
+-+GLIBC_ABI_DT_RELR __libc_abi_version_placeholder D 0x1
+-diff --git a/sysdeps/unix/sysv/linux/alpha/libc.abilist b/sysdeps/unix/sysv/linux/alpha/libc.abilist
+-index a201fd69ba..bc3ad32df6 100644
+---- a/sysdeps/unix/sysv/linux/alpha/libc.abilist
+-+++ b/sysdeps/unix/sysv/linux/alpha/libc.abilist
+-@@ -3037,3 +3037,4 @@ GLIBC_2.9 ns_name_skip F
+- GLIBC_2.9 ns_name_uncompress F
+- GLIBC_2.9 ns_name_unpack F
+- GLIBC_2.9 pipe2 F
+-+GLIBC_ABI_DT_RELR __libc_abi_version_placeholder D 0x1
+-diff --git a/sysdeps/unix/sysv/linux/arc/libc.abilist b/sysdeps/unix/sysv/linux/arc/libc.abilist
+-index 2611436937..01fcb27477 100644
+---- a/sysdeps/unix/sysv/linux/arc/libc.abilist
+-+++ b/sysdeps/unix/sysv/linux/arc/libc.abilist
+-@@ -2373,3 +2373,4 @@ GLIBC_2.34 tss_create F
+- GLIBC_2.34 tss_delete F
+- GLIBC_2.34 tss_get F
+- GLIBC_2.34 tss_set F
+-+GLIBC_ABI_DT_RELR __libc_abi_version_placeholder D 0x1
+-diff --git a/sysdeps/unix/sysv/linux/arm/be/libc.abilist b/sysdeps/unix/sysv/linux/arm/be/libc.abilist
+-index a426241965..b36c7ae5ee 100644
+---- a/sysdeps/unix/sysv/linux/arm/be/libc.abilist
+-+++ b/sysdeps/unix/sysv/linux/arm/be/libc.abilist
+-@@ -2736,3 +2736,4 @@ GLIBC_2.9 ns_name_skip F
+- GLIBC_2.9 ns_name_uncompress F
+- GLIBC_2.9 ns_name_unpack F
+- GLIBC_2.9 pipe2 F
+-+GLIBC_ABI_DT_RELR __libc_abi_version_placeholder D 0x1
+-diff --git a/sysdeps/unix/sysv/linux/arm/le/libc.abilist b/sysdeps/unix/sysv/linux/arm/le/libc.abilist
+-index 02f80418cc..90179ab21d 100644
+---- a/sysdeps/unix/sysv/linux/arm/le/libc.abilist
+-+++ b/sysdeps/unix/sysv/linux/arm/le/libc.abilist
+-@@ -2733,3 +2733,4 @@ GLIBC_2.9 ns_name_skip F
+- GLIBC_2.9 ns_name_uncompress F
+- GLIBC_2.9 ns_name_unpack F
+- GLIBC_2.9 pipe2 F
+-+GLIBC_ABI_DT_RELR __libc_abi_version_placeholder D 0x1
+-diff --git a/sysdeps/unix/sysv/linux/csky/libc.abilist b/sysdeps/unix/sysv/linux/csky/libc.abilist
+-index b7676eb372..547a098410 100644
+---- a/sysdeps/unix/sysv/linux/csky/libc.abilist
+-+++ b/sysdeps/unix/sysv/linux/csky/libc.abilist
+-@@ -2647,3 +2647,4 @@ GLIBC_2.34 tss_create F
+- GLIBC_2.34 tss_delete F
+- GLIBC_2.34 tss_get F
+- GLIBC_2.34 tss_set F
+-+GLIBC_ABI_DT_RELR __libc_abi_version_placeholder D 0x1
+-diff --git a/sysdeps/unix/sysv/linux/hppa/libc.abilist b/sysdeps/unix/sysv/linux/hppa/libc.abilist
+-index f6965c9d95..b44019ff85 100644
+---- a/sysdeps/unix/sysv/linux/hppa/libc.abilist
+-+++ b/sysdeps/unix/sysv/linux/hppa/libc.abilist
+-@@ -2755,3 +2755,4 @@ GLIBC_2.9 ns_name_skip F
+- GLIBC_2.9 ns_name_uncompress F
+- GLIBC_2.9 ns_name_unpack F
+- GLIBC_2.9 pipe2 F
+-+GLIBC_ABI_DT_RELR __libc_abi_version_placeholder D 0x1
+-diff --git a/sysdeps/unix/sysv/linux/i386/libc.abilist b/sysdeps/unix/sysv/linux/i386/libc.abilist
+-index 2e7603d9ed..c7065dd500 100644
+---- a/sysdeps/unix/sysv/linux/i386/libc.abilist
+-+++ b/sysdeps/unix/sysv/linux/i386/libc.abilist
+-@@ -2939,3 +2939,4 @@ GLIBC_2.9 ns_name_skip F
+- GLIBC_2.9 ns_name_uncompress F
+- GLIBC_2.9 ns_name_unpack F
+- GLIBC_2.9 pipe2 F
+-+GLIBC_ABI_DT_RELR __libc_abi_version_placeholder D 0x1
+-diff --git a/sysdeps/unix/sysv/linux/ia64/libc.abilist b/sysdeps/unix/sysv/linux/ia64/libc.abilist
+-index dd3a56d3fe..e338a226b4 100644
+---- a/sysdeps/unix/sysv/linux/ia64/libc.abilist
+-+++ b/sysdeps/unix/sysv/linux/ia64/libc.abilist
+-@@ -2706,3 +2706,4 @@ GLIBC_2.9 ns_name_skip F
+- GLIBC_2.9 ns_name_uncompress F
+- GLIBC_2.9 ns_name_unpack F
+- GLIBC_2.9 pipe2 F
+-+GLIBC_ABI_DT_RELR __libc_abi_version_placeholder D 0x1
+-diff --git a/sysdeps/unix/sysv/linux/m68k/coldfire/libc.abilist b/sysdeps/unix/sysv/linux/m68k/coldfire/libc.abilist
+-index c1e0ea9c10..1f738bc883 100644
+---- a/sysdeps/unix/sysv/linux/m68k/coldfire/libc.abilist
+-+++ b/sysdeps/unix/sysv/linux/m68k/coldfire/libc.abilist
+-@@ -2715,3 +2715,4 @@ GLIBC_2.9 ns_name_skip F
+- GLIBC_2.9 ns_name_uncompress F
+- GLIBC_2.9 ns_name_unpack F
+- GLIBC_2.9 pipe2 F
+-+GLIBC_ABI_DT_RELR __libc_abi_version_placeholder D 0x1
+-diff --git a/sysdeps/unix/sysv/linux/m68k/m680x0/libc.abilist b/sysdeps/unix/sysv/linux/m68k/m680x0/libc.abilist
+-index 93161048ca..bbbf9bfb17 100644
+---- a/sysdeps/unix/sysv/linux/m68k/m680x0/libc.abilist
+-+++ b/sysdeps/unix/sysv/linux/m68k/m680x0/libc.abilist
+-@@ -2882,3 +2882,4 @@ GLIBC_2.9 ns_name_skip F
+- GLIBC_2.9 ns_name_uncompress F
+- GLIBC_2.9 ns_name_unpack F
+- GLIBC_2.9 pipe2 F
+-+GLIBC_ABI_DT_RELR __libc_abi_version_placeholder D 0x1
+-diff --git a/sysdeps/unix/sysv/linux/microblaze/be/libc.abilist b/sysdeps/unix/sysv/linux/microblaze/be/libc.abilist
+-index 0aaeec8a27..de6a2c8d91 100644
+---- a/sysdeps/unix/sysv/linux/microblaze/be/libc.abilist
+-+++ b/sysdeps/unix/sysv/linux/microblaze/be/libc.abilist
+-@@ -2696,3 +2696,4 @@ GLIBC_2.34 tss_create F
+- GLIBC_2.34 tss_delete F
+- GLIBC_2.34 tss_get F
+- GLIBC_2.34 tss_set F
+-+GLIBC_ABI_DT_RELR __libc_abi_version_placeholder D 0x1
+-diff --git a/sysdeps/unix/sysv/linux/microblaze/le/libc.abilist b/sysdeps/unix/sysv/linux/microblaze/le/libc.abilist
+-index bec5f456c9..277738c60b 100644
+---- a/sysdeps/unix/sysv/linux/microblaze/le/libc.abilist
+-+++ b/sysdeps/unix/sysv/linux/microblaze/le/libc.abilist
+-@@ -2693,3 +2693,4 @@ GLIBC_2.34 tss_create F
+- GLIBC_2.34 tss_delete F
+- GLIBC_2.34 tss_get F
+- GLIBC_2.34 tss_set F
+-+GLIBC_ABI_DT_RELR __libc_abi_version_placeholder D 0x1
+-diff --git a/sysdeps/unix/sysv/linux/mips/mips32/fpu/libc.abilist b/sysdeps/unix/sysv/linux/mips/mips32/fpu/libc.abilist
+-index 97d2127f78..e9a8c568d7 100644
+---- a/sysdeps/unix/sysv/linux/mips/mips32/fpu/libc.abilist
+-+++ b/sysdeps/unix/sysv/linux/mips/mips32/fpu/libc.abilist
+-@@ -2843,3 +2843,4 @@ GLIBC_2.9 ns_name_skip F
+- GLIBC_2.9 ns_name_uncompress F
+- GLIBC_2.9 ns_name_unpack F
+- GLIBC_2.9 pipe2 F
+-+GLIBC_ABI_DT_RELR __libc_abi_version_placeholder D 0x1
+-diff --git a/sysdeps/unix/sysv/linux/mips/mips32/nofpu/libc.abilist b/sysdeps/unix/sysv/linux/mips/mips32/nofpu/libc.abilist
+-index acb0756c11..0cd29dec98 100644
+---- a/sysdeps/unix/sysv/linux/mips/mips32/nofpu/libc.abilist
+-+++ b/sysdeps/unix/sysv/linux/mips/mips32/nofpu/libc.abilist
+-@@ -2841,3 +2841,4 @@ GLIBC_2.9 ns_name_skip F
+- GLIBC_2.9 ns_name_uncompress F
+- GLIBC_2.9 ns_name_unpack F
+- GLIBC_2.9 pipe2 F
+-+GLIBC_ABI_DT_RELR __libc_abi_version_placeholder D 0x1
+-diff --git a/sysdeps/unix/sysv/linux/mips/mips64/n32/libc.abilist b/sysdeps/unix/sysv/linux/mips/mips64/n32/libc.abilist
+-index ebc21dde1e..b941f5169c 100644
+---- a/sysdeps/unix/sysv/linux/mips/mips64/n32/libc.abilist
+-+++ b/sysdeps/unix/sysv/linux/mips/mips64/n32/libc.abilist
+-@@ -2849,3 +2849,4 @@ GLIBC_2.9 ns_name_skip F
+- GLIBC_2.9 ns_name_uncompress F
+- GLIBC_2.9 ns_name_unpack F
+- GLIBC_2.9 pipe2 F
+-+GLIBC_ABI_DT_RELR __libc_abi_version_placeholder D 0x1
+-diff --git a/sysdeps/unix/sysv/linux/mips/mips64/n64/libc.abilist b/sysdeps/unix/sysv/linux/mips/mips64/n64/libc.abilist
+-index c68f7e3c6c..d8fad040d7 100644
+---- a/sysdeps/unix/sysv/linux/mips/mips64/n64/libc.abilist
+-+++ b/sysdeps/unix/sysv/linux/mips/mips64/n64/libc.abilist
+-@@ -2753,3 +2753,4 @@ GLIBC_2.9 ns_name_skip F
+- GLIBC_2.9 ns_name_uncompress F
+- GLIBC_2.9 ns_name_unpack F
+- GLIBC_2.9 pipe2 F
+-+GLIBC_ABI_DT_RELR __libc_abi_version_placeholder D 0x1
+-diff --git a/sysdeps/unix/sysv/linux/nios2/libc.abilist b/sysdeps/unix/sysv/linux/nios2/libc.abilist
+-index e5b6834f14..f9143d919a 100644
+---- a/sysdeps/unix/sysv/linux/nios2/libc.abilist
+-+++ b/sysdeps/unix/sysv/linux/nios2/libc.abilist
+-@@ -2735,3 +2735,4 @@ GLIBC_2.34 tss_create F
+- GLIBC_2.34 tss_delete F
+- GLIBC_2.34 tss_get F
+- GLIBC_2.34 tss_set F
+-+GLIBC_ABI_DT_RELR __libc_abi_version_placeholder D 0x1
+-diff --git a/sysdeps/unix/sysv/linux/powerpc/powerpc32/fpu/libc.abilist b/sysdeps/unix/sysv/linux/powerpc/powerpc32/fpu/libc.abilist
+-index 132707c8ad..bac486361f 100644
+---- a/sysdeps/unix/sysv/linux/powerpc/powerpc32/fpu/libc.abilist
+-+++ b/sysdeps/unix/sysv/linux/powerpc/powerpc32/fpu/libc.abilist
+-@@ -3080,3 +3080,4 @@ GLIBC_2.9 ns_name_skip F
+- GLIBC_2.9 ns_name_uncompress F
+- GLIBC_2.9 ns_name_unpack F
+- GLIBC_2.9 pipe2 F
+-+GLIBC_ABI_DT_RELR __libc_abi_version_placeholder D 0x1
+-diff --git a/sysdeps/unix/sysv/linux/powerpc/powerpc32/nofpu/libc.abilist b/sysdeps/unix/sysv/linux/powerpc/powerpc32/nofpu/libc.abilist
+-index 0af2be31a0..58308feecd 100644
+---- a/sysdeps/unix/sysv/linux/powerpc/powerpc32/nofpu/libc.abilist
+-+++ b/sysdeps/unix/sysv/linux/powerpc/powerpc32/nofpu/libc.abilist
+-@@ -3125,3 +3125,4 @@ GLIBC_2.9 ns_name_skip F
+- GLIBC_2.9 ns_name_uncompress F
+- GLIBC_2.9 ns_name_unpack F
+- GLIBC_2.9 pipe2 F
+-+GLIBC_ABI_DT_RELR __libc_abi_version_placeholder D 0x1
+-diff --git a/sysdeps/unix/sysv/linux/powerpc/powerpc64/be/libc.abilist b/sysdeps/unix/sysv/linux/powerpc/powerpc64/be/libc.abilist
+-index cf864632d0..6fe56b9a63 100644
+---- a/sysdeps/unix/sysv/linux/powerpc/powerpc64/be/libc.abilist
+-+++ b/sysdeps/unix/sysv/linux/powerpc/powerpc64/be/libc.abilist
+-@@ -2836,3 +2836,4 @@ GLIBC_2.9 ns_name_skip F
+- GLIBC_2.9 ns_name_uncompress F
+- GLIBC_2.9 ns_name_unpack F
+- GLIBC_2.9 pipe2 F
+-+GLIBC_ABI_DT_RELR __libc_abi_version_placeholder D 0x1
+-diff --git a/sysdeps/unix/sysv/linux/powerpc/powerpc64/le/libc.abilist b/sysdeps/unix/sysv/linux/powerpc/powerpc64/le/libc.abilist
+-index d566d675d0..f2d37d8dd7 100644
+---- a/sysdeps/unix/sysv/linux/powerpc/powerpc64/le/libc.abilist
+-+++ b/sysdeps/unix/sysv/linux/powerpc/powerpc64/le/libc.abilist
+-@@ -2808,3 +2808,4 @@ GLIBC_2.34 tss_create F
+- GLIBC_2.34 tss_delete F
+- GLIBC_2.34 tss_get F
+- GLIBC_2.34 tss_set F
+-+GLIBC_ABI_DT_RELR __libc_abi_version_placeholder D 0x1
+-diff --git a/sysdeps/unix/sysv/linux/riscv/rv32/libc.abilist b/sysdeps/unix/sysv/linux/riscv/rv32/libc.abilist
+-index c9a7eacb32..65b9904d5f 100644
+---- a/sysdeps/unix/sysv/linux/riscv/rv32/libc.abilist
+-+++ b/sysdeps/unix/sysv/linux/riscv/rv32/libc.abilist
+-@@ -2375,3 +2375,4 @@ GLIBC_2.34 tss_create F
+- GLIBC_2.34 tss_delete F
+- GLIBC_2.34 tss_get F
+- GLIBC_2.34 tss_set F
+-+GLIBC_ABI_DT_RELR __libc_abi_version_placeholder D 0x1
+-diff --git a/sysdeps/unix/sysv/linux/riscv/rv64/libc.abilist b/sysdeps/unix/sysv/linux/riscv/rv64/libc.abilist
+-index 8299131cb2..dc44da43e3 100644
+---- a/sysdeps/unix/sysv/linux/riscv/rv64/libc.abilist
+-+++ b/sysdeps/unix/sysv/linux/riscv/rv64/libc.abilist
+-@@ -2575,3 +2575,4 @@ GLIBC_2.34 tss_create F
+- GLIBC_2.34 tss_delete F
+- GLIBC_2.34 tss_get F
+- GLIBC_2.34 tss_set F
+-+GLIBC_ABI_DT_RELR __libc_abi_version_placeholder D 0x1
+-diff --git a/sysdeps/unix/sysv/linux/s390/s390-32/libc.abilist b/sysdeps/unix/sysv/linux/s390/s390-32/libc.abilist
+-index c3fe78f77f..01d65bb310 100644
+---- a/sysdeps/unix/sysv/linux/s390/s390-32/libc.abilist
+-+++ b/sysdeps/unix/sysv/linux/s390/s390-32/libc.abilist
+-@@ -3092,3 +3092,4 @@ GLIBC_2.9 pututline F
+- GLIBC_2.9 pututxline F
+- GLIBC_2.9 updwtmp F
+- GLIBC_2.9 updwtmpx F
+-+GLIBC_ABI_DT_RELR __libc_abi_version_placeholder D 0x1
+-diff --git a/sysdeps/unix/sysv/linux/s390/s390-64/libc.abilist b/sysdeps/unix/sysv/linux/s390/s390-64/libc.abilist
+-index 83e542aa8c..722c0fd888 100644
+---- a/sysdeps/unix/sysv/linux/s390/s390-64/libc.abilist
+-+++ b/sysdeps/unix/sysv/linux/s390/s390-64/libc.abilist
+-@@ -2871,3 +2871,4 @@ GLIBC_2.9 ns_name_skip F
+- GLIBC_2.9 ns_name_uncompress F
+- GLIBC_2.9 ns_name_unpack F
+- GLIBC_2.9 pipe2 F
+-+GLIBC_ABI_DT_RELR __libc_abi_version_placeholder D 0x1
+-diff --git a/sysdeps/unix/sysv/linux/sh/be/libc.abilist b/sysdeps/unix/sysv/linux/sh/be/libc.abilist
+-index dc502f6833..4b4df26e7a 100644
+---- a/sysdeps/unix/sysv/linux/sh/be/libc.abilist
+-+++ b/sysdeps/unix/sysv/linux/sh/be/libc.abilist
+-@@ -2762,3 +2762,4 @@ GLIBC_2.9 ns_name_skip F
+- GLIBC_2.9 ns_name_uncompress F
+- GLIBC_2.9 ns_name_unpack F
+- GLIBC_2.9 pipe2 F
+-+GLIBC_ABI_DT_RELR __libc_abi_version_placeholder D 0x1
+-diff --git a/sysdeps/unix/sysv/linux/sh/le/libc.abilist b/sysdeps/unix/sysv/linux/sh/le/libc.abilist
+-index cba1abb556..d9633029a7 100644
+---- a/sysdeps/unix/sysv/linux/sh/le/libc.abilist
+-+++ b/sysdeps/unix/sysv/linux/sh/le/libc.abilist
+-@@ -2759,3 +2759,4 @@ GLIBC_2.9 ns_name_skip F
+- GLIBC_2.9 ns_name_uncompress F
+- GLIBC_2.9 ns_name_unpack F
+- GLIBC_2.9 pipe2 F
+-+GLIBC_ABI_DT_RELR __libc_abi_version_placeholder D 0x1
+-diff --git a/sysdeps/unix/sysv/linux/sparc/sparc32/libc.abilist b/sysdeps/unix/sysv/linux/sparc/sparc32/libc.abilist
+-index d4a516fb47..fd50807e65 100644
+---- a/sysdeps/unix/sysv/linux/sparc/sparc32/libc.abilist
+-+++ b/sysdeps/unix/sysv/linux/sparc/sparc32/libc.abilist
+-@@ -3097,3 +3097,4 @@ GLIBC_2.9 ns_name_skip F
+- GLIBC_2.9 ns_name_uncompress F
+- GLIBC_2.9 ns_name_unpack F
+- GLIBC_2.9 pipe2 F
+-+GLIBC_ABI_DT_RELR __libc_abi_version_placeholder D 0x1
+-diff --git a/sysdeps/unix/sysv/linux/sparc/sparc64/libc.abilist b/sysdeps/unix/sysv/linux/sparc/sparc64/libc.abilist
+-index 6268875ba3..3efb779ad7 100644
+---- a/sysdeps/unix/sysv/linux/sparc/sparc64/libc.abilist
+-+++ b/sysdeps/unix/sysv/linux/sparc/sparc64/libc.abilist
+-@@ -2729,3 +2729,4 @@ GLIBC_2.9 ns_name_skip F
+- GLIBC_2.9 ns_name_uncompress F
+- GLIBC_2.9 ns_name_unpack F
+- GLIBC_2.9 pipe2 F
+-+GLIBC_ABI_DT_RELR __libc_abi_version_placeholder D 0x1
+-diff --git a/sysdeps/unix/sysv/linux/x86_64/64/libc.abilist b/sysdeps/unix/sysv/linux/x86_64/64/libc.abilist
+-index 095e914b73..1b703676b4 100644
+---- a/sysdeps/unix/sysv/linux/x86_64/64/libc.abilist
+-+++ b/sysdeps/unix/sysv/linux/x86_64/64/libc.abilist
+-@@ -2680,3 +2680,4 @@ GLIBC_2.9 ns_name_skip F
+- GLIBC_2.9 ns_name_uncompress F
+- GLIBC_2.9 ns_name_unpack F
+- GLIBC_2.9 pipe2 F
+-+GLIBC_ABI_DT_RELR __libc_abi_version_placeholder D 0x1
+-diff --git a/sysdeps/unix/sysv/linux/x86_64/x32/libc.abilist b/sysdeps/unix/sysv/linux/x86_64/x32/libc.abilist
+-index dd910f7fe9..1057e633f6 100644
+---- a/sysdeps/unix/sysv/linux/x86_64/x32/libc.abilist
+-+++ b/sysdeps/unix/sysv/linux/x86_64/x32/libc.abilist
+-@@ -2627,3 +2627,4 @@ GLIBC_2.34 tss_create F
+- GLIBC_2.34 tss_delete F
+- GLIBC_2.34 tss_get F
+- GLIBC_2.34 tss_set F
+-+GLIBC_ABI_DT_RELR __libc_abi_version_placeholder D 0x1
+--- 
+-2.33.1
+-
+diff --git a/0004-elf-Properly-handle-zero-DT_RELA-DT_REL-values.patch b/0003-elf-Properly-handle-zero-DT_RELA-DT_REL-values.patch
+similarity index 94%
+rename from 0004-elf-Properly-handle-zero-DT_RELA-DT_REL-values.patch
+rename to 0003-elf-Properly-handle-zero-DT_RELA-DT_REL-values.patch
+index b2f4bd4..596fb5d 100644
+--- a/0004-elf-Properly-handle-zero-DT_RELA-DT_REL-values.patch
++++ b/0003-elf-Properly-handle-zero-DT_RELA-DT_REL-values.patch
+@@ -1,7 +1,7 @@
+-From 175d08a98e0da9f05cb9ac3a7989cfca6f21d327 Mon Sep 17 00:00:00 2001
++From a15df7ed825d1849af3c42105e995d4615e1bdc4 Mon Sep 17 00:00:00 2001
+ From: "H.J. Lu" <hjl.tools@gmail.com>
+ Date: Tue, 4 Jan 2022 05:47:21 -0800
+-Subject: [PATCH 4/5] elf: Properly handle zero DT_RELA/DT_REL values
++Subject: [PATCH 3/4] elf: Properly handle zero DT_RELA/DT_REL values
+ 
+ With DT_RELR, there may be no relocations in DT_RELA/DT_REL and their
+ entry values are zero.  Don't relocate DT_RELA/DT_REL and update the
+@@ -12,7 +12,7 @@ combined relocation start address if their entry values are zero.
+  2 files changed, 19 insertions(+), 5 deletions(-)
+ 
+ diff --git a/elf/dynamic-link.h b/elf/dynamic-link.h
+-index 0fcfa3c599..03895df08b 100644
++index 6a6796483f..22c7dd1d1d 100644
+ --- a/elf/dynamic-link.h
+ +++ b/elf/dynamic-link.h
+ @@ -120,7 +120,9 @@ elf_machine_lazy_rel (struct link_map *map,
+@@ -71,5 +71,5 @@ index b0c7260b82..456c0706de 100644
+      }
+    if (info[DT_PLTREL] != NULL)
+ -- 
+-2.33.1
++2.34.1
+ 
+diff --git a/0004-Add-GLIBC_ABI_DT_RELR-for-DT_RELR-support.patch b/0004-Add-GLIBC_ABI_DT_RELR-for-DT_RELR-support.patch
+new file mode 100644
+index 0000000..50ae4eb
+--- /dev/null
++++ b/0004-Add-GLIBC_ABI_DT_RELR-for-DT_RELR-support.patch
+@@ -0,0 +1,134 @@
++From 0e4ae45dd968becddad0f619ea0b04036f65177c Mon Sep 17 00:00:00 2001
++From: "H.J. Lu" <hjl.tools@gmail.com>
++Date: Fri, 19 Nov 2021 06:18:56 -0800
++Subject: [PATCH 4/4] Add GLIBC_ABI_DT_RELR for DT_RELR support
++
++The EI_ABIVERSION field of the ELF header in executables and shared
++libraries can be bumped to indicate the minimum ABI requirement on the
++dynamic linker.  However, EI_ABIVERSION in executables isn't checked by
++the Linux kernel ELF loader nor the existing dynamic linker.  Executables
++will crash mysteriously if the dynamic linker doesn't support the ABI
++features required by the EI_ABIVERSION field.  The dynamic linker should
++be changed to check EI_ABIVERSION in executables.
++
++Add a glibc version, GLIBC_ABI_DT_RELR, to indicate DT_RELR support so
++that the existing dynamic linkers will issue an error on executables
++with GLIBC_ABI_DT_RELR depdendency.
++
++A dummy symbol, __libc_abi_version_placeholder, is added since linker
++won't create a symbol version node with an empty symbol list.
++---
++ elf/Makefile             | 19 ++++++++++++++++---
++ elf/Versions             |  3 +++
++ elf/libc-abi-version.c   | 21 +++++++++++++++++++++
++ elf/libc-abi-version.exp |  1 +
++ scripts/abilist.awk      |  2 ++
++ 5 files changed, 43 insertions(+), 3 deletions(-)
++ create mode 100644 elf/libc-abi-version.c
++ create mode 100644 elf/libc-abi-version.exp
++
++diff --git a/elf/Makefile b/elf/Makefile
++index 2c18e06aaf..3680e89131 100644
++--- a/elf/Makefile
+++++ b/elf/Makefile
++@@ -25,7 +25,8 @@ headers		= elf.h bits/elfclass.h link.h bits/link.h
++ routines	= $(all-dl-routines) dl-support dl-iteratephdr \
++ 		  dl-addr dl-addr-obj enbl-secure dl-profstub \
++ 		  dl-origin dl-libc dl-sym dl-sysdep dl-error \
++-		  dl-reloc-static-pie libc_early_init rtld_static_init
+++		  dl-reloc-static-pie libc_early_init rtld_static_init \
+++		  libc-abi-version
++ 
++ # The core dynamic linking functions are in libc for the static and
++ # profiled libraries.
++@@ -477,8 +478,10 @@ tests-special += $(objpfx)order-cmp.out $(objpfx)tst-array1-cmp.out \
++ 		 $(objpfx)tst-unused-dep-cmp.out
++ endif
++ 
++-check-abi: $(objpfx)check-abi-ld.out
++-tests-special += $(objpfx)check-abi-ld.out
+++check-abi: $(objpfx)check-abi-ld.out \
+++	   $(objpfx)check-abi-version-libc.out
+++tests-special += $(objpfx)check-abi-ld.out \
+++		 $(objpfx)check-abi-version-libc.out
++ update-abi: update-abi-ld
++ update-all-abi: update-all-abi-ld
++ 
++@@ -1921,3 +1924,13 @@ $(objpfx)tst-ro-dynamic-mod.so: $(objpfx)tst-ro-dynamic-mod.os \
++ 	$(LINK.o) -nostdlib -nostartfiles -shared -o $@ \
++ 		-Wl,--script=tst-ro-dynamic-mod.map \
++ 		$(objpfx)tst-ro-dynamic-mod.os
+++
+++$(objpfx)check-abi-version-libc.out: libc-abi-version.exp \
+++  $(objpfx)libc.symlist-abi-version
+++	cmp $^ > $@; \
+++	$(evaluate-test)
+++
+++$(objpfx)libc.symlist-abi-version: $(common-objpfx)libc.so
+++	LC_ALL=C $(NM) -D $< | grep " GLIBC_ABI_" \
+++		| sed "s/^0\+/00000000/" > $@T
+++	mv -f $@T $@
++diff --git a/elf/Versions b/elf/Versions
++index 775aab62af..5d7d9ac9b8 100644
++--- a/elf/Versions
+++++ b/elf/Versions
++@@ -20,6 +20,9 @@ libc {
++     __register_frame_info_table_bases; _Unwind_Find_FDE;
++   }
++ %endif
+++  GLIBC_ABI_DT_RELR {
+++    __libc_abi_version_placeholder;
+++  }
++   GLIBC_PRIVATE {
++     # functions used in other libraries
++     __libc_early_init;
++diff --git a/elf/libc-abi-version.c b/elf/libc-abi-version.c
++new file mode 100644
++index 0000000000..8b0a34f3bc
++--- /dev/null
+++++ b/elf/libc-abi-version.c
++@@ -0,0 +1,21 @@
+++/* Placeholder definition for GLIBC_ABI_VERSION nodes.
+++   Copyright (C) 2022 Free Software Foundation, Inc.
+++   This file is part of the GNU C Library.
+++
+++   The GNU C Library is free software; you can redistribute it and/or
+++   modify it under the terms of the GNU Lesser General Public
+++   License as published by the Free Software Foundation; either
+++   version 2.1 of the License, or (at your option) any later version.
+++
+++   The GNU C Library is distributed in the hope that it will be useful,
+++   but WITHOUT ANY WARRANTY; without even the implied warranty of
+++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+++   Lesser General Public License for more details.
+++
+++   You should have received a copy of the GNU Lesser General Public
+++   License along with the GNU C Library; if not, see
+++   <https://www.gnu.org/licenses/>.  */
+++
+++#ifdef SHARED
+++char __libc_abi_version_placeholder attribute_compat_data_section;
+++#endif
++diff --git a/elf/libc-abi-version.exp b/elf/libc-abi-version.exp
++new file mode 100644
++index 0000000000..455088dc6b
++--- /dev/null
+++++ b/elf/libc-abi-version.exp
++@@ -0,0 +1 @@
+++00000000 A GLIBC_ABI_DT_RELR
++diff --git a/scripts/abilist.awk b/scripts/abilist.awk
++index 24a34ccbed..6cc7af6ac8 100644
++--- a/scripts/abilist.awk
+++++ b/scripts/abilist.awk
++@@ -55,6 +55,8 @@ $2 == "g" || $2 == "w" && (NF == 7 || NF == 8) {
++   # caused STV_HIDDEN symbols to appear in .dynsym, though that is useless.
++   if (NF > 7 && $7 == ".hidden") next;
++ 
+++  if (version ~ /^GLIBC_ABI_/ && !include_abi_version) next;
+++
++   if (version == "GLIBC_PRIVATE" && !include_private) next;
++ 
++   desc = "";
++-- 
++2.34.1
++
+diff --git a/0005-elf-Perform-DT_RELR-relocation-only-once-on-ld.so.patch b/0005-elf-Perform-DT_RELR-relocation-only-once-on-ld.so.patch
+deleted file mode 100644
+index 55c025e..0000000
+--- a/0005-elf-Perform-DT_RELR-relocation-only-once-on-ld.so.patch
++++ /dev/null
+@@ -1,40 +0,0 @@
+-From 9296dc1e903217f0c53e1ddb4a31520d2b1172b1 Mon Sep 17 00:00:00 2001
+-From: "H.J. Lu" <hjl.tools@gmail.com>
+-Date: Tue, 4 Jan 2022 16:42:06 -0800
+-Subject: [PATCH 5/5] elf: Perform DT_RELR relocation only once on ld.so
+-
+-ld.so is relocated twice. The first time is during bootstrap and the
+-second time is during the final startup.  Check RTLD_BOOTSTRAP to
+-perform DT_RELR relocation only once on ld.so.
+----
+- elf/dynamic-link.h | 8 +++++++-
+- 1 file changed, 7 insertions(+), 1 deletion(-)
+-
+-diff --git a/elf/dynamic-link.h b/elf/dynamic-link.h
+-index 03895df08b..16cf509825 100644
+---- a/elf/dynamic-link.h
+-+++ b/elf/dynamic-link.h
+-@@ -223,13 +223,19 @@ elf_machine_lazy_rel (struct link_map *map,
+- 
+- /* This can't just be an inline function because GCC is too dumb
+-    to inline functions containing inlines themselves.  */
+-+# ifdef RTLD_BOOTSTRAP
+-+#  define DO_RTLD_BOOTSTRAP 1
+-+# else
+-+#  define DO_RTLD_BOOTSTRAP 0
+-+# endif
+- # define ELF_DYNAMIC_RELOCATE(map, lazy, consider_profile, skip_ifunc) \
+-   do {									      \
+-     int edr_lazy = elf_machine_runtime_setup ((map), (lazy),		      \
+- 					      (consider_profile));	      \
+-     ELF_DYNAMIC_DO_REL ((map), edr_lazy, skip_ifunc);			      \
+-     ELF_DYNAMIC_DO_RELA ((map), edr_lazy, skip_ifunc);			      \
+--    ELF_DYNAMIC_DO_RELR ((map));					      \
+-+    if ((map) !=  &GL(dl_rtld_map) || DO_RTLD_BOOTSTRAP)		      \
+-+      ELF_DYNAMIC_DO_RELR (map);					      \
+-   } while (0)
+- 
+- #endif
+--- 
+-2.33.1
+-
+diff --git a/glibc.spec b/glibc.spec
+index 2ade680..5c798fa 100644
+--- a/glibc.spec
++++ b/glibc.spec
+@@ -362,9 +362,8 @@ Patch200013: 0013-x86-64-Add-LAM-tests.patch
+ 
+ Patch400001: 0001-Properly-check-linker-option-in-LIBC_LINKER_FEATURE-.patch
+ Patch400002: 0002-elf-Support-DT_RELR-relative-relocation-format-BZ-27.patch
+-Patch400003: 0003-Add-GLIBC_ABI_DT_RELR-for-DT_RELR-support.patch
+-Patch400004: 0004-elf-Properly-handle-zero-DT_RELA-DT_REL-values.patch
+-Patch400005: 0005-elf-Perform-DT_RELR-relocation-only-once-on-ld.so.patch
++Patch400003: 0003-elf-Properly-handle-zero-DT_RELA-DT_REL-values.patch
++Patch400004: 0004-Add-GLIBC_ABI_DT_RELR-for-DT_RELR-support.patch
+ 
+ ##############################################################################
+ # Continued list of core "glibc" package information:
+-- 
+2.34.1
+
